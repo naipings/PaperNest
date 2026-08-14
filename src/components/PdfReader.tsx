@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, ClipboardPaste, Download, FileImage, FileText, Highlighter, MessageSquareText, MousePointer2, PenLine, Plus, Search, SidebarClose, Trash2, Underline, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, ClipboardPaste, Download, FileImage, FileText, Highlighter, MessageSquareText, MousePointer2, PenLine, Plus, Redo2, Search, SidebarClose, Trash2, Underline, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { GlobalWorkerOptions, TextLayer, getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 import { PDFDocument, rgb } from "pdf-lib";
 import { backend } from "../services/backend";
@@ -10,6 +10,8 @@ import { now, uuid } from "../types";
 import { toolForCapturedSelection } from "../lib/annotationTools";
 import { translateEnglishToChinese } from "../services/translation";
 import { ContinuousAnnotatablePdf } from "./ContinuousAnnotatablePdf";
+import { SelectionToolbar } from "./SelectionToolbar";
+import { AnnotationHistory } from "../lib/annotationHistory";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 type Tool = "select" | AnnotationType | "figure";
@@ -33,6 +35,15 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   const [page, setPage] = useState(paper.readingPage || 1); const [scale, setScale] = useState(1.15); const [tool, setTool] = useState<Tool>("select"); const [tab, setTab] = useState<SideTab>("annotations");
   const [busy, setBusy] = useState(true); const [message, setMessage] = useState("正在打开 PDF…"); const [pageText, setPageText] = useState<Record<number, string>>({}); const [search, setSearch] = useState(""); const [ocrSaved, setOcrSaved] = useState(false);
   const [dragStart, setDragStart] = useState<Point>(); const [draftPoints, setDraftPoints] = useState<Point[]>([]); const [rightOpen, setRightOpen] = useState(true);
+  const [selectedAnnotation, setSelectedAnnotation] = useState<{ id: string; page: number; x: number; y: number }>();
+  const history = useRef(new AnnotationHistory());
+  const historyLock = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const touchHistory = () => {
+    setCanUndo(history.current.canUndo());
+    setCanRedo(history.current.canRedo());
+  };
   const continuous = true; const setContinuous = (_value: (value: boolean) => boolean) => undefined;
   const annotations = useMemo(() => data?.annotations.filter(a => a.paperId === paper.id) ?? [], [data, paper.id]);
   const pageAnnotations = annotations.filter(a => a.page === page); const vocab = data?.vocabulary.filter(v => v.paperId === paper.id) ?? []; const figures = data?.figures.filter(v => v.paperId === paper.id) ?? [];
@@ -73,11 +84,76 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
     else { const rect: Rect = { x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.max(.01, Math.abs(end.x - start.x)), height: Math.max(.01, Math.abs(end.y - start.y)) }; geometry = { rects: [rect] }; }
     if (tool === "figure") { setDragStart(undefined); setDraftPoints([]); const rect = geometry.rects?.[0]; if (!rect || rect.width < .025 || rect.height < .025) { setMessage("请框选更大的图像区域"); return; } await captureFramework(rect); return; }
     const comment = tool === "text" ? window.prompt("输入文本批注") ?? undefined : undefined; if (tool === "text" && !comment) { setDragStart(undefined); return; }
-    await saveAnnotation({ id: uuid(), paperId: paper.id, page, type: tool, geometry, color: tool === "text" ? "#7867c6" : tool === "ink" ? "#d15d4a" : "#f2ce67", comment, createdAt: now(), updatedAt: now() }); dragStartRef.current = undefined; setDragStart(undefined); setDraftPoints([]);
+    await trackAdd({ id: uuid(), paperId: paper.id, page, type: tool, geometry, color: tool === "text" ? "#7867c6" : tool === "ink" ? "#d15d4a" : "#f2ce67", comment, createdAt: now(), updatedAt: now() }); dragStartRef.current = undefined; setDragStart(undefined); setDraftPoints([]);
   };
 
-  const captureTextSelection = () => { if(tool!=="select")return; const selection=window.getSelection(); if(!selection||selection.isCollapsed||!selection.toString().trim()||!overlayRef.current)return; const pageRect=overlayRef.current.getBoundingClientRect(); const clientRects=Array.from(selection.getRangeAt(0).getClientRects()); const rects=clientRects.map(rect=>({x:(rect.left-pageRect.left)/pageRect.width,y:(rect.top-pageRect.top)/pageRect.height,width:rect.width/pageRect.width,height:rect.height/pageRect.height})).filter(rect=>rect.width>0&&rect.height>0); if(!rects.length)return; const first=clientRects[0]; setCaptured({text:selection.toString().trim(),rects,x:first.left-pageRect.left,y:first.top-pageRect.top-42,page}); };
-  const annotateCaptured = async (type:"highlight"|"underline") => { if(!captured)return; await saveAnnotation({id:uuid(),paperId:paper.id,page:captured.page,type,geometry:{rects:captured.rects},quote:captured.text,color:"#f2ce67",createdAt:now(),updatedAt:now()}); window.getSelection()?.removeAllRanges(); setCaptured(undefined); };
+  const trackAdd = async (annotation: Annotation) => {
+    await saveAnnotation(annotation);
+    if (!historyLock.current) history.current.push({ kind: "add", annotation });
+    touchHistory();
+  };
+  const trackDelete = async (annotation: Annotation) => {
+    await deleteAnnotation(annotation.id);
+    if (!historyLock.current) history.current.push({ kind: "delete", annotation });
+    touchHistory();
+    if (selectedAnnotation?.id === annotation.id) setSelectedAnnotation(undefined);
+  };
+  const undoAnnotation = async () => {
+    const entry = history.current.popUndo();
+    if (!entry) return;
+    historyLock.current = true;
+    try {
+      if (entry.kind === "add") await deleteAnnotation(entry.annotation.id);
+      else await saveAnnotation(entry.annotation);
+    } finally {
+      historyLock.current = false;
+      touchHistory();
+    }
+  };
+  const redoAnnotation = async () => {
+    const entry = history.current.popRedo();
+    if (!entry) return;
+    historyLock.current = true;
+    try {
+      if (entry.kind === "add") await saveAnnotation(entry.annotation);
+      else await deleteAnnotation(entry.annotation.id);
+    } finally {
+      historyLock.current = false;
+      touchHistory();
+    }
+  };
+  const clearReaderSelection = () => { window.getSelection()?.removeAllRanges(); setCaptured(undefined); setSelectedAnnotation(undefined); };
+  const handleCapture = (selection: CapturedSelection) => {
+    setSelectedAnnotation(undefined);
+    if (tool === "highlight" || tool === "underline") {
+      void addTextAnnotation(tool, selection);
+      return;
+    }
+    if (tool !== "select") return;
+    setCaptured(selection);
+  };
+  const addTextAnnotation = async (type: "highlight" | "underline", selection: CapturedSelection) => {
+    await trackAdd({ id: uuid(), paperId: paper.id, page: selection.page, type, geometry: { rects: selection.rects }, quote: selection.text, color: type === "underline" ? "#7eb6ff" : "#f2ce67", createdAt: now(), updatedAt: now() });
+    window.getSelection()?.removeAllRanges();
+    setCaptured(undefined);
+  };
+  const captureTextSelection = () => {
+    if (tool !== "select" && tool !== "highlight" && tool !== "underline") return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim() || !overlayRef.current) return;
+    const pageRect = overlayRef.current.getBoundingClientRect();
+    const clientRects = Array.from(selection.getRangeAt(0).getClientRects());
+    const rects = clientRects.map(rect => ({ x: (rect.left - pageRect.left) / pageRect.width, y: (rect.top - pageRect.top) / pageRect.height, width: rect.width / pageRect.width, height: rect.height / pageRect.height })).filter(rect => rect.width > 0 && rect.height > 0);
+    if (!rects.length) return;
+    const first = clientRects[0];
+    handleCapture({ text: selection.toString().trim(), rects, x: first.left - pageRect.left, y: first.top - pageRect.top - 42, page });
+  };
+  const annotateCaptured = async (type: "highlight" | "underline") => { if (!captured) return; await addTextAnnotation(type, captured); };
+  const deleteSelectedAnnotation = async () => {
+    const target = annotations.find(item => item.id === selectedAnnotation?.id);
+    if (!target) return;
+    await trackDelete(target);
+  };
   useEffect(() => {
     const applySelectedText = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[title]") : null;
@@ -131,6 +207,30 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   // The shortcut is intentionally active only while an actual PDF selection is open.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captured, page, paper.id]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable=true]")) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        void undoAnnotation();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey))) {
+        event.preventDefault();
+        void redoAnnotation();
+        return;
+      }
+      if (event.key === "Delete" && selectedAnnotation) {
+        event.preventDefault();
+        void deleteSelectedAnnotation();
+        return;
+      }
+      if (event.key === "Escape") clearReaderSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedAnnotation]);
   const exportAnnotated = async () => { if (!bytes) return; setMessage("正在生成带批注副本…"); try { const document = await PDFDocument.load(bytes.slice()); for (const ann of annotations) { const target = document.getPage(ann.page - 1); const { width, height } = target.getSize(); const color = hexColor(ann.color); for (const rect of ann.geometry.rects ?? []) { const x = rect.x * width, y = height - (rect.y + rect.height) * height, w = rect.width * width, h = rect.height * height; if (ann.type === "highlight") target.drawRectangle({ x, y, width: w, height: h, color, opacity: .32 }); else if (ann.type === "underline") target.drawLine({ start: { x, y }, end: { x: x + w, y }, color, thickness: 1.6 }); else if (ann.type === "text") { target.drawRectangle({ x, y, width: Math.max(14, w), height: Math.max(14, h), color, opacity: .85 }); if (ann.comment) target.drawText(ann.comment.slice(0, 80), { x: x + 18, y, size: 8, color }); } }
 
       const points = ann.geometry.points ?? []; for (let i = 1; i < points.length; i++) target.drawLine({ start: { x: points[i - 1].x * width, y: height - points[i - 1].y * height }, end: { x: points[i].x * width, y: height - points[i].y * height }, color, thickness: 1.8 }); }
@@ -138,16 +238,16 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   const searchPages = search.trim() ? Object.entries(pageText).filter(([, text]) => text.toLowerCase().includes(search.toLowerCase())).map(([n]) => Number(n)) : [];
   if (!data) return null;
   return <main className={"reader-screen" + (embedded ? " embedded" : "")}>
-    <header className="reader-toolbar"><button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button><div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong><small>{paper.venue || "本地论文"}</small></div><div className="reader-tools"><button onClick={() => { pendingScale.current = Math.max(.5, pendingScale.current - .1); setScale(pendingScale.current); }}><ZoomOut size={17} /></button><span>{Math.round(scale * 100)}%</span><button onClick={() => { pendingScale.current = Math.min(2.5, pendingScale.current + .1); setScale(pendingScale.current); }}><ZoomIn size={17} /></button><i /><button className={tool === "select" ? "active" : ""} onClick={() => setTool("select")} title="选择"><MousePointer2 size={17} /></button><button className={tool === "highlight" ? "active" : ""} onClick={() => setTool("highlight")} title="高亮"><Highlighter size={17} /></button><button className={tool === "underline" ? "active" : ""} onClick={() => setTool("underline")} title="下划线"><Underline size={17} /></button><button className={tool === "text" ? "active" : ""} onClick={() => setTool("text")} title="文本批注"><MessageSquareText size={17} /></button><button className={tool === "ink" ? "active" : ""} onClick={() => setTool("ink")} title="手绘"><PenLine size={17} /></button><button className={tool === "figure" ? "active" : ""} onClick={() => setTool("figure")} title="框选框架图"><FileImage size={17} /></button><button onClick={() => setMessage("请使用 Ctrl+V 粘贴剪贴板图片")} title="粘贴框架图"><ClipboardPaste size={17} /></button>{!paper.hasTextLayer && <button disabled={busy} onClick={() => void runOcr()} title="对扫描版执行本地 OCR"><FileText size={17} /></button>}<i /><button onClick={exportAnnotated} title="导出带批注副本"><Download size={17} /></button><button onClick={() => setRightOpen(v => !v)} title="学习侧栏"><SidebarClose size={17} /></button></div></header>
+    <header className="reader-toolbar"><button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button><div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong><small>{paper.venue || "本地论文"}</small></div><div className="reader-tools"><button onClick={() => { pendingScale.current = Math.max(.5, pendingScale.current - .1); setScale(pendingScale.current); }}><ZoomOut size={17} /></button><span>{Math.round(scale * 100)}%</span><button onClick={() => { pendingScale.current = Math.min(2.5, pendingScale.current + .1); setScale(pendingScale.current); }}><ZoomIn size={17} /></button><i /><button className={tool === "select" ? "active" : ""} onClick={() => { setTool("select"); clearReaderSelection(); }} title="选择"><MousePointer2 size={17} /></button><button className={tool === "highlight" ? "active" : ""} onClick={() => { setTool("highlight"); clearReaderSelection(); }} title="高亮"><Highlighter size={17} /></button><button className={tool === "underline" ? "active" : ""} onClick={() => { setTool("underline"); clearReaderSelection(); }} title="下划线"><Underline size={17} /></button><button className={tool === "text" ? "active" : ""} onClick={() => setTool("text")} title="文本批注"><MessageSquareText size={17} /></button><button className={tool === "ink" ? "active" : ""} onClick={() => setTool("ink")} title="手绘"><PenLine size={17} /></button><button className={tool === "figure" ? "active" : ""} onClick={() => setTool("figure")} title="框选框架图"><FileImage size={17} /></button><button onClick={() => setMessage("请使用 Ctrl+V 粘贴剪贴板图片")} title="粘贴框架图"><ClipboardPaste size={17} /></button>{!paper.hasTextLayer && <button disabled={busy} onClick={() => void runOcr()} title="对扫描版执行本地 OCR"><FileText size={17} /></button>}<i /><button disabled={!canUndo} onClick={() => void undoAnnotation()} title="撤销 Ctrl+Z"><Undo2 size={17} /></button><button disabled={!canRedo} onClick={() => void redoAnnotation()} title="重做 Ctrl+Shift+Z"><Redo2 size={17} /></button><button onClick={exportAnnotated} title="导出带批注副本"><Download size={17} /></button><button onClick={() => setRightOpen(v => !v)} title="学习侧栏"><SidebarClose size={17} /></button></div></header>
     <div className={`reader-layout ${rightOpen ? "" : "right-closed"}`}>
     <button className="reader-mode-switch" onClick={() => { setContinuous(value => !value); setCaptured(undefined); setTool("select"); }}>{continuous ? "连续阅读" : "单页批注"}</button>
       <aside className="page-sidebar"><div className="pdf-search"><Search size={15} /><input placeholder="在本文中查找" value={search} onChange={e => setSearch(e.target.value)} /></div>{search && <div className="search-pages">命中页面：{searchPages.length ? searchPages.map(n => <button key={n} onClick={() => setPage(n)}>P{n}</button>) : "无"}</div>}<div className="page-list">{Array.from({ length: pdf?.numPages ?? paper.pageCount ?? 0 }, (_, i) => i + 1).map(n => <button key={n} className={page === n ? "active" : ""} onClick={() => setPage(n)}><span><FileText size={20} /></span><small>{n}</small>{annotations.some(a => a.page === n) && <i />}</button>)}</div></aside>
       <section className="pdf-stage" ref={stageRef}><div className="page-controls"><button disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft size={17} /></button><label><input type="number" min="1" max={pdf?.numPages} value={page} onChange={e => setPage(Math.max(1, Math.min(pdf?.numPages ?? 1, Number(e.target.value))))} /> / {pdf?.numPages ?? "—"}</label><button disabled={page >= (pdf?.numPages ?? 1)} onClick={() => setPage(p => p + 1)}><ChevronRight size={17} /></button></div>
-        {continuous && <ContinuousAnnotatablePdf pdf={pdf} scale={scale} annotations={annotations} captured={captured} onPage={setPage} onCapture={setCaptured} onAnnotate={annotateCaptured} onDeleteAnnotation={deleteAnnotation} onClearSelection={() => { window.getSelection()?.removeAllRanges(); setCaptured(undefined); }} />}
-        {message && <div className={`reader-message ${busy ? "busy" : ""}`}>{message}</div>}<div className={`pdf-page-wrap tool-${tool}`}><canvas ref={canvasRef} /><div className="textLayer" ref={textLayerRef} onMouseUp={captureTextSelection} /><div className="annotation-layer" ref={overlayRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}>{pageAnnotations.map(ann => <AnnotationOverlay key={ann.id} annotation={ann} onDelete={() => deleteAnnotation(ann.id)} />)}{tool === "ink" && draftPoints.length > 1 && <svg><polyline points={draftPoints.map(p => `${p.x * 100}%,${p.y * 100}%`).join(" ")} /></svg>}</div>{captured && <div className="selection-toolbar" style={{left:captured.x,top:Math.max(4,captured.y)}}><button onClick={()=>annotateCaptured("highlight")}>高亮</button><button onClick={()=>annotateCaptured("underline")}>下划线</button><button title="Ctrl+Alt+T" onClick={termFromSelection}>收为术语</button><button onClick={excerptFromSelection}>加入写作库</button><button onClick={()=>setCaptured(undefined)}>×</button></div>}</div></section>
+        {continuous && <ContinuousAnnotatablePdf pdf={pdf} scale={scale} annotations={annotations} captured={captured} selectedAnnotation={selectedAnnotation} tool={tool} onPage={setPage} onCapture={handleCapture} onAnnotate={annotateCaptured} onSelectAnnotation={(id, anchor) => setSelectedAnnotation(id && anchor ? { id, page: anchor.page, x: anchor.x, y: anchor.y } : undefined)} onTerm={() => void termFromSelection()} onExcerpt={() => void excerptFromSelection()} onClearSelection={clearReaderSelection} onDeleteSelectedAnnotation={() => void deleteSelectedAnnotation()} />}
+        {message && <div className={`reader-message ${busy ? "busy" : ""}`}>{message}</div>}<div className={`pdf-page-wrap tool-${tool}`}><canvas ref={canvasRef} /><div className="textLayer" ref={textLayerRef} onMouseUp={captureTextSelection} /><div className="annotation-layer" ref={overlayRef} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}>{pageAnnotations.map(ann => <AnnotationOverlay key={ann.id} annotation={ann} selected={selectedAnnotation?.id === ann.id} onSelect={(event, item) => { if (tool !== "select") return; event.stopPropagation(); const pageRect = overlayRef.current!.getBoundingClientRect(); setSelectedAnnotation({ id: item.id, page, x: event.clientX - pageRect.left, y: event.clientY - pageRect.top - 42 }); setCaptured(undefined); }} />)}{tool === "ink" && draftPoints.length > 1 && <svg><polyline points={draftPoints.map(p => `${p.x * 100}%,${p.y * 100}%`).join(" ")} /></svg>}</div>{captured && <SelectionToolbar mode="text" x={captured.x} y={captured.y} onHighlight={() => void annotateCaptured("highlight")} onUnderline={() => void annotateCaptured("underline")} onTerm={() => void termFromSelection()} onExcerpt={() => void excerptFromSelection()} onClose={clearReaderSelection} />}{selectedAnnotation?.page === page && <SelectionToolbar mode="annotation" x={selectedAnnotation.x} y={selectedAnnotation.y} onDelete={() => void deleteSelectedAnnotation()} onClose={() => setSelectedAnnotation(undefined)} />}</div></section>
       {rightOpen && <aside className="study-sidebar"><nav>{([['overview','速览'],['annotations',`批注 ${annotations.length}`],['vocabulary',`术语 ${vocab.length}`],['framework',`框架 ${figures.length}`]] as [SideTab,string][]).map(([id,label]) => <button className={tab === id ? "active" : ""} onClick={() => setTab(id)} key={id}>{label}</button>)}</nav><div className="study-body">
         {tab === "overview" && <><section className="summary-card"><label>一句话总结</label><p>{paper.summary || "待补充"}</p></section><h3>中文摘要</h3><p>{paper.abstractZh || "待补充"}</p><h3>English abstract</h3><p>{paper.abstractEn || "Not available."}</p></>}
-        {tab === "annotations" && <>{annotations.sort((a,b) => a.page-b.page).map(ann => <article className="annotation-card" key={ann.id} onClick={() => setPage(ann.page)}><span style={{ background: ann.color }} /><div><strong>{ann.type === "highlight" ? "高亮" : ann.type === "underline" ? "下划线" : ann.type === "text" ? "文本批注" : "手绘"} · P{ann.page}</strong><p>{ann.comment || ann.quote || "无附加文字"}</p></div><button className="annotation-delete" title="删除批注" onClick={event => { event.stopPropagation(); if (confirm("删除这条批注？")) void deleteAnnotation(ann.id); }}><Trash2 size={14} /></button></article>)}{!annotations.length && <p className="muted centered">选择文本后使用浮动工具栏添加高亮或下划线；侧栏可删除批注</p>}</>}
+        {tab === "annotations" && <>{annotations.sort((a,b) => a.page-b.page).map(ann => <article className="annotation-card" key={ann.id} onClick={() => setPage(ann.page)}><span style={{ background: ann.color }} /><div><strong>{ann.type === "highlight" ? "高亮" : ann.type === "underline" ? "下划线" : ann.type === "text" ? "文本批注" : "手绘"} · P{ann.page}</strong><p>{ann.comment || ann.quote || "无附加文字"}</p></div><button className="annotation-delete" title="删除批注" onClick={event => { event.stopPropagation(); if (confirm("删除这条批注？")) void trackDelete(ann); }}><Trash2 size={14} /></button></article>)}{!annotations.length && <p className="muted centered">选择模式用浮动工具栏批注；高亮/下划线工具选中即标注；点击已有批注可删除</p>}</>}
         {tab === "vocabulary" && <>{vocab.map(item => <article className="vocab-card" key={item.id} onClick={() => item.page && setPage(item.page)}><header><strong>{item.termEn}</strong><span>{item.meaningZh}</span></header><p>{item.sentenceZh}</p></article>)}<QuickCapture paperId={paper.id} page={page} pageText={pageText[page]} onTerm={saveVocabulary} onExcerpt={saveExcerpt} /></>}
         {tab === "framework" && <>{figures.map(item => <article className="figure-card" key={item.id}><h3>{item.title || "方法框架"}</h3><p>{item.explanationZh}</p><small>第 {item.page} 页</small></article>)}{!figures.length && <p className="muted centered">V1 可在论文详情上传框架图</p>}</>}
       </div></aside>}
@@ -155,7 +255,7 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   </main>;
 }
 
-export function AnnotationOverlay({ annotation, onDelete }: { annotation: Annotation; onDelete(): void }) { return <>{annotation.geometry.rects?.map((rect, index) => <div key={index} title={annotation.quote || annotation.type} className={`annotation-shape ${annotation.type}`} style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%`, "--annotation-color": annotation.color } as React.CSSProperties} />)}{annotation.geometry.points && <svg className="ink-overlay"><polyline style={{ stroke: annotation.color }} points={annotation.geometry.points.map(p => `${p.x * 100}%,${p.y * 100}%`).join(" ")} /></svg>}</>; }
+export function AnnotationOverlay({ annotation, selected, onSelect }: { annotation: Annotation; selected?: boolean; onSelect?(event: React.MouseEvent, annotation: Annotation): void }) { return <>{annotation.geometry.rects?.map((rect, index) => <div key={index} title={annotation.quote || annotation.type} className={`annotation-shape ${annotation.type}${selected ? " selected" : ""}`} style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%`, "--annotation-color": annotation.color } as React.CSSProperties} onClick={onSelect ? event => onSelect(event, annotation) : undefined} />)}{annotation.geometry.points && <svg className="ink-overlay"><polyline style={{ stroke: annotation.color }} points={annotation.geometry.points.map(p => `${p.x * 100}%,${p.y * 100}%`).join(" ")} /></svg>}</>; }
 
 function QuickCapture({ paperId, page, pageText, onTerm, onExcerpt }: { paperId: string; page: number; pageText?: string; onTerm(v: VocabularyEntry): Promise<void>; onExcerpt(v: WritingExcerpt): Promise<void> }) { const term = () => { const termEn = prompt("英文词汇 / 短语"); if (!termEn) return; const meaningZh = prompt("中文释义") || "待补充"; void onTerm({ id: uuid(), paperId, termEn, meaningZh, sentenceEn: pageText?.slice(0, 240), page }); }; const excerpt = () => { const sourceText = prompt("粘贴要收藏的英文佳句"); if (!sourceText) return; void onExcerpt({ id: uuid(), paperId, sourceText, purpose: "待分类", page, tags: [], createdAt: now() }); }; return <div className="quick-capture"><button onClick={term}><Plus size={14} />收录术语</button><button onClick={excerpt}><BookOpen size={14} />加入写作库</button></div>; }
 function hexColor(hex: string) { const value = hex.replace("#", ""); return rgb(parseInt(value.slice(0,2),16)/255, parseInt(value.slice(2,4),16)/255, parseInt(value.slice(4,6),16)/255); }

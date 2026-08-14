@@ -4,7 +4,8 @@
 .annotation-layer { z-index: 3; }
 .tool-select .annotation-layer { pointer-events: none; }
 .tool-figure .textLayer { pointer-events: none; } .tool-figure .annotation-layer { cursor: crosshair; } .ocr-card { margin-top: 18px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); } .ocr-card p { color: var(--muted); font-size: 10px; }
-.tool-select .annotation-shape { pointer-events: none; }
+.tool-select .annotation-shape { pointer-events: auto; cursor: pointer; }
+.tool-select .annotation-shape.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tool-highlight .textLayer, .tool-underline .textLayer, .tool-text .textLayer, .tool-ink .textLayer { pointer-events: none; }
 .selection-toolbar { position: absolute; z-index: 8; display: flex; gap: 2px; padding: 4px; border-radius: 7px; background: #24222b; box-shadow: 0 6px 20px rgba(0,0,0,.32); color: white; transform: translateY(-100%); }
 .selection-toolbar button { border: 0; background: transparent; color: white; padding: 5px 7px; border-radius: 4px; font-size: 10px; white-space: nowrap; }
@@ -21,8 +22,8 @@
 html[data-table-density="compact"] .paper-table td { height: 44px; }
 html[data-table-density="compact"] .paper-table th { height: 34px; }
 .continuous-annotation-layer { pointer-events: none; }
+.continuous-annotation-layer.tool-select .annotation-shape { pointer-events: auto; cursor: pointer; }
 .continuous-annotation-layer .selection-toolbar { pointer-events: auto; }
-.continuous-annotation-layer .annotation-shape { pointer-events: none; }
 .continuous-annotatable-page .textLayer { z-index: 2; }
 .reader-mode-switch { display: none; }
 .reader-tools button:nth-of-type(n+3):nth-of-type(-n+9),
