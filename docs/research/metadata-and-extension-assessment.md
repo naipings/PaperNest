@@ -1,6 +1,6 @@
 # 元数据补全与扩展能力评估
 
-> 调研日期：2026-08-03。引用 Crossref、Microsoft、Google Chrome、Mozilla PDF.js 与 pdf-lib 的官方资料。
+> 调研日期：2026-08-03。系统架构与阅读台实现见 [开发文档](../DEVELOPMENT.md)。引用 Crossref、Microsoft、Google Chrome、Mozilla PDF.js 与 pdf-lib 的官方资料。
 
 ## 结论
 
@@ -13,7 +13,7 @@
 | PDF 正文修改 | 否 | 边界为批注、导出副本和表单填写。 |
 | PDF 页面重排 | 导出型派生副本 | 用户明确导出时重排/删除/插入页面；原件、批注与阅读位置保持不变。 |
 
-Tauri + Rust 后端已有受管资料库、类型化命令、`reqwest`、PDF.js 和 pdf-lib。Crossref 的最小增量是后端命令与确认面板。Word 和浏览器扩展有各自的宿主、清单、安装和权限模型，与桌面壳分离交付。PDF 正文编辑会打破「原 PDF 保留、批注坐标可追溯」的约束。
+Tauri + Rust 后端已有受管资料库、类型化命令、`reqwest`、Fresh Air PDF（阅读内核）与 pdf-lib（带批注导出）。Crossref 的最小增量是后端命令与确认面板。Word 和浏览器扩展有各自的宿主、清单、安装和权限模型，与桌面壳分离交付。PDF 正文编辑会打破「原 PDF 保留、批注坐标可追溯」的约束。
 
 ## 1. Crossref 在线元数据补全
 

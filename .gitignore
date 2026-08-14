@@ -14,5 +14,6 @@ vite.config.d.ts
 *.orig
 .libretranslate-venv/
 .libretranslate-data/
+.npm-cache/
 *.bak
 .translation_language.patch

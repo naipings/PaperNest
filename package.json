@@ -17,6 +17,7 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "clsx": "^2.1.1",
+    "fresh-air-pdf": "^0.1.5",
     "lucide-react": "^0.468.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.4.54",

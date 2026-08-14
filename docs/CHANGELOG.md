@@ -1,5 +1,20 @@
 # 更新记录
 
+## 0.1.13 - 2026-08-14
+
+### 文档
+
+- 重写 README：增加系统架构、阅读台、批注同步等 Mermaid 图；更新 Fresh Air PDF 阅读内核说明。
+- 重写 DEVELOPMENT.md：补充分层架构、阅读台集成、批注坐标系、核心流程时序图、目录结构与验证清单。
+
+## 0.1.12 - 2026-08-14
+
+### 阅读台内核
+
+- 集成 [Fresh Air PDF](https://github.com/VeARCTechnologies/FRESH-AIR-PDF) 作为完整 PDF 阅读/批注内核，替换自研 `ContinuousAnnotatablePdf`。
+- 批注通过 `freshAirBridge` 与 SQLite 双向同步；保留 PaperNest 学习侧栏（术语、写作库、框架图）。
+- 选中文本仍可使用浮动工具栏收录术语或写作句。
+
 ## 0.1.11 - 2026-08-14
 
 ### 阅读台批注交互

@@ -16,10 +16,10 @@ export function SelectionToolbar({ x, y, mode, onHighlight, onUnderline, onTerm,
       <button title="删除批注" onClick={onDelete}><Trash2 size={14} /> 删除</button>
       <button title="关闭" onClick={onClose}>×</button>
     </> : <>
-      <button title="高亮" onClick={onHighlight}>高亮</button>
-      <button title="下划线" onClick={onUnderline}>下划线</button>
-      <button title="Ctrl+Alt+T" onClick={onTerm}>收为术语</button>
-      <button onClick={onExcerpt}>加入写作库</button>
+      {onHighlight && <button title="高亮" onClick={onHighlight}>高亮</button>}
+      {onUnderline && <button title="下划线" onClick={onUnderline}>下划线</button>}
+      {onTerm && <button title="Ctrl+Alt+T" onClick={onTerm}>收为术语</button>}
+      {onExcerpt && <button onClick={onExcerpt}>加入写作库</button>}
       <button title="关闭" onClick={onClose}>×</button>
     </>}
   </div>;
