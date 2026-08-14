@@ -1,0 +1,17 @@
+.import-status { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; display: inline-flex; align-items: center; gap: 5px; }
+.llm-settings { max-width: 600px; }
+.llm-settings .key-saved { color: #39815a; font-weight: 650; }
+.checkbox-setting { flex-direction: row !important; align-items: center; gap: 8px !important; color: inherit !important; cursor: pointer; }
+.checkbox-setting input { width: 15px; height: 15px; accent-color: var(--accent); }
+.inline-notice { margin: 0; padding: 10px; border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-size: 11px; line-height: 1.5; }
+.llm-figure-gallery { display: grid; gap: 10px; margin-top: 10px; }
+.framework-image { max-width: 100%; display: block; border: 1px solid var(--line); border-radius: 8px; background: white; }
+.knowledge-page { flex: 1; overflow: auto; padding: 28px 34px 50px; background: #faf9fb; }
+.knowledge-tools { max-width: 1240px; margin: 0 auto 14px; display: flex; align-items: center; gap: 13px; color: var(--muted); font-size: 11px; }
+.knowledge-tools label { display: flex; align-items: center; gap: 7px; }
+.knowledge-tools input[type="text"], .knowledge-tools input:not([type]) { padding: 7px 9px; }
+.knowledge-tools input[type="range"] { accent-color: var(--accent); }
+.knowledge-canvas { max-width: 1240px; min-height: 650px; margin: auto; position: relative; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(circle at center, var(--accent-soft), var(--panel) 58%); }
+.knowledge-canvas svg { display: block; min-width: 900px; width: 100%; }.knowledge-canvas line { stroke: var(--accent); }.knowledge-node { cursor: pointer; }.knowledge-node circle { stroke: var(--panel); stroke-width: 3; transition: r .15s; }.knowledge-node:hover circle { r: 24; }.knowledge-node text { fill: currentColor; text-anchor: middle; font-size: 11px; pointer-events: none; }.knowledge-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.relocation-note { margin: 14px 0; padding: 12px; border-radius: 8px; background: var(--soft); border: 1px solid var(--line); }.relocation-note strong { font-size: 12px; }.relocation-note p { margin: 5px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.online-metadata-action { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }.online-metadata-action small { max-width: 220px; color: var(--muted); font-size: 10px; line-height: 1.4; }.online-metadata-settings { max-width: 610px; }

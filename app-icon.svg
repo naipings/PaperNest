@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Paper Query app icon</title>
+  <desc id="desc">A layered research paper folded into a query-shaped focus aperture, representing local paper management, search, bilingual understanding, and highlighted knowledge.</desc>
+  <defs>
+    <linearGradient id="tile" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.58" stop-color="#F7F9FF"/>
+      <stop offset="1" stop-color="#EEF3FF"/>
+    </linearGradient>
+    <linearGradient id="backPage" x1="232" y1="218" x2="704" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5B4FF2"/>
+      <stop offset="0.52" stop-color="#4338CA"/>
+      <stop offset="1" stop-color="#312E81"/>
+    </linearGradient>
+    <linearGradient id="frontPage" x1="350" y1="274" x2="830" y2="824" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4BA7FF"/>
+      <stop offset="0.52" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#2146D0"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="720" y1="274" x2="820" y2="374" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="queryTail" x1="514" y1="738" x2="744" y2="844" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="0.48" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="highlight" x1="688" y1="486" x2="774" y2="596" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <radialGradient id="aperture" cx="43%" cy="36%" r="75%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDF2FF"/>
+    </radialGradient>
+    <filter id="tileShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="24" result="blur"/>
+      <feOffset in="blur" dy="18" result="offsetBlur"/>
+      <feFlood flood-color="#172554" flood-opacity="0.16" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="paperShadow" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="22" result="blur"/>
+      <feOffset in="blur" dy="18" result="offsetBlur"/>
+      <feFlood flood-color="#1E3A8A" flood-opacity="0.24" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softDepth" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10" result="blur"/>
+      <feOffset in="blur" dy="8" result="offsetBlur"/>
+      <feFlood flood-color="#172554" flood-opacity="0.20" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge><feMergeNode in="shadow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded Windows app tile -->
+  <rect x="48" y="48" width="928" height="928" rx="214" fill="url(#tile)" filter="url(#tileShadow)"/>
+  <rect x="49" y="49" width="926" height="926" rx="213" fill="none" stroke="#FFFFFF" stroke-opacity="0.88" stroke-width="2"/>
+
+  <!-- Rear paper: a second information layer / local library stack -->
+  <path d="M274 214H675C718 214 752 249 752 292V702C752 748 715 785 669 785H280C234 785 197 748 197 702V291C197 249 231 214 274 214Z" fill="url(#backPage)" filter="url(#paperShadow)"/>
+  <path d="M273 235H674C704 235 729 260 729 291V313H338C306 313 280 339 280 371V700C280 727 268 749 245 770C229 760 218 742 218 710V291C218 260 243 235 273 235Z" fill="#6C63FF" fill-opacity="0.20"/>
+
+  <!-- Front research-paper sheet -->
+  <path d="M361 276H699L829 406V746C829 791 793 827 748 827H360C315 827 279 791 279 746V357C279 312 315 276 361 276Z" fill="url(#frontPage)" filter="url(#softDepth)"/>
+  <!-- Folded page corner -->
+  <path d="M699 276L829 406H758C725 406 699 380 699 347V276Z" fill="url(#fold)"/>
+  <path d="M699 276V347C699 380 725 406 758 406H829" fill="none" stroke="#93C5FD" stroke-opacity="0.50" stroke-width="5"/>
+
+  <!-- Query / focus aperture -->
+  <circle cx="554" cy="548" r="151" fill="url(#aperture)"/>
+  <circle cx="554" cy="548" r="151" fill="none" stroke="#1E40AF" stroke-opacity="0.56" stroke-width="6"/>
+  <path d="M704 564C705 623 683 676 645 712C616 740 577 759 530 768C500 774 481 803 487 832C493 861 522 880 551 874C625 860 688 827 733 778C781 725 808 654 806 574L704 564Z" fill="url(#queryTail)"/>
+  <path d="M704 564C705 623 683 676 645 712C616 740 577 759 530 768" fill="none" stroke="#A5F3FC" stroke-opacity="0.78" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- A single highlighted insight / bilingual annotation marker -->
+  <path d="M697 526L763 491C774 485 787 493 787 506V574C787 587 773 595 762 588L697 551C687 545 687 532 697 526Z" fill="url(#highlight)"/>
+  <path d="M708 535L766 504" fill="none" stroke="#FFF7D6" stroke-opacity="0.60" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Optical edge highlights -->
+  <path d="M361 279H691" fill="none" stroke="#BFDBFE" stroke-opacity="0.68" stroke-width="5" stroke-linecap="round"/>
+  <path d="M282 358V739" fill="none" stroke="#93C5FD" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round"/>
+</svg>
