@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookText, Edit3, ExternalLink, FileImage, FileText, Languages, Plus, Tags, X } from "lucide-react";
+import { BookText, Edit3, ExternalLink, FileImage, FileText, Languages, Plus, Tags, Trash2, X } from "lucide-react";
 import { backend } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import type { Paper, VocabularyEntry } from "../types";
@@ -15,10 +15,9 @@ export function DetailPanel({ paper, onClose, onOpenPdf }: { paper: Paper; onClo
   if (!data) return null;
   const category = data.categories.find(c => c.id === paper.categoryId); const tags = data.tags.filter(t => paper.tagIds.includes(t.id)); const vocab = data.vocabulary.filter(v => v.paperId === paper.id); const figures = data.figures.filter(v => v.paperId === paper.id);
   return <aside className="detail-panel">
-    <header><div className="paper-kind"><BookText size={15} />论文详情</div><div><button className="icon-button" onClick={() => setEditing(true)} title="编辑"><Edit3 size={16} /></button><button className="icon-button" onClick={onClose} title="关闭"><X size={18} /></button></div></header>
+    <header><div className="paper-kind"><BookText size={15} />论文详情</div><div className="detail-header-actions"><button className="icon-button danger" title="移入回收站" onClick={() => { if (confirm("确定移入回收站？")) void savePaper({ ...paper, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }}><Trash2 size={16} /></button><button className="icon-button" onClick={() => setEditing(true)} title="编辑"><Edit3 size={16} /></button><button className="icon-button" onClick={onClose} title="关闭"><X size={18} /></button></div></header>
     <div className="detail-title"><span className={`status status-${paper.status}`}>{paper.status === "unread" ? "未读" : paper.status === "reading" ? "在读" : paper.status === "read" ? "已读" : "归档"}</span><h2>{paper.titleZh || paper.titleEn}</h2>{paper.titleZh && <p>{paper.titleEn}</p>}<small>{paper.authors.map(a => a.name).join(", ") || "作者待补充"}</small></div>
     <nav className="detail-tabs">{([['overview','概览'],['abstract','双语摘要'],['vocabulary',`术语 ${vocab.length}`],['framework',`框架 ${figures.length}`]] as [Tab,string][]).map(([id,label]) => <button className={tab === id ? "active" : ""} onClick={() => setTab(id)} key={id}>{label}</button>)}</nav>
-    <button className="paper-delete secondary" onClick={() => { if (confirm("Move this paper to the recycle bin?")) void savePaper({ ...paper, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }}>{"\u79fb\u5165\u56de\u6536\u7ad9"}</button>
     <div className="detail-body">
       {tab === "overview" && <>
         <section className="summary-card"><label>一句话总结</label><p>{paper.summary || "尚未补充。用一句话记录这篇论文解决了什么问题、采用了什么方法。"}</p></section>

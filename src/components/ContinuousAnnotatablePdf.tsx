@@ -34,6 +34,8 @@ function ContinuousAnnotatablePage({ pdf, page, scale, annotations, captured, on
 }) {
   const host = useRef<HTMLDivElement>(null);
   const viewerHost = useRef<HTMLDivElement>(null);
+  const pageViewRef = useRef<PDFPageView | undefined>(undefined);
+  const drawTimer = useRef<number | undefined>(undefined);
   const [visible, setVisible] = useState(page === 1);
   const [pageElement, setPageElement] = useState<HTMLDivElement>();
 
@@ -52,25 +54,46 @@ function ContinuousAnnotatablePage({ pdf, page, scale, annotations, captured, on
 
   useEffect(() => {
     const container = viewerHost.current;
-    if (!visible || !container) return;
+    if (!visible || !container) {
+      pageViewRef.current?.destroy();
+      pageViewRef.current = undefined;
+      setPageElement(undefined);
+      container?.replaceChildren();
+      return;
+    }
     let cancelled = false;
-    let pageView: PDFPageView | undefined;
     void (async () => {
       const source = await pdf.getPage(page);
       if (cancelled) return;
       container.replaceChildren();
-      pageView = new PDFPageView({ container, eventBus: new EventBus(), id: page, scale, defaultViewport: source.getViewport({ scale: 1 }), annotationMode: 0, enableDetailCanvas: true });
+      const pageView = new PDFPageView({ container, eventBus: new EventBus(), id: page, scale, defaultViewport: source.getViewport({ scale: 1 }), annotationMode: 0, enableDetailCanvas: true });
       pageView.setPdfPage(source);
+      if (cancelled) { pageView.destroy(); return; }
+      pageViewRef.current = pageView;
       setPageElement(pageView.div);
       await pageView.draw();
     })();
     return () => {
       cancelled = true;
-      setPageElement(current => current === pageView?.div ? undefined : current);
-      pageView?.destroy();
+      if (drawTimer.current !== undefined) window.clearTimeout(drawTimer.current);
+      pageViewRef.current?.destroy();
+      pageViewRef.current = undefined;
+      setPageElement(undefined);
       container.replaceChildren();
     };
-  }, [pdf, page, scale, visible]);
+  }, [pdf, page, visible]);
+
+  useEffect(() => {
+    const pageView = pageViewRef.current;
+    if (!pageView || !visible) return;
+    pageView.update({ scale, drawingDelay: 300 });
+    if (drawTimer.current !== undefined) window.clearTimeout(drawTimer.current);
+    drawTimer.current = window.setTimeout(() => {
+      drawTimer.current = undefined;
+      void pageView.draw().catch(() => undefined);
+    }, 350);
+    return () => { if (drawTimer.current !== undefined) window.clearTimeout(drawTimer.current); };
+  }, [scale, visible, pageElement]);
 
   useEffect(() => {
     if (!pageElement) return;
@@ -88,6 +111,6 @@ function ContinuousAnnotatablePage({ pdf, page, scale, annotations, captured, on
     return () => pageElement.removeEventListener("mouseup", capture);
   }, [pageElement, onCapture, page]);
 
-  const overlay = pageElement && createPortal(<div className="annotation-layer continuous-annotation-layer">{annotations.map(annotation => <AnnotationOverlay key={annotation.id} annotation={annotation} onDelete={() => onDeleteAnnotation(annotation.id)} />)}{captured && <div className="selection-toolbar" onMouseDown={event => event.preventDefault()} style={{ left: captured.x, top: Math.max(4, captured.y) }}><button onClick={() => void onAnnotate("highlight")}>{"\u9ad8\u4eae"}</button><button onClick={() => void onAnnotate("underline")}>{"\u4e0b\u5212\u7ebf"}</button><button>{"\u6536\u4e3a\u672f\u8bed"}</button><button>{"\u52a0\u5165\u5199\u4f5c\u5e93"}</button><button onClick={onClearSelection}>×</button></div>}</div>, pageElement);
+  const overlay = pageElement && createPortal(<div className="annotation-layer continuous-annotation-layer">{annotations.map(annotation => <AnnotationOverlay key={annotation.id} annotation={annotation} onDelete={() => onDeleteAnnotation(annotation.id)} />)}{captured && <div className="selection-toolbar" onMouseDown={event => event.preventDefault()} style={{ left: captured.x, top: Math.max(4, captured.y) }}><button onClick={() => void onAnnotate("highlight")}>高亮</button><button onClick={() => void onAnnotate("underline")}>下划线</button><button>收为术语</button><button>加入写作库</button><button onClick={onClearSelection}>×</button></div>}</div>, pageElement);
   return <article ref={host} className="continuous-page-host"><div ref={viewerHost} className="pdfViewer continuous-page-viewer" />{overlay}<small>{page}</small></article>;
 }
