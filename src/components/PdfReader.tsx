@@ -1,83 +1,128 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Download, FileText, Plus, SidebarClose, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BookOpen, Download, FileText, Highlighter, MessageSquarePlus, MousePointer2, PanelRightOpen, Pencil, Plus, Redo2, SidebarClose, Trash2, Underline, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 import { PDFDocument, rgb } from "pdf-lib";
-import type { AnnotationChangedEvent } from "fresh-air-pdf";
 import { backend } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
-import type { Annotation, Paper, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Paper, Point, VocabularyEntry, WritingExcerpt } from "../types";
 import { now, uuid } from "../types";
-import { translateEnglishToChinese } from "../services/translation";
-import { FreshAirPdfPane } from "./FreshAirPdfPane";
-import { SelectionToolbar } from "./SelectionToolbar";
-import { freshAirToPaper, type PageSize } from "../lib/freshAirBridge";
+import { ContinuousAnnotatablePdf, pageNumberAtStageTop, type CapturedSelection } from "./ContinuousAnnotatablePdf";
+import { AnnotationHistory } from "../lib/annotationHistory";
+import type { ReaderTool } from "../lib/readerTools";
+import { readerToolLabel } from "../lib/readerTools";
+import { findOverlappingAnnotation } from "../lib/annotationHit";
+import { fitPdfScale } from "../lib/pdfRenderScale";
 import "./PdfReader.css";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 type SideTab = "overview" | "annotations" | "vocabulary" | "framework";
-type CapturedSelection = { text: string; x: number; y: number; page: number };
+type ZoomPreset = "fit-width" | "fit-page" | "custom";
+
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
 export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; onBack(): void; embedded?: boolean }) {
   const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, saveExcerpt } = useLibrary();
-  const viewerHostRef = useRef<HTMLDivElement>(null);
-  const syncLock = useRef(false);
+  const stageRef = useRef<HTMLElement>(null);
+  const pageSizeRef = useRef({ width: 612, height: 792 });
+  const pendingScale = useRef(1.15);
+  const scaleRaf = useRef<number | undefined>(undefined);
+  const keepTop = useRef(true);
+  const history = useRef(new AnnotationHistory());
+  const historyLock = useRef(false);
+
   const [bytes, setBytes] = useState<Uint8Array>();
   const [pdf, setPdf] = useState<PDFDocumentProxy>();
-  const [pageSizes, setPageSizes] = useState<Map<number, PageSize>>(new Map());
-  const [page, setPage] = useState(paper.readingPage || 1);
+  const [page, setPage] = useState(1);
+  const [scale, setScale] = useState(1);
+  const [zoomPreset, setZoomPreset] = useState<ZoomPreset>("fit-width");
   const [tab, setTab] = useState<SideTab>("annotations");
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在打开 PDF…");
   const [pageText, setPageText] = useState<Record<number, string>>({});
   const [rightOpen, setRightOpen] = useState(true);
-  const [viewerReady, setViewerReady] = useState(false);
+  const [readerTool, setReaderToolState] = useState<ReaderTool>("select");
+  const [toolHint, setToolHint] = useState("");
   const [captured, setCaptured] = useState<CapturedSelection>();
+  const [selectedAnnotation, setSelectedAnnotation] = useState<{ id: string; page: number; x: number; y: number }>();
+  const [highlightColor, setHighlightColor] = useState("#f2ce67");
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const annotations = useMemo(() => data?.annotations.filter(item => item.paperId === paper.id) ?? [], [data, paper.id]);
   const vocab = data?.vocabulary.filter(item => item.paperId === paper.id) ?? [];
   const figures = data?.figures.filter(item => item.paperId === paper.id) ?? [];
 
+  const touchHistory = () => {
+    setCanUndo(history.current.canUndo());
+    setCanRedo(history.current.canRedo());
+  };
+
+  const recomputeFitScale = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage || zoomPreset === "custom") return;
+    const { width, height } = pageSizeRef.current;
+    const pad = 50;
+    const availW = Math.max(200, stage.clientWidth - pad);
+    const availH = Math.max(200, stage.clientHeight - pad);
+    setScale(zoomPreset === "fit-page"
+      ? Math.min(fitPdfScale(availW, width), fitPdfScale(availH, height))
+      : fitPdfScale(availW, width));
+  }, [zoomPreset]);
+
+  useLayoutEffect(() => {
+    if (!pdf) return;
+    recomputeFitScale();
+    const stage = stageRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver(() => {
+      recomputeFitScale();
+      if (keepTop.current) stage.scrollTop = 0;
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [recomputeFitScale, rightOpen, pdf]);
+
+  useLayoutEffect(() => {
+    if (keepTop.current && stageRef.current) stageRef.current.scrollTop = 0;
+  }, [pdf, scale]);
+
   useEffect(() => {
-    setViewerReady(false);
-  }, [paper.id]);
+    pendingScale.current = scale;
+  }, [scale]);
+
+  const bumpScale = (delta: number) => {
+    pendingScale.current = Math.max(0.55, Math.min(2.5, pendingScale.current + delta));
+    if (scaleRaf.current !== undefined) return;
+    scaleRaf.current = requestAnimationFrame(() => {
+      scaleRaf.current = undefined;
+      setZoomPreset("custom");
+      setScale(pendingScale.current);
+    });
+  };
 
   useEffect(() => {
     let active = true;
+    let loaded: PDFDocumentProxy | undefined;
     void (async () => {
       try {
         if (!paper.pdfPath) throw new Error("这篇论文还没有关联 PDF");
         const file = await backend.readPdf(paper.pdfPath);
         const document = await getDocument({ data: file.slice() }).promise;
-        if (!active) return;
+        if (!active) {
+          void document.destroy();
+          return;
+        }
+        loaded = document;
         setBytes(file);
         setPdf(document);
-        const sizes = new Map<number, PageSize>();
-        const texts: Record<number, string> = {};
-        const indexPages: { page: number; text: string }[] = [];
-        for (let number = 1; number <= document.numPages; number++) {
-          const pdfPage = await document.getPage(number);
-          const viewport = pdfPage.getViewport({ scale: 1 });
-          sizes.set(number, { width: viewport.width, height: viewport.height });
-          const content = await pdfPage.getTextContent();
-          const text = content.items.map(item => "str" in item ? item.str : "").join(" ");
-          texts[number] = text;
-          indexPages.push({ page: number, text });
-        }
-        if (!active) return;
-        setPageSizes(sizes);
-        const sourceHasText = indexPages.some(item => item.text.trim());
-        if (sourceHasText) {
-          setPageText(texts);
-          await backend.indexPdf(paper.id, indexPages);
-        } else {
-          const stored = await backend.indexedPdfPages(paper.id);
-          setPageText(Object.fromEntries(stored.map(item => [item.page, item.text])));
-        }
-        if (paper.pageCount !== document.numPages || paper.hasTextLayer !== sourceHasText) {
-          await savePaper({ ...paper, pageCount: document.numPages, hasTextLayer: sourceHasText, updatedAt: now() });
-        }
+        const firstPage = await document.getPage(1);
+        const viewport = firstPage.getViewport({ scale: 1 });
+        pageSizeRef.current = { width: viewport.width, height: viewport.height };
         setBusy(false);
         setMessage("");
+        setPage(1);
+        setZoomPreset("fit-width");
+        keepTop.current = true;
       } catch (error) {
         if (active) {
           setBusy(false);
@@ -85,47 +130,278 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
         }
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      try { void loaded?.destroy(); } catch { /* worker already torn down */ }
+    };
   }, [paper.id, paper.pdfPath]);
 
   useEffect(() => {
     if (!pdf) return;
-    void savePaper({ ...paper, readingPage: page, updatedAt: now() });
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const texts: Record<number, string> = {};
+        const indexPages: { page: number; text: string }[] = [];
+        for (let number = 1; number <= pdf.numPages; number++) {
+          if (!active) return;
+          const pdfPage = await pdf.getPage(number);
+          const content = await pdfPage.getTextContent();
+          const text = content.items.map(item => "str" in item ? item.str : "").join(" ");
+          texts[number] = text;
+          indexPages.push({ page: number, text });
+        }
+        if (!active) return;
+        const sourceHasText = indexPages.some(item => item.text.trim());
+        if (sourceHasText) {
+          setPageText(texts);
+          void backend.indexPdf(paper.id, indexPages);
+        } else {
+          const stored = await backend.indexedPdfPages(paper.id);
+          if (!active) return;
+          setPageText(Object.fromEntries(stored.map(item => [item.page, item.text])));
+        }
+        if (paper.pageCount !== pdf.numPages || paper.hasTextLayer !== sourceHasText) {
+          void savePaper({ ...paper, pageCount: pdf.numPages, hasTextLayer: sourceHasText, updatedAt: now() });
+        }
+      })();
+    }, 1200);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [pdf, paper.id]);
+
+  useEffect(() => {
+    if (!pdf) return;
+    const timer = window.setTimeout(() => {
+      void savePaper({ ...paper, readingPage: page, updatedAt: now() });
+    }, 800);
+    return () => window.clearTimeout(timer);
   }, [pdf, page]);
 
   useEffect(() => {
-    const host = viewerHostRef.current;
-    if (!host) return;
-    const captureSelection = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const hostRect = host.getBoundingClientRect();
-      if (!host.contains(range.commonAncestorContainer)) return;
-      setCaptured({
-        text: selection.toString().trim(),
-        x: rect.left - hostRect.left,
-        y: rect.top - hostRect.top - 42,
-        page,
-      });
+    const stage = stageRef.current;
+    const zoomWithCtrl = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      bumpScale(event.deltaY < 0 ? 0.08 : -0.08);
     };
-    host.addEventListener("mouseup", captureSelection);
-    return () => host.removeEventListener("mouseup", captureSelection);
-  }, [page]);
+    const onScroll = () => {
+      if (!stage) return;
+      if (keepTop.current && stage.scrollTop <= 1) {
+        setPage(1);
+        return;
+      }
+      keepTop.current = false;
+      setPage(pageNumberAtStageTop(stage));
+    };
+    stage?.addEventListener("wheel", zoomWithCtrl, { passive: false });
+    stage?.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      stage?.removeEventListener("wheel", zoomWithCtrl);
+      stage?.removeEventListener("scroll", onScroll);
+    };
+  }, [pdf]);
 
-  const handleAnnotationChanged = useCallback(async (event: AnnotationChangedEvent) => {
-    if (syncLock.current || !pageSizes.size) return;
-    const mapped = freshAirToPaper(event.annotation, paper.id, pageSizes);
-    if (!mapped) return;
-    if (event.action === "deleted") await deleteAnnotation(event.annotation.id);
-    else await saveAnnotation(mapped);
-  }, [deleteAnnotation, pageSizes, paper.id, saveAnnotation]);
+  const setReaderTool = useCallback((tool: ReaderTool) => {
+    setReaderToolState(tool);
+    if (tool !== "select") setToolHint(`已切换到「${readerToolLabel(tool)}」模式：拖选文字即可标注`);
+    else setToolHint("");
+  }, []);
+
+  const toggleReaderTool = useCallback((tool: ReaderTool) => {
+    setReaderTool(tool === readerTool && tool !== "select" ? "select" : tool);
+  }, [readerTool, setReaderTool]);
 
   const clearSelection = () => {
     window.getSelection()?.removeAllRanges();
     setCaptured(undefined);
+    setSelectedAnnotation(undefined);
   };
+
+  const trackAdd = async (annotation: Annotation) => {
+    await saveAnnotation(annotation);
+    if (!historyLock.current) history.current.push({ kind: "add", annotation });
+    touchHistory();
+  };
+
+  const trackDelete = async (annotation: Annotation) => {
+    await deleteAnnotation(annotation.id);
+    if (!historyLock.current) history.current.push({ kind: "delete", annotation });
+    touchHistory();
+    if (selectedAnnotation?.id === annotation.id) setSelectedAnnotation(undefined);
+  };
+
+  const addTextAnnotation = async (type: "highlight" | "underline", selection: CapturedSelection) => {
+    if (findOverlappingAnnotation(annotations, selection.page, type, selection.rects)) return;
+    await trackAdd({
+      id: uuid(),
+      paperId: paper.id,
+      page: selection.page,
+      type,
+      geometry: { rects: selection.rects },
+      quote: selection.text,
+      color: type === "underline" ? "#4b8df8" : highlightColor,
+      createdAt: now(),
+      updatedAt: now(),
+    });
+    window.getSelection()?.removeAllRanges();
+    setCaptured(undefined);
+  };
+
+  const addTextNote = async (selection: CapturedSelection) => {
+    const comment = window.prompt("输入批注内容", selection.text.slice(0, 120));
+    if (comment === null) return;
+    await trackAdd({
+      id: uuid(),
+      paperId: paper.id,
+      page: selection.page,
+      type: "text",
+      geometry: { rects: selection.rects },
+      quote: selection.text,
+      comment,
+      color: "#7867c6",
+      createdAt: now(),
+      updatedAt: now(),
+    });
+    window.getSelection()?.removeAllRanges();
+    setCaptured(undefined);
+  };
+
+  const handleCapture = (selection: CapturedSelection) => {
+    const next = {
+      ...selection,
+      highlightId: findOverlappingAnnotation(annotations, selection.page, "highlight", selection.rects)?.id,
+      underlineId: findOverlappingAnnotation(annotations, selection.page, "underline", selection.rects)?.id,
+      noteId: findOverlappingAnnotation(annotations, selection.page, "text", selection.rects)?.id,
+    };
+    setSelectedAnnotation(undefined);
+    if (readerTool === "highlight") {
+      if (next.highlightId) { setCaptured(next); return; }
+      void addTextAnnotation("highlight", next);
+      return;
+    }
+    if (readerTool === "underline") {
+      if (next.underlineId) { setCaptured(next); return; }
+      void addTextAnnotation("underline", next);
+      return;
+    }
+    if (readerTool === "note") {
+      if (next.noteId) { setCaptured(next); return; }
+      void addTextNote(next);
+      return;
+    }
+    if (readerTool !== "select") return;
+    setCaptured(next);
+  };
+
+  const removeAnnotation = async (id: string) => {
+    const target = annotations.find(item => item.id === id);
+    if (!target) return;
+    await trackDelete(target);
+    setCaptured(undefined);
+    setSelectedAnnotation(undefined);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const annotateCaptured = (type: "highlight" | "underline") => {
+    if (!captured) return;
+    void addTextAnnotation(type, captured);
+  };
+
+  const handleInkStroke = async (pageNumber: number, points: Point[]) => {
+    await trackAdd({
+      id: uuid(),
+      paperId: paper.id,
+      page: pageNumber,
+      type: "ink",
+      geometry: { points },
+      color: "#d15d4a",
+      createdAt: now(),
+      updatedAt: now(),
+    });
+  };
+
+  const undoAnnotation = async () => {
+    const entry = history.current.popUndo();
+    if (!entry) return;
+    historyLock.current = true;
+    try {
+      if (entry.kind === "add") await deleteAnnotation(entry.annotation.id);
+      else await saveAnnotation(entry.annotation);
+    } finally {
+      historyLock.current = false;
+      touchHistory();
+    }
+  };
+
+  const redoAnnotation = async () => {
+    const entry = history.current.popRedo();
+    if (!entry) return;
+    historyLock.current = true;
+    try {
+      if (entry.kind === "add") await saveAnnotation(entry.annotation);
+      else await deleteAnnotation(entry.annotation.id);
+    } finally {
+      historyLock.current = false;
+      touchHistory();
+    }
+  };
+
+  const deleteSelectedAnnotation = async () => {
+    if (!selectedAnnotation) return;
+    await removeAnnotation(selectedAnnotation.id);
+  };
+
+  useEffect(() => {
+    const dismissIfIdle = () => {
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+      setCaptured(undefined);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".selection-toolbar") || target.closest(".annotation-shape")) return;
+      setCaptured(undefined);
+      setSelectedAnnotation(undefined);
+    };
+    document.addEventListener("selectionchange", dismissIfIdle);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("selectionchange", dismissIfIdle);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        void undoAnnotation();
+      }
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        void redoAnnotation();
+      }
+      if (event.key.toLowerCase() === "v") setReaderTool("select");
+      if (event.key.toLowerCase() === "h") toggleReaderTool("highlight");
+      if (event.key.toLowerCase() === "u") toggleReaderTool("underline");
+      if (event.key.toLowerCase() === "n") toggleReaderTool("note");
+      if (event.key.toLowerCase() === "d") setReaderTool("ink");
+      if (event.key === "Delete" && selectedAnnotation) {
+        event.preventDefault();
+        void deleteSelectedAnnotation();
+      }
+      if (event.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedAnnotation, setReaderTool, toggleReaderTool]);
 
   const termFromSelection = async () => {
     if (!captured) return;
@@ -189,32 +465,32 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   };
 
   const exportAnnotated = async () => {
-    if (!bytes) return;
+    if (!bytes || !pdf) return;
     setMessage("正在生成带批注副本…");
     try {
       const document = await PDFDocument.load(bytes.slice());
       for (const annotation of annotations) {
         const target = document.getPage(annotation.page - 1);
-        const size = pageSizes.get(annotation.page);
-        if (!size) continue;
+        const pdfPage = await pdf.getPage(annotation.page);
+        const { width, height } = pdfPage.getViewport({ scale: 1 });
         const color = hexColor(annotation.color);
         for (const rect of annotation.geometry.rects ?? []) {
-          const x = rect.x * size.width;
-          const y = size.height - (rect.y + rect.height) * size.height;
-          const width = rect.width * size.width;
-          const height = rect.height * size.height;
-          if (annotation.type === "highlight") target.drawRectangle({ x, y, width, height, color, opacity: 0.32 });
-          else if (annotation.type === "underline") target.drawLine({ start: { x, y }, end: { x: x + width, y }, color, thickness: 1.6 });
+          const x = rect.x * width;
+          const y = height - (rect.y + rect.height) * height;
+          const w = rect.width * width;
+          const h = rect.height * height;
+          if (annotation.type === "highlight") target.drawRectangle({ x, y, width: w, height: h, color, opacity: 0.32 });
+          else if (annotation.type === "underline") target.drawLine({ start: { x, y }, end: { x: x + w, y }, color, thickness: 1.6 });
           else if (annotation.type === "text") {
-            target.drawRectangle({ x, y, width: Math.max(14, width), height: Math.max(14, height), color, opacity: 0.85 });
+            target.drawRectangle({ x, y, width: Math.max(14, w), height: Math.max(14, h), color, opacity: 0.85 });
             if (annotation.comment) target.drawText(annotation.comment.slice(0, 80), { x: x + 18, y, size: 8, color });
           }
         }
         const points = annotation.geometry.points ?? [];
         for (let index = 1; index < points.length; index++) {
           target.drawLine({
-            start: { x: points[index - 1].x * size.width, y: size.height - points[index - 1].y * size.height },
-            end: { x: points[index].x * size.width, y: size.height - points[index].y * size.height },
+            start: { x: points[index - 1].x * width, y: height - points[index - 1].y * height },
+            end: { x: points[index].x * width, y: height - points[index].y * height },
             color,
             thickness: 1.8,
           });
@@ -228,45 +504,79 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
     }
   };
 
+  const zoomSelectValue = zoomPreset === "fit-width" ? "fit-width" : zoomPreset === "fit-page" ? "fit-page" : String(Math.round(scale * 100));
+  const onZoomSelect = (value: string) => {
+    if (value === "fit-width") { setZoomPreset("fit-width"); return; }
+    if (value === "fit-page") { setZoomPreset("fit-page"); return; }
+    setZoomPreset("custom");
+    setScale(Number(value) / 100);
+  };
+
   if (!data || !bytes) {
     return <main className={"reader-screen" + (embedded ? " embedded" : "")}>
       <header className="reader-toolbar"><button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button><div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong></div></header>
-      <div className={`reader-message ${busy ? "busy" : ""}`}>{message || "正在打开 PDF…"}</div>
+      {busy && <div className="reader-message busy">正在打开 PDF…</div>}
     </main>;
   }
 
-  return <main className={"reader-screen fresh-air-reader" + (embedded ? " embedded" : "")}>
+  return <main className={"reader-screen pdfjs-reader" + (embedded ? " embedded" : "")}>
     <header className="reader-toolbar">
       <button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button>
       <div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong><small>{paper.venue || "本地论文"} · P{page}{pdf ? ` / ${pdf.numPages}` : ""}</small></div>
+      <div className="reader-zoom-tools">
+        <button title="缩小" onClick={() => bumpScale(-0.08)}><ZoomOut size={16} /></button>
+        <select aria-label="缩放级别" title="缩放级别" value={zoomSelectValue} onChange={event => onZoomSelect(event.target.value)}>
+          <option value="fit-width">适应宽度</option>
+          <option value="fit-page">适应页面</option>
+          {ZOOM_STEPS.map(step => <option key={step} value={String(step)}>{step}%</option>)}
+        </select>
+        <button title="放大" onClick={() => bumpScale(0.08)}><ZoomIn size={16} /></button>
+      </div>
+      <div className="reader-annotate-tools" data-locale-skip>
+        <button className={readerTool === "select" ? "active" : ""} title="选择文本（V）" onClick={() => setReaderTool("select")}><MousePointer2 size={16} /><span>选择</span></button>
+        <button className={readerTool === "highlight" ? "active" : ""} title="高亮模式：拖选文字（H）" onClick={() => toggleReaderTool("highlight")}><Highlighter size={16} /><span>高亮</span></button>
+        <button className={readerTool === "underline" ? "active" : ""} title="下划线模式：拖选文字（U）" onClick={() => toggleReaderTool("underline")}><Underline size={16} /><span>下划线</span></button>
+        <button className={readerTool === "note" ? "active" : ""} title="文本批注：拖选文字后输入内容（N）" onClick={() => toggleReaderTool("note")}><MessageSquarePlus size={16} /><span>批注</span></button>
+        <button className={readerTool === "ink" ? "active" : ""} title="手绘批注（D）" onClick={() => setReaderTool("ink")}><Pencil size={16} /><span>手绘</span></button>
+        <button title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={() => void undoAnnotation()}><Undo2 size={16} /></button>
+        <button title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={() => void redoAnnotation()}><Redo2 size={16} /></button>
+      </div>
       <div className="reader-tools">
         {!paper.hasTextLayer && <button disabled={busy} onClick={() => void runOcr()} title="对扫描版执行本地 OCR"><FileText size={17} /></button>}
         <button onClick={() => void exportAnnotated()} title="导出带批注副本"><Download size={17} /></button>
-        <button onClick={() => setRightOpen(value => !value)} title="学习侧栏"><SidebarClose size={17} /></button>
+        <button className={rightOpen ? "active" : ""} onClick={() => setRightOpen(value => !value)} title={rightOpen ? "收起学习侧栏" : "展开学习侧栏"}>
+          {rightOpen ? <SidebarClose size={17} /> : <PanelRightOpen size={17} />}
+        </button>
       </div>
     </header>
-    <div className={`reader-layout fresh-air-layout ${rightOpen ? "" : "right-closed"}`}>
-      <section className="fresh-air-stage" ref={viewerHostRef}>
-        <FreshAirPdfPane
-          bytes={bytes}
-          initialPage={paper.readingPage || 1}
+    <div className={`reader-layout pdfjs-layout ${rightOpen ? "" : "right-closed"}`}>
+      <section className="pdf-stage" ref={stageRef}>
+        <ContinuousAnnotatablePdf
+          pdf={pdf}
+          scale={scale}
+          pageWidth={pageSizeRef.current.width}
+          pageHeight={pageSizeRef.current.height}
+          tool={readerTool}
           annotations={annotations}
-          pageSizes={pageSizes}
-          ready={viewerReady && pageSizes.size > 0}
-          syncLock={syncLock}
-          onReady={() => setViewerReady(true)}
-          onPageChange={setPage}
-          onAnnotationChanged={event => { void handleAnnotationChanged(event); }}
-        />
-        {captured && <SelectionToolbar
-          mode="text"
-          x={captured.x}
-          y={captured.y}
+          captured={captured}
+          selectedAnnotation={selectedAnnotation}
+          highlightColor={highlightColor}
+          onCapture={handleCapture}
+          onAnnotate={annotateCaptured}
+          onRemoveAnnotation={id => void removeAnnotation(id)}
+          onNote={selection => void addTextNote(selection)}
+          onInkStroke={(pageNumber, points) => void handleInkStroke(pageNumber, points)}
+          onSelectAnnotation={(id, anchor) => {
+            window.getSelection()?.removeAllRanges();
+            setCaptured(undefined);
+            setSelectedAnnotation(id && anchor ? { id, page: anchor.page, x: anchor.x, y: anchor.y } : undefined);
+          }}
+          onHighlightColor={setHighlightColor}
           onTerm={() => void termFromSelection()}
           onExcerpt={() => void excerptFromSelection()}
-          onClose={clearSelection}
-        />}
-        {message && <div className={`reader-message ${busy ? "busy" : ""}`}>{message}</div>}
+          onClearSelection={clearSelection}
+        />
+        {(message || toolHint) && <div className={`reader-message ${busy ? "busy" : ""}`}>{message || toolHint}</div>}
       </section>
       {rightOpen && <aside className="study-sidebar">
         <nav>{([["overview", "速览"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`]] as [SideTab, string][]).map(([id, label]) => (
@@ -280,16 +590,16 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
           </>}
           {tab === "annotations" && <>
             {annotations.sort((a, b) => a.page - b.page).map(annotation => (
-              <article className="annotation-card" key={annotation.id}>
+              <article className="annotation-card" key={annotation.id} onClick={() => setPage(annotation.page)}>
                 <span style={{ background: annotation.color }} />
                 <div>
                   <strong>{annotation.type === "highlight" ? "高亮" : annotation.type === "underline" ? "下划线" : annotation.type === "text" ? "文本批注" : "手绘"} · P{annotation.page}</strong>
                   <p>{annotation.comment || annotation.quote || "无附加文字"}</p>
                 </div>
-                <button className="annotation-delete" title="删除批注" onClick={() => { if (confirm("删除这条批注？")) void deleteAnnotation(annotation.id); }}><Trash2 size={14} /></button>
+                <button className="annotation-delete" title="删除批注" onClick={event => { event.stopPropagation(); if (confirm("删除这条批注？")) void trackDelete(annotation); }}><Trash2 size={14} /></button>
               </article>
             ))}
-            {!annotations.length && <p className="muted centered">使用 Fresh Air PDF 工具栏批注；选中文本可收录术语或写作句</p>}
+            {!annotations.length && <p className="muted centered">点顶栏「高亮/下划线/批注」后拖选文字；或先「选择」拖选，再用浮动条操作。扫描版需先 OCR。</p>}
           </>}
           {tab === "vocabulary" && <>
             {vocab.map(item => (

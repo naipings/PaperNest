@@ -4,12 +4,40 @@
 .annotation-delete { flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; }
 .annotation-delete:hover { color: #b43d51; background: color-mix(in srgb, #b43d51 10%, var(--soft)); }
 
-.fresh-air-reader .reader-layout.fresh-air-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; flex: 1; }
-.fresh-air-reader .reader-layout.fresh-air-layout.right-closed { grid-template-columns: minmax(0, 1fr); }
-.fresh-air-stage { position: relative; min-height: 0; height: calc(100vh - 54px); overflow: hidden; background: #ececec; }
-.fresh-air-viewer.inhouse-viewer { width: 100%; height: 100%; }
-.fresh-air-reader.embedded .fresh-air-stage { height: calc(100vh - 54px); }
-.fresh-air-reader.embedded .reader-layout.fresh-air-layout { grid-template-columns: minmax(0, 1fr); }
-.fresh-air-reader.embedded .study-sidebar { display: none; }
-.fresh-air-reader.embedded .reader-tools button:last-child { display: inline-grid; }
-.reader-screen.fresh-air-reader { display: flex; flex-direction: column; min-height: 0; }
+.pdfjs-reader .reader-layout.pdfjs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; flex: 1; }
+.pdfjs-reader .reader-layout.pdfjs-layout.right-closed { grid-template-columns: minmax(0, 1fr); }
+.pdfjs-reader .pdf-stage { position: relative; min-height: 0; height: calc(100vh - 54px); overflow: auto; overflow-anchor: none; overscroll-behavior: contain; background: #ececec; padding: 42px 25px 55px; display: block; }
+.reader-screen.embedded { position: fixed; top: 0; right: 0; bottom: 0; left: 224px; z-index: 20; }
+.pdfjs-reader.embedded .pdf-stage { height: calc(100vh - 54px); }
+.pdfjs-reader.embedded .reader-layout.pdfjs-layout { grid-template-columns: minmax(0, 1fr); }
+.pdfjs-reader.embedded .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr) 320px; }
+.pdfjs-reader.embedded .study-sidebar { min-height: 0; }
+.reader-annotate-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 8px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--soft) 70%, white); border: 1px solid var(--line); flex-wrap: wrap; }
+.reader-annotate-tools button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--text); padding: 5px 8px; border-radius: 6px; font-size: 12px; min-height: 30px; }
+.reader-annotate-tools button:disabled { opacity: 0.4; cursor: default; }
+.reader-annotate-tools button span { display: none; }
+@media (min-width: 1180px) { .reader-annotate-tools button span { display: inline; } }
+.reader-annotate-tools button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, white); }
+.reader-annotate-tools button.active { background: color-mix(in srgb, var(--accent) 18%, white); color: var(--accent); }
+.reader-zoom-tools { display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 8px; background: color-mix(in srgb, var(--soft) 70%, white); border: 1px solid var(--line); }
+.reader-zoom-tools button { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; color: var(--text); }
+.reader-zoom-tools button:hover { background: color-mix(in srgb, var(--accent) 10%, white); color: var(--accent); }
+.reader-zoom-tools select { border: 0; background: transparent; font-size: 12px; color: var(--text); min-width: 88px; cursor: pointer; }
+.pdfjs-reader .reader-toolbar { gap: 8px; flex-wrap: wrap; }
+.reader-screen.pdfjs-reader { display: flex; flex-direction: column; min-height: 0; }
+
+.continuous-pdf { width: 100%; display: block; overflow-anchor: none; }
+.continuous-page-host { position: relative; display: block; margin: 0 auto 18px; background: white; box-shadow: 0 8px 28px rgba(0,0,0,.28); overflow: hidden; overflow-anchor: none; box-sizing: border-box; }
+.continuous-page-viewer { display: block; position: relative; }
+.continuous-page-viewer .page { margin: 0; border: none; }
+.continuous-page-host > small { position: absolute; top: 7px; right: 8px; z-index: 6; background: rgba(30,30,36,.66); color: white; padding: 2px 6px; border-radius: 4px; font-size: 9px; pointer-events: none; }
+.continuous-page-host > .continuous-annotation-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; }
+.continuous-annotation-layer { pointer-events: none; }
+.continuous-annotation-layer:not(.tool-ink) .annotation-shape { pointer-events: auto; cursor: pointer; }
+.continuous-annotation-layer.tool-ink { pointer-events: auto; cursor: crosshair; }
+.continuous-annotation-layer .selection-toolbar { pointer-events: auto; }
+.selection-colors { display: inline-flex; align-items: center; gap: 3px; padding: 0 4px; }
+.selection-colors button { width: 16px; height: 16px; min-height: 16px; padding: 0; border-radius: 50%; border: 1px solid transparent; }
+.selection-colors button.active { outline: 2px solid white; }
+.selection-colors label { width: 16px; height: 16px; overflow: hidden; border-radius: 50%; }
+.selection-colors input[type="color"] { width: 22px; height: 22px; border: 0; padding: 0; background: transparent; cursor: pointer; }

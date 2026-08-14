@@ -67,9 +67,19 @@ struct DuplicateCandidate { paper_id: String, title: String, reason: String }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 struct ImportedPaper { paper: Paper, is_new: bool }
 #[derive(Serialize, Deserialize)] #[serde(rename_all="camelCase")]
-struct LibraryLocation { library_path: String }
+struct LibraryLocation {
+  #[serde(alias = "libraryPath")]
+  library_path: String,
+}
 
-fn resolve_library_dir(app:&tauri::App)->Result<(PathBuf,PathBuf)> { let config_dir=app.path().app_config_dir().map_err(err)?; fs::create_dir_all(&config_dir).map_err(err)?; let config=config_dir.join("library-location.json"); if let Ok(raw)=fs::read_to_string(&config) { if let Ok(saved)=serde_json::from_str::<LibraryLocation>(&raw) { let path=PathBuf::from(saved.library_path); if path.is_absolute() { return Ok((path,config)); } } } let legacy=app.path().app_local_data_dir().map_err(err)?.join("PaperNestLibrary"); if legacy.join("library.db").exists() { return Ok((legacy,config)); } let documents=app.path().document_dir().or_else(|_|app.path().app_local_data_dir()).map_err(err)?; Ok((documents.join("PaperNestLibrary"),config)) }
+fn read_library_location(config: &Path) -> Option<PathBuf> {
+  let raw = fs::read_to_string(config).ok()?;
+  let saved: LibraryLocation = serde_json::from_str(raw.trim()).ok()?;
+  let path = PathBuf::from(saved.library_path.trim());
+  if path.is_absolute() { Some(path) } else { None }
+}
+
+fn resolve_library_dir(app:&tauri::App)->Result<(PathBuf,PathBuf)> { let config_dir=app.path().app_config_dir().map_err(err)?; fs::create_dir_all(&config_dir).map_err(err)?; let config=config_dir.join("library-location.json"); if let Some(path)=read_library_location(&config) { return Ok((path,config)); } let legacy=app.path().app_local_data_dir().map_err(err)?.join("PaperNestLibrary"); if legacy.join("library.db").exists() { return Ok((legacy,config)); } let documents=app.path().document_dir().or_else(|_|app.path().app_local_data_dir()).map_err(err)?; Ok((documents.join("PaperNestLibrary"),config)) }
 fn copy_library(source:&Path,target:&Path)->Result<()> { for entry in WalkDir::new(source).into_iter().filter_map(|e|e.ok()) { let path=entry.path(); let relative=path.strip_prefix(source).map_err(err)?; let destination=target.join(relative); if entry.file_type().is_dir() { fs::create_dir_all(&destination).map_err(err)?; } else if entry.file_type().is_file() { if let Some(parent)=destination.parent(){fs::create_dir_all(parent).map_err(err)?;} fs::copy(path,&destination).map_err(err)?; } } Ok(()) }
 fn tesseract_executable()->PathBuf { if let Ok(program_files)=env::var("ProgramFiles") { let candidate=PathBuf::from(program_files).join("Tesseract-OCR").join("tesseract.exe"); if candidate.exists(){return candidate;} } PathBuf::from("tesseract") }
 

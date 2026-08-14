@@ -328,7 +328,7 @@ flowchart TB
 | 数据库 | SQLite + SQLx + FTS5 |
 | OCR | 本机 Tesseract |
 
-**双 PDF.js 说明：** 项目同时依赖 `pdfjs-dist`（索引、OCR 渲染）与 `fresh-air-pdf` 内置的 PDF.js（阅读渲染）。二者 worker 分离：`pdfjs-dist` 走 Vite 打包路径，Fresh Air 使用 `public/fresh-air-worker.mjs`。
+**双 PDF.js 说明：** 项目同时依赖 `pdfjs-dist`（索引、OCR 渲染）与 `fresh-air-pdf` 内置的 PDF.js（阅读渲染）。Fresh Air PDF 默认从 unpkg 加载 worker，Tauri 离线环境无法访问；`vite.config.ts` 中的 `patchFreshAirPdfWorker` 插件将其替换为 `public/fresh-air-worker.mjs`（自 `fresh-air-pdf` 包复制，版本匹配）。
 
 ---
 

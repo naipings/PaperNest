@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [{ "title": "PaperNest · 本地论文库", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 700, "center": true }],
-    "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost" }
+    "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost" }
   },
   "bundle": {
     "active": true,
