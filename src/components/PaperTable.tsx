@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
 import { ExternalLink, FileText, Heart, Trash2 } from "lucide-react";
+import { backend } from "../services/backend";
+import { resolvePaperSourceUrl } from "../lib/paperSourceUrl";
 import type { Category, Paper, Tag } from "../types";
 
 const statusLabel = { unread: "未读", reading: "在读", read: "已读", archived: "已归档" };
@@ -19,12 +21,12 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
     helper.accessor("authors", { header: "作者", size: 150, cell: info => <span className="ellipsis">{info.getValue().map(author => author.name).join(", ") || "—"}</span> }),
     helper.accessor("status", { header: "状态", size: 84, cell: info => <span className={`status status-${info.getValue()}`}>{statusLabel[info.getValue()]}</span> }),
     helper.accessor("categoryId", { header: "领域", size: 130, cell: info => { const category = categories.find(item => item.id === info.getValue()); return category ? <span className="category" style={{ "--tag-color": category.color } as React.CSSProperties}>{category.name}</span> : <span className="muted">未分类</span>; } }),
-    helper.accessor("tagIds", { header: "标签", size: 175, enableSorting: false, cell: info => { const items = tags.filter(tag => info.getValue().includes(tag.id)); return <div className="tags">{items.slice(0, 2).map(tag => <span key={tag.id} style={{ "--tag-color": tag.color } as React.CSSProperties}>{tag.name}</span>)}{items.length > 2 && <small>+{items.length - 2}</small>}</div>; } }),
+    helper.accessor("tagIds", { header: "子领域", size: 175, enableSorting: false, cell: info => { const items = tags.filter(tag => info.getValue().includes(tag.id)); return <div className="tags">{items.slice(0, 2).map(tag => <span key={tag.id} style={{ "--tag-color": tag.color } as React.CSSProperties}>{tag.name}</span>)}{items.length > 2 && <small>+{items.length - 2}</small>}</div>; } }),
     helper.accessor("summary", { header: "一句话总结", size: 280, cell: info => <span className="ellipsis muted-strong" title={info.getValue()}>{info.getValue() || "待补充"}</span> }),
     helper.accessor("venue", { header: "期刊 / 会议", size: 110, cell: info => info.getValue() || "—" }),
     helper.accessor("publicationDate", { header: "发布日期", size: 110, cell: info => info.getValue()?.slice(0, 10) || "—" }),
     helper.accessor("updatedAt", { header: "最近更新", size: 115, cell: info => new Date(info.getValue()).toLocaleDateString("zh-CN") }),
-    helper.display({ id: "links", header: "链接", size: 84, cell: info => <div className="row-actions">{info.row.original.sourceUrl && <button title="打开原文" onClick={event => { event.stopPropagation(); window.open(info.row.original.sourceUrl, "_blank"); }}><ExternalLink size={15} /></button>}<button title={info.row.original.pdfPath ? "打开 PDF" : "未关联 PDF"} disabled={!info.row.original.pdfPath} onClick={event => { event.stopPropagation(); onOpenPdf(info.row.original); }}><FileText size={16} /></button></div> })
+    helper.display({ id: "links", header: "链接", size: 84, cell: info => { const source = resolvePaperSourceUrl(info.row.original); return <div className="row-actions">{source && <button title="打开原文" onClick={event => { event.stopPropagation(); void backend.openExternalUrl(source); }}><ExternalLink size={15} /></button>}<button title={info.row.original.pdfPath ? "打开 PDF" : "未关联 PDF"} disabled={!info.row.original.pdfPath} onClick={event => { event.stopPropagation(); onOpenPdf(info.row.original); }}><FileText size={16} /></button></div>; } })
   ], [categories, checkedIds, onOpenPdf, onToggleFavorite, papers.length, tags]);
   const table = useReactTable({ data: papers, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), columnResizeMode: "onChange" });
   const recycleSelected = () => { if (!selectedPapers.length || !confirm(`将 ${selectedPapers.length} 篇论文及其受管 PDF 移入回收站？`)) return; onBulkRecycle(selectedPapers); setCheckedIds(new Set()); };

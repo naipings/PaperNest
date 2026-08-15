@@ -122,10 +122,13 @@ flowchart LR
 - 导入仅复制文件，不修改原件。
 - **同文件一好一坏的根因**：封面与 LLM 各开一次 PDF.js 时，`destroy` 后立刻再 `getDocument` 会与共享 worker 竞态。导入现走 `extractForImport`：一次打开同时得到封面与分析用正文；全局 `enqueuePdfWork` 保证打开串行，关闭用 `loadingTask.destroy()`。
 - 封面读取文档 Info 与首页/次页文本，填写标题、作者、日期、英文摘要；单字拆开的 Abstract 会拼回单词，折行会拼成段落。
+- 双栏首页按文本 x 的最大空隙分栏，摘要只取 Abstract 标题所在列，避免右栏正文/图坐标轴数字并进摘要；明显污染的候选会被丢弃并尝试 raw 回退。
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
-- 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（vision 失败则纯文本重试）写回摘要/总结/术语，LLM 字段覆盖封面启发式。
+- 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本，避免带图请求拖垮整次分析）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
+- 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
 - 扫描件或字段缺失时保留文件名，不编造；封面读取失败会出现在导入提示里。
 - 文件哈希由 `import_pdfs` 在 Rust 侧写入。导入后先按哈希/DOI 判重（Tauri `ask`，能力清单需含 `dialog:allow-ask`），取消则 purge；通过后再读封面，读完再判一次标题/arXiv。同一 arXiv 稿的不同版本写入 `relatedPaperIds`。
+- 论文库「打开原文」通过 Rust `open_external_url` 用系统默认浏览器打开；无 `sourceUrl` 时可用 DOI / arXiv 拼落地页（WebView 内 `window.open` 无效）。
 - 论文库表格不使用 sticky。WebView2 中 sticky 表头与横向滚动会错位；`table-layout: fixed` + `colgroup` 固定列宽，整表同一滚动容器。
 - 论文库标题栏提供「刷新」，调用 `initialize_library` 重载快照。
 - 右侧论文详情左侧可拖动调宽（宽度写入 localStorage）；面板变窄时双语摘要经 container query 改为单列。
@@ -258,14 +261,20 @@ paperReader/
 
 | 实体 | 表 | 关键字段 |
 |------|-----|----------|
-| `Paper` | `papers` | 标题、作者、分类、标签、PDF 路径、阅读页码、`deletedAt` |
+| `Paper` | `papers` | 标题、作者、主领域（`categoryId`，单选）、子领域标签（`tagIds`，多选）、PDF 路径、阅读页码、`deletedAt` |
 | `Annotation` | `annotations` | `paperId`、页码、类型、`geometry_json`、引文、颜色 |
 | `VocabularyEntry` | `vocabulary` | 术语、释义、原句、页码 |
 | `WritingExcerpt` | `excerpts` | 原句、译文、用途、标签 |
 | `FrameworkFigure` | `figures` | 图片路径、页码、可选 geometry |
 | `Task` | `tasks` | 截止日期、状态、关联论文 |
 
-### 5.2 软删除与回收站
+### 5.2 主领域与子领域预设
+
+- **主领域**（`categories`）：16 个中文预设，对齐 [ACM CCS 2012](https://www.acm.org/publications/class-2012) 顶层概念，并将「计算方法」中国内常用的 CV / NLP / ML / 推荐等拆成独立主领域，便于论文库单选。
+- **子领域**（`tags`）：31 个可多选标签（方法、任务、阅读用途）。设置页可继续增删改。
+- 启动时 `schema.sql` 对预设执行 `INSERT OR IGNORE`，已有资料库会自动补全缺失项，不覆盖用户自建名称。
+
+### 5.3 软删除与回收站
 
 - 删除论文设置 `papers.deletedAt`，不立即删文件。
 - 回收站永久删除才移除 PDF 与关联记录。
@@ -373,7 +382,7 @@ cd src-tauri; cargo check
 
 | 场景 | 预期 |
 |------|------|
-| 导入 PDF | 文件进入 `pdf/originals`，表格可见；英文摘要来自首页 Abstract，不含 Introduction / CCS LaTeX 残片；开启 LLM 时首次导入即有中文摘要/总结/术语 |
+| 导入 PDF | 文件进入 `pdf/originals`，表格可见；英文摘要来自首页 Abstract 所在栏（双栏不串右栏/图轴），不含 Introduction / CCS LaTeX 残片；开启 LLM 时首次导入即有中文摘要/总结/术语；切换界面时导入进度不丢 |
 | 重复导入 | 同一文件弹出「重复文献」确认；取消后库中仍只有一篇；不同 arXiv 版本可同时存在并互相引用 |
 | 论文库横向滚动 | 勾选框与各列表头、表体列宽一致，无叠影 |
 | 论文库横向滚动 | 窗口非全屏时滚到最右并向下滚，表头整行吸顶，逐列与表体对齐 |

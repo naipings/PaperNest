@@ -4,6 +4,8 @@ import type { Annotation, Category, FrameworkFigure, LibrarySnapshot, Paper, Pro
 
 interface LibraryContextValue {
   data?: LibrarySnapshot; loading: boolean; error?: string;
+  importBusy: string; importNotice: string;
+  setImportBusy(value: string): void; setImportNotice(value: string): void;
   refresh(): Promise<void>; savePaper(paper: Paper): Promise<void>; saveAnnotation(annotation: Annotation): Promise<void>;
   deleteAnnotation(id: string): Promise<void>; saveVocabulary(entry: VocabularyEntry): Promise<void>; deleteVocabulary(id: string): Promise<void>;
   saveExcerpt(entry: WritingExcerpt): Promise<void>; deleteExcerpt(id: string): Promise<void>; purgePaper(id: string): Promise<void>;
@@ -16,10 +18,11 @@ const LibraryContext = createContext<LibraryContextValue | null>(null);
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<LibrarySnapshot>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
+  const [importBusy, setImportBusy] = useState(""); const [importNotice, setImportNotice] = useState("");
   const refresh = useCallback(async () => { try { setError(undefined); setData(await backend.initialize()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const wrap = useCallback(<T,>(fn: (value: T) => Promise<void>) => async (value: T) => { await fn(value); await refresh(); }, [refresh]);
-  const value = useMemo<LibraryContextValue>(() => ({ data, loading, error, refresh,
+  const value = useMemo<LibraryContextValue>(() => ({ data, loading, error, importBusy, importNotice, setImportBusy, setImportNotice, refresh,
     savePaper: wrap(backend.savePaper), saveAnnotation: wrap(backend.saveAnnotation), deleteAnnotation: wrap(backend.deleteAnnotation),
     saveVocabulary: wrap(backend.saveVocabulary), deleteVocabulary: async id => { await backend.deleteVocabulary(id); await refresh(); },
     saveExcerpt: wrap(backend.saveExcerpt), deleteExcerpt: async id => { await backend.deleteExcerpt(id); await refresh(); },
@@ -29,7 +32,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     mergeTaxonomy: async (kind, sourceId, targetId) => { await backend.mergeTaxonomy(kind, sourceId, targetId); await refresh(); },
     saveView: wrap(backend.saveView), saveProfile: wrap(backend.saveProfile),
     saveTask: wrap(backend.saveTask), deleteTask: async id => { await backend.deleteTask(id); await refresh(); },
-  }), [data, loading, error, refresh, wrap]);
+  }), [data, loading, error, importBusy, importNotice, refresh, wrap]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 

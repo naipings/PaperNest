@@ -1,4 +1,5 @@
 .import-status { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; display: inline-flex; align-items: center; gap: 5px; }
+.import-status-banner { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; background: var(--panel); flex-shrink: 0; }
 .llm-settings { max-width: 600px; }
 .llm-settings .key-saved { color: #39815a; font-weight: 650; }
 .checkbox-setting { flex-direction: row !important; align-items: center; gap: 8px !important; color: inherit !important; cursor: pointer; }

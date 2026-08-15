@@ -31,7 +31,7 @@ export function inferCoverMeta(runs: PdfTextRun[], info: PdfInfoMeta = {}, rawTe
     publicationDate,
     doi: fromText.doi,
     arxivId: fromText.arxivId,
-    abstractEn: fromText.abstractEn || extractAbstractFromRaw(rawText) || subjectAsAbstract(info.Subject),
+    abstractEn: pickAbstract(fromText.abstractEn, extractAbstractFromRaw(rawText), subjectAsAbstract(info.Subject)),
     venue: fromText.venue
   };
 }
@@ -82,7 +82,7 @@ function inferFromRuns(runs: PdfTextRun[]) {
   }
   const authors = authorLines.flatMap(splitAuthors).filter(name => isAuthorName(name)).slice(0, 12);
   const year = blob.match(/\b(19|20)\d{2}\b/)?.[0];
-  return { title, titleEn: title && !isMostlyCjk(title) ? title : undefined, authors, publicationDate: yearFromArxiv(arxivId) || year, doi, arxivId, abstractEn: extractAbstract(lines), venue: extractVenue(blob) };
+  return { title, titleEn: title && !isMostlyCjk(title) ? title : undefined, authors, publicationDate: yearFromArxiv(arxivId) || year, doi, arxivId, abstractEn: extractAbstract(lines, runs), venue: extractVenue(blob) };
 }
 
 function clusterLines(runs: PdfTextRun[]) {
@@ -167,7 +167,8 @@ function isMostlyCjk(value: string) {
 
 const SECTION_WORD = "keywords?|key words|index terms|ccs concepts|categories and subject descriptors|acm reference format|introduction|引言|简介";
 const ABSTRACT_STOP = new RegExp(`^(?:(?:\\d{1,2}|[ivx]{1,4})[.)]?\\s*)?(?:${SECTION_WORD})\\b`, "i");
-const RAW_ABSTRACT_HEAD = /\babstract(?:[:.\s—–-]+|(?=[A-Z]))|摘要[:.\s—–-]*/i;
+/** `\b` misses `KoreaABSTRACTIn…`; also allow Abstract glued to a following capital. */
+const RAW_ABSTRACT_HEAD = /(?:^|[^A-Za-z])abstract(?:[:.\s—–-]+|(?=[A-Z]))|(?<=[a-z])abstract(?=[A-Z])|摘要[:.\s—–-]*/i;
 const RAW_ABSTRACT_STOP = new RegExp(`(^|[\\s.;])(?:(?:\\d{1,2}|[IVX]{1,4})[.)]?\\s*)?(?:${SECTION_WORD})\\b`, "i");
 const ABSTRACT_HEAD_LINE = /^[\s\d.)]*(?:a\s?b\s?s\s?t\s?r\s?a\s?c\s?t|摘\s?要)[\s:.—–-]*/i;
 const CCS_SHAPE = /information systems\s*(?:→|->|\$\\rightarrow\$)|computing methodologies\s*(?:→|->|\$\\rightarrow\$)|\\textbullet/i;
@@ -230,27 +231,77 @@ export function stitchPdfParagraphs(lines: { text: string; y: number }[]) {
   return paragraphs.join("\n\n");
 }
 
-function extractAbstract(lines: { text: string; y: number }[]) {
+function extractAbstract(lines: { text: string; y: number }[], runs: PdfTextRun[] = []) {
+  const scoped = runs.length ? clusterLines(runsInAbstractColumn(runs)) : lines;
   let start = -1;
   let first = "";
-  for (let index = 0; index < lines.length; index++) {
-    const head = ABSTRACT_HEAD_LINE.exec(lines[index].text);
+  for (let index = 0; index < scoped.length; index++) {
+    const head = ABSTRACT_HEAD_LINE.exec(scoped[index].text);
     if (!head) continue;
     start = index;
-    first = lines[index].text.slice(head[0].length).trim();
+    first = scoped[index].text.slice(head[0].length).trim();
     break;
   }
   if (start >= 0) {
-    const body = first ? [{ text: first, y: lines[start].y }] : [];
-    for (let index = start + 1; index < lines.length; index++) {
-      if (isAbstractStop(lines[index].text)) break;
-      body.push(lines[index]);
+    const body = first ? [{ text: first, y: scoped[start].y }] : [];
+    for (let index = start + 1; index < scoped.length; index++) {
+      if (isAbstractStop(scoped[index].text)) break;
+      body.push(scoped[index]);
       if (stitchPdfParagraphs(body).length > 2800) break;
     }
     const text = cleanAbstractText(stitchPdfParagraphs(body));
-    if (text) return text;
+    if (text && !looksPollutedAbstract(text)) return text;
   }
-  return extractAbstractFromRaw(lines.map(line => line.text).join("\n"));
+  return extractAbstractFromRaw(scoped.map(line => line.text).join("\n"));
+}
+
+/** Two-column pages sort left+right into one line; keep only the Abstract column. */
+function runsInAbstractColumn(runs: PdfTextRun[]) {
+  const usable = runs.filter(run => run.str.length);
+  if (usable.length < 4) return usable;
+  const splitX = columnGutterX(usable);
+  if (splitX === undefined) return usable;
+  const lines = clusterLines(usable);
+  const absLine = lines.find(line => ABSTRACT_HEAD_LINE.test(line.text));
+  if (!absLine) return usable;
+  const near = usable.filter(run => Math.abs(run.y - absLine.y) <= Math.max(2.4, run.fontSize * 0.35));
+  const anchorX = near.length ? Math.min(...near.map(run => run.x)) : Math.min(...usable.map(run => run.x));
+  if (anchorX < splitX) return usable.filter(run => run.x < splitX);
+  return usable.filter(run => run.x >= splitX);
+}
+
+/** Largest horizontal gap between text x-origins; absent on single-column pages. */
+function columnGutterX(runs: PdfTextRun[]) {
+  const xs = [...new Set(runs.map(run => Math.round(run.x)))].sort((left, right) => left - right);
+  if (xs.length < 2) return undefined;
+  let bestGap = 0;
+  let gutter: number | undefined;
+  for (let index = 1; index < xs.length; index++) {
+    const gap = xs[index] - xs[index - 1];
+    if (gap > bestGap) {
+      bestGap = gap;
+      gutter = (xs[index - 1] + xs[index]) / 2;
+    }
+  }
+  if (bestGap < 36) return undefined;
+  return gutter;
+}
+
+function looksPollutedAbstract(text: string) {
+  const trimmed = text.trim();
+  if (/^[,;:]?\s*\([ivx]+\)/i.test(trimmed)) return true;
+  if (/\bUser number\b|\bEpoch\b|\bAccuracy\s*\(%\)/i.test(trimmed)) return true;
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length < 12) return false;
+  const digitish = tokens.filter(token => /^\d[\d,.%]*$/.test(token)).length;
+  return digitish >= 8 && digitish / tokens.length > 0.12;
+}
+
+function pickAbstract(...candidates: (string | undefined)[]) {
+  for (const candidate of candidates) {
+    if (candidate && !looksPollutedAbstract(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 function extractAbstractFromRaw(text?: string) {
@@ -258,10 +309,10 @@ function extractAbstractFromRaw(text?: string) {
   const prepared = unsplitSmallCaps(text.replace(/\u0000/g, " "));
   const head = RAW_ABSTRACT_HEAD.exec(prepared);
   if (!head) return undefined;
-  const tail = prepared.slice(head.index + head[0].length);
-  const stop = RAW_ABSTRACT_STOP.exec(tail);
+  const after = prepared.slice(head.index + head[0].length);
+  const stop = RAW_ABSTRACT_STOP.exec(after);
   const end = stop ? stop.index + stop[1].length : 2800;
-  return cleanAbstractText(tail.slice(0, end).replace(/\s+/g, " ").trim());
+  return cleanAbstractText(after.slice(0, end).replace(/\s+/g, " ").trim());
 }
 
 function subjectAsAbstract(value?: string) {

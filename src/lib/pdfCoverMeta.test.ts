@@ -155,4 +155,41 @@ describe("abstract extraction", () => {
     const meta = inferCoverMeta([], {}, "AbstractWe present PRONT for one-shot knowledge transfer across large models.1 I NTRODUCTION Large language models dominate current research.");
     expect(meta.abstractEn).toBe("We present PRONT for one-shot knowledge transfer across large models.");
   });
+
+  it("keeps left-column Abstract away from right-column intro text", () => {
+    const meta = inferCoverMeta([
+      run("Item-Ranking Promotion", 18, 700, 54),
+      run("ABSTRACT", 11, 520, 54, 70),
+      run("(ii) secure new users via promotions in the right column.", 10, 520, 318, 220),
+      run("In this paper, we first define the item-ranking promotion problem for recommender systems.", 10, 500, 54, 240),
+      run("We then propose a multi-objective optimization framework.", 10, 484, 54, 240),
+      run("1 Introduction", 12, 420, 54),
+      run("Recommender systems are widely used and must not enter the abstract.", 10, 400, 318, 220)
+    ]);
+    expect(meta.abstractEn).toMatch(/^In this paper, we first define/);
+    expect(meta.abstractEn).not.toMatch(/\(ii\) secure/);
+    expect(meta.abstractEn).not.toMatch(/widely used/);
+  });
+
+  it("keeps left-column Abstract away from right-column chart ticks", () => {
+    const meta = inferCoverMeta([
+      run("HeteFedRec", 18, 700, 60),
+      run("Abstract", 11, 560, 60, 50),
+      run("350", 8, 560, 400, 20),
+      run("1200", 8, 548, 420, 24),
+      run("User number", 8, 536, 380, 50),
+      run("Federated recommendation protects user privacy while training across clients with heterogeneous data.", 10, 540, 60, 240),
+      run("We propose HeteFedRec for this setting and evaluate it on public benchmarks.", 10, 520, 60, 240),
+      run("800", 8, 520, 410, 20),
+      run("1 Introduction", 12, 460, 60)
+    ]);
+    expect(meta.abstractEn).toMatch(/^Federated recommendation protects/);
+    expect(meta.abstractEn).not.toMatch(/\b350\b/);
+    expect(meta.abstractEn).not.toMatch(/User number/);
+  });
+
+  it("reads Abstract glued after a prior word in a raw PDF dump", () => {
+    const meta = inferCoverMeta([], {}, "South KoreaABSTRACTIn this paper, we first define the item-ranking promotion problem for recommender systems.1 Introduction More text.");
+    expect(meta.abstractEn).toMatch(/^In this paper, we first define/);
+  });
 });

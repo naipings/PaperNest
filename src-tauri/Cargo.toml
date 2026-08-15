@@ -28,3 +28,4 @@ base64 = "0.22"
 
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "charset"] }
 keyring = { version = "3", features = ["windows-native"] }
+open = "5"

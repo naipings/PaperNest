@@ -17,7 +17,7 @@ import { backend } from "./services/backend";
 import type { Paper } from "./types";
 
 export default function App() {
-  const { data, loading, error, refresh, savePaper, saveProfile } = useLibrary();
+  const { data, loading, error, refresh, savePaper, saveProfile, importBusy, importNotice } = useLibrary();
   const [screen, setScreen] = useState<Screen>("library");
   const [search, setSearch] = useState("");
   const [searchHitPaperIds, setSearchHitPaperIds] = useState<string[]>([]);
@@ -72,6 +72,7 @@ export default function App() {
     <Sidebar screen={screen} onNavigate={value => requestLeave(() => { setScreen(value); setSelectedId(undefined); })} profile={data.profile} onTheme={theme} />
     <div className="workspace">
       {screen === "library" && <><Topbar search={search} onSearch={setSearch} onCreate={() => setCreating(true)} onRefresh={refresh} /><div className={`main-with-detail ${selected ? "has-detail" : ""}`}><LibraryView search={search} searchHitPaperIds={searchHitPaperIds} selectedId={selectedId} onSelect={p => setSelectedId(p.id)} onOpenPdf={openPdf} />{selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}</div></>}
+      {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
       {screen === "writing" && <WritingLibrary onOpenPaper={openPdf} />}
       {screen === "knowledge" && <KnowledgeGraphInteractive onOpenPaper={paper => { setSelectedId(paper.id); setScreen("library"); }} /> }
       {screen === "tasks" && <TaskCalendar />}

@@ -119,6 +119,13 @@ export const backend = {
     return invoke("translate_with_llm", { text, mode, context });
   },
   async analyzePaper(paperId: string, input: LlmAnalysisInput): Promise<LlmAnalysis> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 分析"); return invoke("analyze_paper_with_llm", { paperId, input }); },
+  async openExternalUrl(url: string): Promise<void> {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    if (isTauri()) return invoke("open_external_url", { url: trimmed });
+    const href = /^https?:\/\//i.test(trimmed) ? trimmed : trimmed.startsWith("10.") ? `https://doi.org/${trimmed}` : `https://${trimmed}`;
+    window.open(href, "_blank", "noopener,noreferrer");
+  },
   async findDuplicateCandidates(paperId: string): Promise<DuplicateCandidate[]> { return isTauri() ? invoke("find_duplicate_candidates", { paperId }) : []; },
 
   async chooseAndImportPdfs(): Promise<ImportedPaper[]> {

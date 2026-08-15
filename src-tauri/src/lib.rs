@@ -236,13 +236,76 @@ async fn llm_completion(settings:&LlmSettings,system:&str,content:serde_json::Va
   let content=value.pointer("/choices/0/message/content").and_then(|v|v.as_str()).map(str::to_owned).or_else(||value.pointer("/choices/0/message/content/0/text").and_then(|v|v.as_str()).map(str::to_owned)).ok_or_else(||"LLM 响应不包含 choices[0].message.content".to_string())?; Ok(content)
 }
 fn json_from_llm(text:&str)->Result<serde_json::Value>{let trimmed=text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();let start=trimmed.find('{').ok_or_else(||"LLM 未返回 JSON 对象".to_string())?;let end=trimmed.rfind('}').ok_or_else(||"LLM 未返回完整 JSON 对象".to_string())?;serde_json::from_str(&trimmed[start..=end]).map_err(err)}
+
+fn opt_string(value:&serde_json::Value,key:&str)->Option<String>{
+  value.get(key).and_then(|item|match item {
+    serde_json::Value::String(text) => { let trimmed=text.trim(); if trimmed.is_empty()||trimmed.eq_ignore_ascii_case("null"){None}else{Some(trimmed.to_string())} }
+    serde_json::Value::Number(number) => Some(number.to_string()),
+    _ => None
+  })
+}
+
+fn opt_i64(value:&serde_json::Value,key:&str)->Option<i64>{
+  value.get(key).and_then(|item|match item {
+    serde_json::Value::Number(number) => number.as_i64(),
+    serde_json::Value::String(text) => text.trim().parse().ok(),
+    _ => None
+  })
+}
+
+fn parse_authors(value:&serde_json::Value)->Option<Vec<String>>{
+  let authors=value.get("authors")?;
+  if let Some(list)=authors.as_array(){
+    let names:Vec<String>=list.iter().filter_map(|item|item.as_str().map(str::trim).filter(|name|!name.is_empty()).map(str::to_string)).collect();
+    return if names.is_empty(){None}else{Some(names)};
+  }
+  authors.as_str().map(|text|{
+    text.split(|ch|ch==','||ch==';').map(str::trim).filter(|name|!name.is_empty()).map(str::to_string).collect::<Vec<_>>()
+  }).filter(|names|!names.is_empty())
+}
+
+fn parse_vocabulary(value:&serde_json::Value)->Option<Vec<LlmVocabularySuggestion>>{
+  let list=value.get("vocabulary")?.as_array()?;
+  let items:Vec<LlmVocabularySuggestion>=list.iter().filter_map(|item|{
+    let term_en=opt_string(item,"termEn")?;
+    let meaning_zh=opt_string(item,"meaningZh")?;
+    Some(LlmVocabularySuggestion{
+      term_en, meaning_zh,
+      sentence_en:opt_string(item,"sentenceEn"),
+      sentence_zh:opt_string(item,"sentenceZh"),
+      page:opt_i64(item,"page"),
+    })
+  }).collect();
+  if items.is_empty(){None}else{Some(items)}
+}
+
+fn parse_llm_analysis(value:serde_json::Value)->Result<LlmAnalysis>{
+  Ok(LlmAnalysis{
+    title_en:opt_string(&value,"titleEn"),
+    title_zh:opt_string(&value,"titleZh"),
+    authors:parse_authors(&value),
+    abstract_en:opt_string(&value,"abstractEn"),
+    abstract_zh:opt_string(&value,"abstractZh"),
+    summary:opt_string(&value,"summary"),
+    venue:opt_string(&value,"venue"),
+    publication_date:opt_string(&value,"publicationDate"),
+    doi:opt_string(&value,"doi"),
+    source_url:opt_string(&value,"sourceUrl"),
+    framework_page:opt_i64(&value,"frameworkPage"),
+    framework_title:opt_string(&value,"frameworkTitle"),
+    framework_explanation_en:opt_string(&value,"frameworkExplanationEn"),
+    framework_explanation_zh:opt_string(&value,"frameworkExplanationZh"),
+    vocabulary:parse_vocabulary(&value),
+  })
+}
+
 #[tauri::command]
 async fn analyze_paper_with_llm(state:State<'_,AppState>,paper_id:String,input:LlmAnalysisInput)->Result<LlmAnalysis>{
   let settings=load_llm_settings(&*state.pool.read().await).await?; let text=input.text.chars().take(70_000).collect::<String>(); if text.trim().len()<80{return Err("PDF 没有足够的可提取文本，无法自动分析".into())}
   let mut content=vec![serde_json::json!({"type":"text","text":format!("请分析以下论文 PDF 提取文本。\n\n{}",text)})];
   if settings.vision_enabled { for image in input.candidate_images.into_iter().take(3){content.push(serde_json::json!({"type":"text","text":format!("候选模型图页：第 {} 页",image.page)}));content.push(serde_json::json!({"type":"image_url","image_url":{"url":image.data_url}}));} }
-  let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。summary 用简体中文一句话；abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按计算机科学论文学术语体翻译或释义（术语准确、正式、不口语化；模型名与常用缩写可保留英文）；frameworkPage 仅在候选页面确有方法框架图时返回页码；vocabulary 最多 8 项，每项含 termEn,meaningZh,sentenceEn,sentenceZh,page。找不到的字段返回 null。";
-  let value=json_from_llm(&llm_completion(&settings,system,serde_json::Value::Array(content)).await?)?; let analysis: LlmAnalysis=serde_json::from_value(value).map_err(|e|format!("LLM 返回格式无效：{e}"))?; let _=paper_id; Ok(analysis)
+  let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。只要文本中能读到 Abstract 或足够正文：summary 必须是非空的简体中文一句话；vocabulary 必须至少 5 项（每项含 termEn,meaningZh,sentenceEn,sentenceZh,page，page 用数字）。abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按计算机科学论文学术语体翻译或释义（术语准确、正式、不口语化；模型名与常用缩写可保留英文）。frameworkPage 仅在候选页面确有方法框架图时返回页码。其它找不到的字段返回 null。不要省略 summary 与 vocabulary。";
+  let value=json_from_llm(&llm_completion(&settings,system,serde_json::Value::Array(content)).await?)?; let analysis=parse_llm_analysis(value)?; let _=paper_id; Ok(analysis)
 }
 fn normalized_title(value:&str)->String{value.to_lowercase().chars().filter(|c|c.is_alphanumeric()).collect()}
 #[tauri::command]
@@ -272,6 +335,21 @@ fn parse_ris(text:&str)->Vec<Paper>{ let mut out=vec![];let mut current=blank_pa
 fn parse_bibtex(text:&str)->Vec<Paper>{ let mut out=vec![];for entry in text.split('@').skip(1){let mut paper=blank_paper(field(entry,"title").unwrap_or_else(||"Untitled".into()));if let Some(authors)=field(entry,"author"){paper.authors=authors.split(" and ").map(|name|Author{id:Uuid::new_v4().to_string(),name:name.trim().trim_matches('{').trim_matches('}').into()}).collect();}paper.venue=field(entry,"booktitle").or_else(||field(entry,"journal"));paper.publication_date=field(entry,"year");paper.doi=field(entry,"doi");paper.source_url=field(entry,"url");paper.abstract_en=field(entry,"abstract");out.push(paper);}out }
 fn field(entry:&str,name:&str)->Option<String>{ let lower=entry.to_lowercase();let start=lower.find(&format!("{name}"))?;let rest=&entry[start+name.len()..];let eq=rest.find('=')?;let value=rest[eq+1..].trim_start();let open=value.chars().next()?;let close=if open=='{'{'}'}else if open=='\"'{'\"'}else{','};let body=&value[1..];let end=body.find(close).or_else(||body.find(','))?;Some(body[..end].trim().replace(['\n','\r']," "))}
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<()> {
+  let trimmed = url.trim();
+  if trimmed.is_empty() { return Err("链接为空".into()); }
+  let href = if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+    trimmed.to_string()
+  } else if trimmed.starts_with("doi.org/") {
+    format!("https://{trimmed}")
+  } else if trimmed.starts_with("10.") {
+    format!("https://doi.org/{trimmed}")
+  } else {
+    return Err("只允许打开 http/https 原文链接".into());
+  };
+  open::that(&href).map_err(err)
+}
 #[tauri::command] fn read_managed_file(state:State<'_,AppState>,path:String)->Result<Vec<u8>> { let requested=state.library_dir.join(path); let canonical=requested.canonicalize().map_err(err)?; let root=state.library_dir.canonicalize().map_err(err)?; if !canonical.starts_with(root){return Err("拒绝读取资料库之外的文件".into());} fs::read(canonical).map_err(err) }
 #[tauri::command] fn write_export_file(path:String,bytes:Vec<u8>)->Result<()> { let target=PathBuf::from(path); let temp=target.with_extension("papernest.tmp"); fs::write(&temp,bytes).map_err(err)?; fs::rename(temp,target).map_err(err) }
 #[tauri::command] async fn index_pdf_pages(state:State<'_,AppState>,paper_id:String,pages:Vec<PageText>)->Result<()> { let mut tx=state.pool.read().await.begin().await.map_err(err)?; sqlx::query("DELETE FROM pdf_pages WHERE paper_id=?").bind(&paper_id).execute(&mut *tx).await.map_err(err)?;sqlx::query("DELETE FROM pdf_search WHERE paper_id=?").bind(&paper_id).execute(&mut *tx).await.map_err(err)?;for page in pages{sqlx::query("INSERT INTO pdf_pages VALUES(?,?,?)").bind(&paper_id).bind(page.page).bind(&page.text).execute(&mut *tx).await.map_err(err)?;sqlx::query("INSERT INTO pdf_search VALUES(?,?,?)").bind(&paper_id).bind(page.page).bind(page.text).execute(&mut *tx).await.map_err(err)?;}tx.commit().await.map_err(err) }
@@ -291,6 +369,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let pool=tauri::async_runtime::block_on(open_pool(&dir)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool)});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

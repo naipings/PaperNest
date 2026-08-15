@@ -23,4 +23,23 @@ export function SettingsView() {
 
 function ProfileForm({ profile, onSave }: { profile: Profile; onSave(value: Profile): Promise<void> }) { const [value, setValue] = useState(profile); return <form className="settings-form" onSubmit={e => { e.preventDefault(); void onSave(value); }}><h2><UserRound size={19} />个人资料</h2><p className="settings-description">仅用于本机界面展示，不会上传。</p><label>显示名<input value={value.displayName} onChange={e => setValue(v => ({ ...v, displayName: e.target.value }))} /></label><label>研究方向<input value={value.researchField} onChange={e => setValue(v => ({ ...v, researchField: e.target.value }))} placeholder="例如：计算机视觉 / 推荐系统" /></label><label><Palette size={15} />主题<select value={value.theme} onChange={e => setValue(v => ({ ...v, theme: e.target.value as Profile["theme"] }))}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><button className="primary"><Save size={16} />保存个人资料</button></form>; }
 
-function TaxonomyManager({ categories, tags, saveCategory, saveTag, mergeTaxonomy }: { categories: Category[]; tags: Tag[]; saveCategory(v: Category): Promise<void>; saveTag(v: Tag): Promise<void>; mergeTaxonomy(kind: "category"|"tag", source: string, target?: string): Promise<void> }) { const add = async (kind: "category"|"tag") => { const name = prompt(kind === "category" ? "新领域名称" : "新标签名称"); if (!name) return; const value = { id: uuid(), name, color: "#7867c6" }; kind === "category" ? await saveCategory(value) : await saveTag(value); }; return <><h2><TagsIcon size={19} />分类与标签</h2><div className="taxonomy-section"><header><div><strong>Category</strong><small>每篇论文最多选择一个主领域</small></div><button className="secondary" onClick={() => add("category")}>新增领域</button></header><div className="taxonomy-list">{categories.map(item => <article key={item.id}><i style={{ background: item.color }} /><span>{item.name}</span><button onClick={async () => { const name = prompt("重命名", item.name); if (name) await saveCategory({ ...item, name }); }}>编辑</button><button onClick={() => confirm(`删除“${item.name}”？相关论文将变为未分类。`) && mergeTaxonomy("category", item.id)}>删除</button></article>)}</div></div><div className="taxonomy-section"><header><div><strong>Tags</strong><small>用于补充方法、任务与阅读用途</small></div><button className="secondary" onClick={() => add("tag")}>新增标签</button></header><div className="taxonomy-list">{tags.map(item => <article key={item.id}><i style={{ background: item.color }} /><span>{item.name}</span><button onClick={async () => { const name = prompt("重命名", item.name); if (name) await saveTag({ ...item, name }); }}>编辑</button><button onClick={() => confirm(`删除标签“${item.name}”？`) && mergeTaxonomy("tag", item.id)}>删除</button></article>)}</div></div></>; }
+function TaxonomyManager({ categories, tags, saveCategory, saveTag, mergeTaxonomy }: { categories: Category[]; tags: Tag[]; saveCategory(v: Category): Promise<void>; saveTag(v: Tag): Promise<void>; mergeTaxonomy(kind: "category"|"tag", source: string, target?: string): Promise<void> }) {
+  const add = async (kind: "category"|"tag") => {
+    const name = prompt(kind === "category" ? "新主领域名称" : "新子领域标签名称");
+    if (!name) return;
+    const value = { id: uuid(), name, color: "#7867c6" };
+    kind === "category" ? await saveCategory(value) : await saveTag(value);
+  };
+  return <>
+    <h2><TagsIcon size={19} />分类与标签</h2>
+    <p className="settings-description">主领域参考 ACM CCS 与常用 CS 研究方向，每篇论文只能选一个；子领域是可多选的标签，用于方法、任务与阅读用途。</p>
+    <div className="taxonomy-section">
+      <header><div><strong>主领域</strong><small>每篇论文最多选择一个</small></div><button className="secondary" onClick={() => add("category")}>新增主领域</button></header>
+      <div className="taxonomy-list">{categories.map(item => <article key={item.id}><i style={{ background: item.color }} /><span>{item.name}</span><button onClick={async () => { const name = prompt("重命名", item.name); if (name) await saveCategory({ ...item, name }); }}>编辑</button><button onClick={() => confirm(`删除“${item.name}”？相关论文将变为未分类。`) && mergeTaxonomy("category", item.id)}>删除</button></article>)}</div>
+    </div>
+    <div className="taxonomy-section">
+      <header><div><strong>子领域标签</strong><small>可多选，补充方法、任务与阅读用途</small></div><button className="secondary" onClick={() => add("tag")}>新增子领域</button></header>
+      <div className="taxonomy-list">{tags.map(item => <article key={item.id}><i style={{ background: item.color }} /><span>{item.name}</span><button onClick={async () => { const name = prompt("重命名", item.name); if (name) await saveTag({ ...item, name }); }}>编辑</button><button onClick={() => confirm(`删除标签“${item.name}”？`) && mergeTaxonomy("tag", item.id)}>删除</button></article>)}</div>
+    </div>
+  </>;
+}

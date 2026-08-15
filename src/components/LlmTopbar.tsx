@@ -1,8 +1,8 @@
-import { useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { FilePlus2, Import, LoaderCircle, Plus, Search } from "lucide-react";
 import { backend } from "../services/backend";
 import { applyCoverMeta, extractForImport } from "../lib/extractPdfCover";
+import { analysisNeedsBackfill, liteAnalysisSeed, mergeAnalyses } from "../lib/importLlmFill";
 import { arxivFromText } from "../lib/paperDuplicate";
 import { resolveImportedPaper } from "../lib/importDecisions";
 import { dataUrlToBytes } from "../services/llm";
@@ -12,9 +12,10 @@ import type { LlmAnalysis, LlmAnalysisInput, Paper } from "../types";
 import { now, uuid } from "../types";
 
 export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: string; onSearch(value: string): void; onCreate(): void; onRefresh(): Promise<void> }) {
-  const { data } = useLibrary(); const [busy, setBusy] = useState(""); const [notice, setNotice] = useState("");
+  const { data, importBusy: busy, importNotice: notice, setImportBusy: setBusy, setImportNotice: setNotice } = useLibrary();
   const importPdfs = async () => {
     try {
+      setNotice("");
       const imported = await backend.chooseAndImportPdfs(); if (!imported.length) return;
       let catalog = (await backend.initialize()).papers.filter(paper => !paper.deletedAt);
       const acceptedSame = new Set<string>();
@@ -58,14 +59,8 @@ export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: stri
   };
   const analyzeAndFill = async (paper: Paper, analysisInput: LlmAnalysisInput | undefined, candidateImages: { page: number; dataUrl: string }[]) => {
     const input = analysisInput ?? { text: "", candidateImages: [] };
-    if (input.text.trim().length < 80) throw new Error("PDF 没有足够的可提取文本，无法自动分析");
-    let analysis: LlmAnalysis;
-    try {
-      analysis = await backend.analyzePaper(paper.id, input);
-    } catch (error) {
-      if (!input.candidateImages.length) throw error;
-      analysis = await backend.analyzePaper(paper.id, { text: input.text, candidateImages: [] });
-    }
+    if (input.text.trim().length < 80 && !(paper.abstractEn?.trim().length)) throw new Error("PDF 没有足够的可提取文本，无法自动分析");
+    const analysis = await analyzeWithFallback(paper, input);
     let filled = applyAnalysis(paper, analysis);
     if (filled.abstractEn && !filled.abstractZh && hasTranslationEndpoint()) {
       try { filled = { ...filled, abstractZh: await translateEnglishToChinese(filled.abstractEn), updatedAt: now() }; }
@@ -87,6 +82,33 @@ export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: stri
       <button className="primary" disabled={Boolean(busy)} onClick={onCreate}><Plus size={16} />新建论文</button>
     </div>
   </header>;
+}
+
+/** Text-first for summary/vocab; lite abstract backfill when still incomplete. */
+async function analyzeWithFallback(paper: Paper, input: LlmAnalysisInput): Promise<LlmAnalysis> {
+  let lastError: unknown;
+  let analysis: LlmAnalysis | undefined;
+  if (input.text.trim().length >= 80) {
+    try {
+      // 纯文本优先：带图请求更容易超时/截断 JSON，导致只有封面摘要、没有总结和术语。
+      analysis = await backend.analyzePaper(paper.id, { text: input.text, candidateImages: [] });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (analysisNeedsBackfill(analysis, paper)) {
+    const seed = liteAnalysisSeed(paper, analysis, input.text);
+    if (seed.trim().length >= 80) {
+      try {
+        const lite = await backend.analyzePaper(paper.id, { text: seed, candidateImages: [] });
+        analysis = mergeAnalyses(analysis, lite);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+  }
+  if (!analysis) throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "LLM 分析失败"));
+  return analysis;
 }
 
 const importPorts = {
