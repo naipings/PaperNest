@@ -109,14 +109,14 @@ export const backend = {
   async testLlmConnection(): Promise<void> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 连接"); return invoke("test_llm_connection"); },
   async translateText(endpoint: string, text: string, apiKey?: string): Promise<string> {
     if (isTauri()) return invoke("translate_text", { endpoint, text, apiKey });
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text, source: "en", target: "zh", format: "text", api_key: apiKey }) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text, source: "en", target: "zh-Hans", format: "text", api_key: apiKey }) });
     const payload = await response.json() as { translatedText?: string; error?: string };
     if (!response.ok || !payload.translatedText) throw new Error(payload.error ?? `Translation request failed (${response.status}).`);
     return payload.translatedText;
   },
-  async translateWithLlm(text: string): Promise<string> {
+  async translateWithLlm(text: string, mode: "term" | "sentence" = "sentence", context?: string): Promise<string> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 翻译");
-    return invoke("translate_with_llm", { text });
+    return invoke("translate_with_llm", { text, mode, context });
   },
   async analyzePaper(paperId: string, input: LlmAnalysisInput): Promise<LlmAnalysis> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 分析"); return invoke("analyze_paper_with_llm", { paperId, input }); },
   async findDuplicateCandidates(paperId: string): Promise<DuplicateCandidate[]> { return isTauri() ? invoke("find_duplicate_candidates", { paperId }) : []; },

@@ -128,6 +128,7 @@ flowchart LR
 - 文件哈希由 `import_pdfs` 在 Rust 侧写入。导入后先按哈希/DOI 判重（Tauri `ask`，能力清单需含 `dialog:allow-ask`），取消则 purge；通过后再读封面，读完再判一次标题/arXiv。同一 arXiv 稿的不同版本写入 `relatedPaperIds`。
 - 论文库表格不使用 sticky。WebView2 中 sticky 表头与横向滚动会错位；`table-layout: fixed` + `colgroup` 固定列宽，整表同一滚动容器。
 - 论文库标题栏提供「刷新」，调用 `initialize_library` 重载快照。
+- 右侧论文详情左侧可拖动调宽（宽度写入 localStorage）；面板变窄时双语摘要经 container query 改为单列。
 
 ### 3.3 阅读台打开与批注同步
 
@@ -199,8 +200,9 @@ flowchart LR
 ```
 
 - 文本层选区在 mouseup 时捕获；点选区外或选区折叠后收起浮动条。
-- 收录时先走 LibreTranslate（若已配置）；不可用或失败则用已配置的 LLM（`translate_with_llm`）译成中文后写入术语释义 / 写作句译文。
+- 收录时优先用已配置的 LLM 做学术翻译（术语释义与句子翻译分提示词，并带页内上下文）；LibreTranslate 仅作弱回退。
 - 「加入写作库」弹出写作用途对话框：下拉选择已有类别（含内置与历史自定义），或选「新增类别…」命名后保存。
+- LibreTranslate 需先运行 `scripts/start-libretranslate.cmd`；设置里可填 `http://127.0.0.1:5000`（自动补全 `/translate`）。
 
 ### 3.7 备份与恢复
 

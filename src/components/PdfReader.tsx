@@ -448,8 +448,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     setMessage("正在翻译术语…");
     const sentenceEn = representativeSentence(pageText[captured.page], termEn, captured.text);
     const [meaningZh, sentenceZh] = await Promise.all([
-      translateEnglishToChineseWithFallback(termEn, llmReady),
-      translateEnglishToChineseWithFallback(sentenceEn, llmReady)
+      translateEnglishToChineseWithFallback(termEn, llmReady, { mode: "term", context: sentenceEn }),
+      translateEnglishToChineseWithFallback(sentenceEn, llmReady, { mode: "sentence", context: surroundingContext(pageText[captured.page], sentenceEn) })
     ]);
     await saveVocabulary({
       id: uuid(),
@@ -462,7 +462,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     });
     clearSelection();
     setTab("vocabulary");
-    setMessage(meaningZh ? "已收录术语" : "已收录术语（未配置翻译服务且无 LLM，释义待补充）");
+    setMessage(meaningZh ? "已收录术语" : "已收录术语（未配置 LLM/翻译服务，释义待补充）");
   };
 
   const excerptFromSelection = async () => {
@@ -470,7 +470,10 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     const purpose = await askPurpose();
     if (!purpose) return;
     setMessage("正在翻译写作句…");
-    const translationZh = await translateEnglishToChineseWithFallback(captured.text, llmReady);
+    const translationZh = await translateEnglishToChineseWithFallback(captured.text, llmReady, {
+      mode: "sentence",
+      context: surroundingContext(pageText[captured.page], captured.text)
+    });
     await saveExcerpt({
       id: uuid(),
       paperId: paper.id,
@@ -482,7 +485,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       createdAt: now(),
     });
     clearSelection();
-    setMessage(translationZh ? "已加入写作库" : "已加入写作库（未配置翻译服务且无 LLM，译文待补充）");
+    setMessage(translationZh ? "已加入写作库" : "已加入写作库（未配置 LLM/翻译服务，译文待补充）");
   };
 
   const runOcr = async () => {
@@ -690,8 +693,8 @@ function QuickCapture({ paperId, page, pageText, llmReady, askPurpose, onTerm, o
     if (!termEn) return;
     const sentenceEn = pageText?.slice(0, 240);
     const [meaningZh, sentenceZh] = await Promise.all([
-      translateEnglishToChineseWithFallback(termEn, llmReady),
-      sentenceEn ? translateEnglishToChineseWithFallback(sentenceEn, llmReady) : Promise.resolve(undefined)
+      translateEnglishToChineseWithFallback(termEn, llmReady, { mode: "term", context: sentenceEn }),
+      sentenceEn ? translateEnglishToChineseWithFallback(sentenceEn, llmReady, { mode: "sentence" }) : Promise.resolve(undefined)
     ]);
     await onTerm({ id: uuid(), paperId, termEn, meaningZh: meaningZh || "待补充", sentenceEn, sentenceZh, page });
   };
@@ -700,7 +703,10 @@ function QuickCapture({ paperId, page, pageText, llmReady, askPurpose, onTerm, o
     if (!sourceText) return;
     const purpose = await askPurpose();
     if (!purpose) return;
-    const translationZh = await translateEnglishToChineseWithFallback(sourceText, llmReady);
+    const translationZh = await translateEnglishToChineseWithFallback(sourceText, llmReady, {
+      mode: "sentence",
+      context: surroundingContext(pageText, sourceText)
+    });
     await onExcerpt({ id: uuid(), paperId, sourceText, translationZh, purpose, page, tags: [], createdAt: now() });
   };
   return <div className="quick-capture"><button onClick={() => void term()}><Plus size={14} />收录术语</button><button onClick={() => void excerpt()}><BookOpen size={14} />加入写作库</button></div>;
@@ -723,4 +729,17 @@ function representativeSentence(pageText: string | undefined, phrase: string, fa
   const next = [pageText.indexOf(".", at + phrase.length), pageText.indexOf("?", at + phrase.length), pageText.indexOf("!", at + phrase.length)].filter(value => value >= 0);
   const right = next.length ? Math.min(...next) + 1 : Math.min(pageText.length, left + 360);
   return pageText.slice(left, right).trim() || fallback;
+}
+
+/** Nearby paragraph window for disambiguation (Zotero PDF Translate style). */
+function surroundingContext(pageText: string | undefined, focus: string, max = 900) {
+  if (!pageText?.trim()) return undefined;
+  const needle = focus.trim();
+  if (!needle) return undefined;
+  const at = pageText.toLowerCase().indexOf(needle.toLowerCase());
+  if (at < 0) return pageText.slice(0, max).trim() || undefined;
+  const half = Math.floor((max - needle.length) / 2);
+  const start = Math.max(0, at - half);
+  const end = Math.min(pageText.length, at + needle.length + half);
+  return pageText.slice(start, end).replace(/\s+/g, " ").trim() || undefined;
 }

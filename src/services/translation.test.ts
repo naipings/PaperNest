@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { backend } from "./backend";
-import { hasTranslationEndpoint, resetTranslationEndpoint, translateEnglishToChinese, translateEnglishToChineseWithFallback } from "./translation";
+import {
+  hasTranslationEndpoint,
+  normalizeLibreTranslateEndpoint,
+  resetTranslationEndpoint,
+  saveTranslationEndpoint,
+  translateEnglishToChinese,
+  translateEnglishToChineseWithFallback
+} from "./translation";
 
 describe("translateEnglishToChinese", () => {
   afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
+
+  it("normalizes base LibreTranslate URLs to /translate", () => {
+    expect(normalizeLibreTranslateEndpoint("http://127.0.0.1:5000")).toBe("http://127.0.0.1:5000/translate");
+    expect(normalizeLibreTranslateEndpoint("http://127.0.0.1:5000/translate/")).toBe("http://127.0.0.1:5000/translate");
+  });
 
   it("posts only the requested text to the configured endpoint", async () => {
     localStorage.setItem("papernest.translation.endpoint.v2", JSON.stringify({ endpoint: "https://translate.example/translate", apiKey: "test-key" }));
@@ -19,21 +31,30 @@ describe("translateEnglishToChinese", () => {
     expect(hasTranslationEndpoint()).toBe(false);
   });
 
-  it("falls back to LLM when no translation endpoint is configured", async () => {
-    const llm = vi.spyOn(backend, "translateWithLlm").mockResolvedValue("大模型译文");
-    await expect(translateEnglishToChineseWithFallback("hello", true)).resolves.toBe("大模型译文");
-    expect(llm).toHaveBeenCalledWith("hello");
+  it("prefers LLM over LibreTranslate when an API key is available", async () => {
+    saveTranslationEndpoint("http://127.0.0.1:5000");
+    const llm = vi.spyOn(backend, "translateWithLlm").mockResolvedValue("学术译文");
+    const lt = vi.spyOn(backend, "translateText").mockResolvedValue("机器译文");
+    await expect(translateEnglishToChineseWithFallback("transformer", true, { mode: "term", context: "We propose a Transformer." })).resolves.toBe("学术译文");
+    expect(llm).toHaveBeenCalledWith("transformer", "term", "We propose a Transformer.");
+    expect(lt).not.toHaveBeenCalled();
   });
 
-  it("falls back to LLM when the translation endpoint fails", async () => {
-    localStorage.setItem("papernest.translation.endpoint.v2", JSON.stringify({ endpoint: "https://translate.example/translate" }));
-    vi.spyOn(backend, "translateText").mockRejectedValue(new Error("down"));
-    const llm = vi.spyOn(backend, "translateWithLlm").mockResolvedValue("备用译文");
+  it("falls back to LibreTranslate when LLM is unavailable", async () => {
+    saveTranslationEndpoint("http://127.0.0.1:5000");
+    const lt = vi.spyOn(backend, "translateText").mockResolvedValue("本地译文");
+    await expect(translateEnglishToChineseWithFallback("paper", false, { mode: "sentence" })).resolves.toBe("本地译文");
+    expect(lt).toHaveBeenCalled();
+  });
+
+  it("falls back to LibreTranslate when LLM fails", async () => {
+    saveTranslationEndpoint("http://127.0.0.1:5000");
+    vi.spyOn(backend, "translateWithLlm").mockRejectedValue(new Error("llm down"));
+    vi.spyOn(backend, "translateText").mockResolvedValue("备用译文");
     await expect(translateEnglishToChineseWithFallback("paper", true)).resolves.toBe("备用译文");
-    expect(llm).toHaveBeenCalledWith("paper");
   });
 
-  it("returns undefined when neither translation service nor LLM is available", async () => {
+  it("returns undefined when neither LLM nor translation service is available", async () => {
     await expect(translateEnglishToChineseWithFallback("paper", false)).resolves.toBeUndefined();
   });
 });

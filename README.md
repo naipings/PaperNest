@@ -58,7 +58,7 @@ sequenceDiagram
 
 1. 在阅读台顶栏切换高亮、下划线或手绘，再拖选文字批注。
 2. 拖选英文词语或句子，使用浮动工具栏「收为术语」或「加入写作库」。加入写作库时可从下拉选择已有写作用途，也可新增类别。
-3. 术语和佳句保留来源论文和页码，可从资料库跳回原文；中文优先走 LibreTranslate，不可用则用已配置的 LLM。
+3. 术语和佳句保留来源论文和页码，可从资料库跳回原文；中文优先用已配置 LLM 学术翻译，LibreTranslate 仅作弱回退。
 4. 导出时生成带可见批注的新 PDF 副本，原始文件不修改。
 
 ### 4. 整理、备份与可选服务
@@ -66,7 +66,7 @@ sequenceDiagram
 - 使用领域、标签、阅读状态、保存视图和全局搜索定位论文。
 - 勾选表格第一列可批量移入回收站；回收站中可恢复或永久删除。
 - 定期在「设置」中创建完整备份。
-- 需要翻译时，优先配置 LibreTranslate；未配置时，若已保存 LLM API Key，收录术语/写作句会自动用 LLM 翻译。
+- 需要翻译时，优先配置 LLM；本地 LibreTranslate 需先启动，并在设置中填写地址（可只填 `http://127.0.0.1:5000`）。
 
 ## 功能概览
 
@@ -138,14 +138,14 @@ flowchart LR
 
 ## 翻译服务与换机
 
-翻译是可选功能。首次使用术语或佳句翻译时，输入 LibreTranslate 兼容服务地址即可。
+学术翻译优先使用已配置的 LLM。LibreTranslate 为可选弱回退。
 
 | 方案 | 说明 |
 |------|------|
-| HTTPS 兼容接口 | 换电脑后重新填写接口地址与 API Key |
-| 免费本地翻译 | 运行 `scripts/setup-libretranslate.cmd` 安装，`start-libretranslate.cmd` 启动 |
-| 模型路径 | `%LOCALAPPDATA%\PaperNest\LibreTranslate` |
-| 凭据存储 | Windows 凭据管理器，不写入资料库备份 |
+| LLM（推荐） | 设置 → LLM 自动整理；阅读台术语/写作句与导入中文字段按学术语体提示词翻译 |
+| 本地 LibreTranslate | 先 `scripts/setup-libretranslate.cmd` 安装，再用 `start-libretranslate.cmd` 启动；设置中填写 `http://127.0.0.1:5000`（会自动补全 `/translate`） |
+| 模型路径 | `%LOCALAPPDATA%\PaperNest\LibreTranslate`（或仓库内 `.libretranslate-venv`） |
+| 凭据存储 | LLM API Key 在 Windows 凭据管理器；翻译地址在本机 localStorage |
 
 ## 开发与文档
 

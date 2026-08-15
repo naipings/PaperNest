@@ -188,7 +188,8 @@ async fn translate_text(endpoint:String,text:String,api_key:Option<String>)->Res
   let allowed=endpoint.starts_with("https://")||endpoint.starts_with("http://127.0.0.1")||endpoint.starts_with("http://localhost");
   if !allowed{return Err("Translation endpoint must use HTTPS or localhost HTTP.".into());}
   if text.trim().is_empty()||text.chars().count()>10_000{return Err("Translation text must contain 1 to 10000 characters.".into());}
-  let mut request=serde_json::json!({"q":text,"source":"en","target":"zh","format":"text"});
+  // LibreTranslate with --load-only en,zh-Hans expects zh-Hans; many clients still send zh.
+  let mut request=serde_json::json!({"q":text,"source":"en","target":"zh-Hans","format":"text"});
   if let Some(key)=api_key.filter(|key|!key.trim().is_empty()){request["api_key"]=serde_json::Value::String(key);}
   let client=Client::builder().timeout(Duration::from_secs(20)).build().map_err(err)?;
   let response=client.post(endpoint).json(&request).send().await.map_err(err)?;
@@ -197,12 +198,31 @@ async fn translate_text(endpoint:String,text:String,api_key:Option<String>)->Res
   body.get("translatedText").and_then(|value|value.as_str()).map(str::to_owned).filter(|value|!value.trim().is_empty()).ok_or_else(||body.get("error").and_then(|value|value.as_str()).unwrap_or("Translation service returned no text.").to_string())
 }
 #[tauri::command]
-async fn translate_with_llm(state:State<'_,AppState>,text:String)->Result<String>{
+async fn translate_with_llm(state:State<'_,AppState>,text:String,mode:Option<String>,context:Option<String>)->Result<String>{
   let trimmed=text.trim();
   if trimmed.is_empty()||trimmed.chars().count()>10_000{return Err("Translation text must contain 1 to 10000 characters.".into());}
   let settings=load_llm_settings(&*state.pool.read().await).await?;
   let clipped:String=trimmed.chars().take(4_000).collect();
-  let answer=llm_completion(&settings,"你是英译中助手。把用户给出的英文学术文本译成简体中文。只返回译文，不要引号、解释或前后缀。",serde_json::Value::String(clipped)).await?;
+  let context=context.as_deref().map(str::trim).filter(|value|!value.is_empty()).map(|value|value.chars().take(1_200).collect::<String>());
+  let is_term=mode.as_deref().map(|value|value.eq_ignore_ascii_case("term")).unwrap_or(false);
+  let (system,user)=if is_term {
+    (
+      "你是计算机科学学术词汇助教。根据英文术语/短语及可选原句上下文，给出适合研究生术语卡片的简体中文释义。\n规则：\n1. 只输出中文释义本身（短语或一两句），不要英文复述、引号、标题或前后缀。\n2. 若有原句，优先采用该语境下的学科义项。\n3. 使用计算机科学论文常用译法；模型名、算法名与通用缩写可保留英文。\n4. 语体正式，勿口语化。",
+      match &context {
+        Some(sentence) => format!("术语：{clipped}\n原句上下文：{sentence}"),
+        None => format!("术语：{clipped}"),
+      }
+    )
+  } else {
+    (
+      "你是精通简体中文的计算机科学论文翻译引擎。将英文学术文本译为简体中文。\n规则：\n1. 只输出译文，不要解释、标题或前后缀。\n2. 保持正式学术语体；专业术语译法准确且全文一致。\n3. 保留引用标记（如 [1]）、公式、代码标识符；常见模型名与缩写可保留英文。\n4. 若提供了上下文段落，用它消歧，但只翻译「待译文本」。",
+      match &context {
+        Some(paragraph) => format!("[上下文段落]\n{paragraph}\n\n[待译文本]\n{clipped}"),
+        None => clipped,
+      }
+    )
+  };
+  let answer=llm_completion(&settings,system,serde_json::Value::String(user)).await?;
   let out=answer.trim().trim_matches('"').trim().to_string();
   if out.is_empty(){return Err("LLM 返回了空译文".into());}
   Ok(out)
@@ -221,7 +241,7 @@ async fn analyze_paper_with_llm(state:State<'_,AppState>,paper_id:String,input:L
   let settings=load_llm_settings(&*state.pool.read().await).await?; let text=input.text.chars().take(70_000).collect::<String>(); if text.trim().len()<80{return Err("PDF 没有足够的可提取文本，无法自动分析".into())}
   let mut content=vec![serde_json::json!({"type":"text","text":format!("请分析以下论文 PDF 提取文本。\n\n{}",text)})];
   if settings.vision_enabled { for image in input.candidate_images.into_iter().take(3){content.push(serde_json::json!({"type":"text","text":format!("候选模型图页：第 {} 页",image.page)}));content.push(serde_json::json!({"type":"image_url","image_url":{"url":image.data_url}}));} }
-  let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。summary 用简体中文一句话；abstractZh 是英文摘要的中文翻译；frameworkPage 仅在候选页面确有方法框架图时返回页码；vocabulary 最多 8 项，每项含 termEn,meaningZh,sentenceEn,sentenceZh,page。找不到的字段返回 null。";
+  let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。summary 用简体中文一句话；abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按计算机科学论文学术语体翻译或释义（术语准确、正式、不口语化；模型名与常用缩写可保留英文）；frameworkPage 仅在候选页面确有方法框架图时返回页码；vocabulary 最多 8 项，每项含 termEn,meaningZh,sentenceEn,sentenceZh,page。找不到的字段返回 null。";
   let value=json_from_llm(&llm_completion(&settings,system,serde_json::Value::Array(content)).await?)?; let analysis: LlmAnalysis=serde_json::from_value(value).map_err(|e|format!("LLM 返回格式无效：{e}"))?; let _=paper_id; Ok(analysis)
 }
 fn normalized_title(value:&str)->String{value.to_lowercase().chars().filter(|c|c.is_alphanumeric()).collect()}
