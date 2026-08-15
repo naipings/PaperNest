@@ -40,6 +40,26 @@ export const backend = {
     const data = loadPreview(); const index = data.excerpts.findIndex(v => v.id === entry.id);
     index >= 0 ? data.excerpts[index] = entry : data.excerpts.push(entry); persistPreview(data);
   },
+  async deleteVocabulary(id: string): Promise<void> {
+    if (isTauri()) return invoke("delete_vocabulary", { id });
+    const data = loadPreview(); data.vocabulary = data.vocabulary.filter(item => item.id !== id); persistPreview(data);
+  },
+  async deleteExcerpt(id: string): Promise<void> {
+    if (isTauri()) return invoke("delete_excerpt", { id });
+    const data = loadPreview(); data.excerpts = data.excerpts.filter(item => item.id !== id); persistPreview(data);
+  },
+  async purgePaper(id: string): Promise<void> {
+    if (isTauri()) return invoke("purge_paper", { id });
+    const data = loadPreview();
+    const paper = data.papers.find(item => item.id === id);
+    if (!paper?.deletedAt) throw new Error("请先移入回收站再永久删除");
+    data.papers = data.papers.filter(item => item.id !== id);
+    data.annotations = data.annotations.filter(item => item.paperId !== id);
+    data.vocabulary = data.vocabulary.filter(item => item.paperId !== id);
+    data.excerpts = data.excerpts.filter(item => item.paperId !== id);
+    data.figures = data.figures.filter(item => item.paperId !== id);
+    persistPreview(data);
+  },
   async saveTask(task: Task): Promise<void> {
     if (isTauri()) return invoke("save_task", { task });
     const data = loadPreview(); const index = data.tasks.findIndex(item => item.id === task.id);
@@ -93,6 +113,10 @@ export const backend = {
     const payload = await response.json() as { translatedText?: string; error?: string };
     if (!response.ok || !payload.translatedText) throw new Error(payload.error ?? `Translation request failed (${response.status}).`);
     return payload.translatedText;
+  },
+  async translateWithLlm(text: string): Promise<string> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 翻译");
+    return invoke("translate_with_llm", { text });
   },
   async analyzePaper(paperId: string, input: LlmAnalysisInput): Promise<LlmAnalysis> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 分析"); return invoke("analyze_paper_with_llm", { paperId, input }); },
   async findDuplicateCandidates(paperId: string): Promise<DuplicateCandidate[]> { return isTauri() ? invoke("find_duplicate_candidates", { paperId }) : []; },

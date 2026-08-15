@@ -13,7 +13,7 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
   const toggle = (id: string) => setCheckedIds(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const toggleAll = () => setCheckedIds(current => current.size === papers.length ? new Set() : new Set(papers.map(paper => paper.id)));
   const columns = useMemo(() => [
-    helper.display({ id: "select", header: () => <input className="row-check" type="checkbox" aria-label="全选论文" checked={papers.length > 0 && checkedIds.size === papers.length} ref={element => { if (element) element.indeterminate = checkedIds.size > 0 && checkedIds.size < papers.length; }} onClick={event => event.stopPropagation()} onChange={toggleAll} />, size: 40, enableSorting: false, cell: info => <input className="row-check" type="checkbox" aria-label="选择论文" checked={checkedIds.has(info.row.original.id)} onClick={event => event.stopPropagation()} onChange={() => toggle(info.row.original.id)} /> }),
+    helper.display({ id: "select", header: () => <input className="row-check" type="checkbox" aria-label="全选论文" checked={papers.length > 0 && checkedIds.size === papers.length} ref={element => { if (element) element.indeterminate = checkedIds.size > 0 && checkedIds.size < papers.length; }} onClick={event => event.stopPropagation()} onChange={toggleAll} />, size: 48, enableSorting: false, enableResizing: false, cell: info => <input className="row-check" type="checkbox" aria-label="选择论文" checked={checkedIds.has(info.row.original.id)} onClick={event => event.stopPropagation()} onChange={() => toggle(info.row.original.id)} /> }),
     helper.accessor("favorite", { id: "favorite", header: "", size: 38, enableSorting: true, cell: info => <button className={`favorite ${info.getValue() ? "on" : ""}`} onClick={event => { event.stopPropagation(); onToggleFavorite(info.row.original); }} aria-label="收藏"><Heart size={15} fill={info.getValue() ? "currentColor" : "none"} /></button> }),
     helper.accessor("titleEn", { id: "title", header: "论文题目", size: 330, cell: info => <div className="title-cell"><strong>{info.row.original.titleZh || info.getValue()}</strong>{info.row.original.titleZh && <small>{info.getValue()}</small>}</div> }),
     helper.accessor("authors", { header: "作者", size: 150, cell: info => <span className="ellipsis">{info.getValue().map(author => author.name).join(", ") || "—"}</span> }),
@@ -30,9 +30,16 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
   const recycleSelected = () => { if (!selectedPapers.length || !confirm(`将 ${selectedPapers.length} 篇论文及其受管 PDF 移入回收站？`)) return; onBulkRecycle(selectedPapers); setCheckedIds(new Set()); };
   return <div className="table-scroll">
     {selectedPapers.length > 0 && <div className="table-bulk-actions"><strong>已选 {selectedPapers.length} 篇</strong><button className="secondary danger" onClick={recycleSelected}><Trash2 size={15} />移入回收站</button><button className="ghost" onClick={() => setCheckedIds(new Set())}>取消选择</button></div>}
-    <table className="paper-table" style={{ width: table.getCenterTotalSize() }}>
-      <thead>{table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header => <th key={header.id} style={{ width: header.getSize() }} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getIsSorted() && <small>{header.column.getIsSorted() === "asc" ? " ↑" : " ↓"}</small>}<span className="resize-handle" onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} /></th>)}</tr>)}</thead>
-      <tbody>{table.getRowModel().rows.map(row => <tr key={row.id} className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""}`} onClick={() => onSelect(row.original)} onDoubleClick={() => onOpenPdf(row.original)}>{row.getVisibleCells().map(cell => <td key={cell.id} style={{ width: cell.column.getSize() }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody>
+    <table className="paper-table" style={{ width: table.getTotalSize() }}>
+      <colgroup>{table.getAllColumns().map(column => <col key={column.id} style={{ width: column.getSize() }} />)}</colgroup>
+      <thead>{table.getHeaderGroups().map(group => <tr key={group.id}>{group.headers.map(header => {
+        const size = header.getSize();
+        return <th key={header.id} className={header.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getIsSorted() && <small>{header.column.getIsSorted() === "asc" ? " ↑" : " ↓"}</small>}{header.column.id !== "select" && <span className="resize-handle" onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} />}</th>;
+      })}</tr>)}</thead>
+      <tbody>{table.getRowModel().rows.map(row => <tr key={row.id} className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""}`} onClick={() => onSelect(row.original)} onDoubleClick={() => onOpenPdf(row.original)}>{row.getVisibleCells().map(cell => {
+        const size = cell.column.getSize();
+        return <td key={cell.id} className={cell.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>;
+      })}</tr>)}</tbody>
     </table>
     {papers.length === 0 && <div className="table-empty">当前视图没有论文</div>}
   </div>;

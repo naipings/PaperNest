@@ -1,9 +1,5 @@
 export type ReaderTool = "select" | "highlight" | "underline" | "note" | "ink";
 
-export function readerToolNeedsTextLayer(tool: ReaderTool) {
-  return tool === "select" || tool === "highlight" || tool === "underline" || tool === "note";
-}
-
 export function readerToolLabel(tool: ReaderTool) {
   switch (tool) {
     case "select": return "选择";

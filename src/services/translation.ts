@@ -13,10 +13,28 @@ function translationConfig(): TranslationConfig {
   const config = { endpoint, apiKey }; localStorage.setItem(endpointKey, JSON.stringify(config)); return config;
 }
 
+export function hasTranslationEndpoint() {
+  const saved = localStorage.getItem(endpointKey);
+  if (!saved) return false;
+  try { return Boolean((JSON.parse(saved) as TranslationConfig).endpoint?.trim()); } catch { return false; }
+}
+
 export async function translateEnglishToChinese(text: string): Promise<string> {
   const value = text.trim(); if (!value) return "";
   const config = translationConfig();
   return backend.translateText(config.endpoint, value, config.apiKey);
+}
+
+/** Prefer LibreTranslate when configured; otherwise LLM if a key is saved. Does not prompt for a translation endpoint. */
+export async function translateEnglishToChineseWithFallback(text: string, llmReady: boolean): Promise<string | undefined> {
+  const value = text.trim();
+  if (!value) return undefined;
+  if (hasTranslationEndpoint()) {
+    try { return await translateEnglishToChinese(value); }
+    catch { /* fall through to LLM */ }
+  }
+  if (!llmReady) return undefined;
+  return backend.translateWithLlm(value);
 }
 
 export function resetTranslationEndpoint() { localStorage.removeItem(endpointKey); localStorage.removeItem(legacyEndpointKey); }

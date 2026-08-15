@@ -1,6 +1,7 @@
-import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
+import { type PDFDocumentProxy } from "pdfjs-dist";
 import { backend } from "./backend";
 import type { LlmAnalysisInput, Paper } from "../types";
+import { withPdfDocument } from "../lib/pdfSession";
 
 type CandidateImage = { page: number; dataUrl: string };
 export type PreparedPaperAnalysis = { input: LlmAnalysisInput; candidateImages: CandidateImage[] };
@@ -8,11 +9,10 @@ export type PreparedPaperAnalysis = { input: LlmAnalysisInput; candidateImages: 
 const FIGURE_WORDS = /\b(fig(?:ure)?\.?|architecture|framework|overview|pipeline|our model|proposed method|methodology)\b/i;
 
 /** Extracts text locally. Only the selected candidate page thumbnails leave the machine when vision is enabled. */
-export async function preparePaperAnalysis(paper: Paper): Promise<PreparedPaperAnalysis> {
+export async function preparePaperAnalysis(paper: Paper, visionEnabled = true): Promise<PreparedPaperAnalysis> {
   if (!paper.pdfPath) throw new Error("这篇论文没有关联 PDF");
   const bytes = await backend.readPdf(paper.pdfPath);
-  const document = await getDocument({ data: bytes.slice() }).promise;
-  try {
+  return withPdfDocument(bytes, async document => {
     const texts: { page: number; text: string; score: number }[] = [];
     let size = 0;
     for (let page = 1; page <= Math.min(document.numPages, 40) && size < 85_000; page++) {
@@ -22,13 +22,16 @@ export async function preparePaperAnalysis(paper: Paper): Promise<PreparedPaperA
       const score = (page <= 3 ? 2 : 0) + (FIGURE_WORDS.test(text) ? 5 : 0) + (text.match(/fig(?:ure)?\.?/gi)?.length ?? 0);
       texts.push({ page, text, score });
     }
-    const candidatePages = texts.filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.page - b.page).slice(0, 3);
     const candidateImages: CandidateImage[] = [];
-    for (const candidate of candidatePages) {
-      try { candidateImages.push({ page: candidate.page, dataUrl: await renderPagePreview(document, candidate.page) }); } catch { /* Text-only analysis remains available. */ }
+    if (visionEnabled) {
+      const candidatePages = texts.filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.page - b.page).slice(0, 3);
+      for (const candidate of candidatePages) {
+        try { candidateImages.push({ page: candidate.page, dataUrl: await renderPagePreview(document, candidate.page) }); }
+        catch { /* Text-only analysis remains available. */ }
+      }
     }
     return { input: { text: texts.map(item => `【第 ${item.page} 页】\n${item.text}`).join("\n\n"), candidateImages }, candidateImages };
-  } finally { await document.destroy(); }
+  });
 }
 
 async function renderPagePreview(pdf: PDFDocumentProxy, pageNo: number): Promise<string> {

@@ -8,7 +8,7 @@
 | V1 范围 | 本地资料库、PDF 阅读批注、术语与写作素材、任务日历、备份恢复 |
 | 在线能力 | Crossref、LLM、翻译均由用户主动启用 |
 | PDF 边界 | 原件只读；批注独立存储；导出时生成副本 |
-| 阅读内核 | [Fresh Air PDF](https://github.com/VeARCTechnologies/FRESH-AIR-PDF)（MIT），PaperNest 负责持久化与学习侧栏 |
+| 阅读内核 | pdfjs-dist `PDFPageView` 连续阅读；PaperNest 负责批注 overlay、持久化与学习侧栏 |
 
 ---
 
@@ -22,14 +22,12 @@ flowchart TB
     App["App.tsx 路由壳"]
     LibraryView["论文库 / 详情 / 写作库 / 知识树"]
     PdfReader["PdfReader 阅读台壳层"]
-    FreshAirPdfPane["FreshAirPdfPane"]
-    FAPDFViewer["FAPDFViewer fresh-air-pdf"]
+    ContinuousPdf["ContinuousAnnotatablePdf"]
   end
 
   subgraph Application["应用层"]
     LibraryContext["LibraryContext 状态"]
     backend["backend.ts Tauri 命令封装"]
-    freshAirBridge["freshAirBridge 批注坐标转换"]
   end
 
   subgraph Domain["领域层 Rust"]
@@ -47,41 +45,36 @@ flowchart TB
   Presentation --> Application
   Application --> Domain
   Domain --> Persistence
-  FAPDFViewer --> freshAirBridge
-  freshAirBridge --> backend
 ```
 
-### 2.2 阅读台架构（Fresh Air PDF 集成）
+### 2.2 阅读台架构
 
-阅读台由 **Fresh Air PDF 内核** 与 **PaperNest 壳层** 组成。内核负责渲染与交互；壳层负责 SQLite 持久化、学习侧栏、术语/佳句收录、OCR 与导出。
+阅读台由 **pdfjs-dist `PDFPageView`** 与 **PaperNest 壳层** 组成。PDF.js 负责 canvas、文本层和高 DPI；壳层负责缩放、批注 overlay、学习侧栏、术语/佳句、OCR 与导出。
 
 ```mermaid
 flowchart LR
   subgraph PaperNest["PaperNest 阅读台"]
     PdfReader["PdfReader.tsx"]
-    FreshAirPdfPane["FreshAirPdfPane.tsx"]
+    ContinuousPdf["ContinuousAnnotatablePdf.tsx"]
     StudySidebar["学习侧栏"]
     SelectionToolbar["SelectionToolbar"]
     SQLite["SQLite annotations"]
   end
 
-  PdfReader --> FreshAirPdfPane
+  PdfReader --> ContinuousPdf
   PdfReader --> StudySidebar
   PdfReader --> SelectionToolbar
-  FreshAirPdfPane --> FAPDFViewer["FAPDFViewer"]
-  FAPDFViewer --> Bridge["freshAirBridge.ts"]
-  Bridge --> SQLite
+  ContinuousPdf --> PDFPageView["pdfjs PDFPageView"]
+  PdfReader --> SQLite
 ```
 
 | 组件 | 路径 | 职责 |
 |------|------|------|
-| `PdfReader` | `src/components/PdfReader.tsx` | 加载 PDF 字节、页尺寸、全文索引；挂载 Fresh Air；学习侧栏；OCR/导出 |
-| `FreshAirPdfPane` | `src/components/FreshAirPdfPane.tsx` | 配置 `FAPDFViewer`（工具栏、缩略图、搜索、虚拟滚动） |
-| `freshAirBridge` | `src/lib/freshAirBridge.ts` | PaperNest 归一化坐标 ↔ Fresh Air PDF 坐标双向映射 |
-| `SelectionToolbar` | `src/components/SelectionToolbar.tsx` | 选中文本后的术语/佳句浮动菜单 |
-| PDF Worker | `public/fresh-air-worker.mjs` | Fresh Air PDF 专用 worker（自 `fresh-air-pdf` 包复制） |
-
-索引与页尺寸仍由 **pdfjs-dist** 在 `PdfReader` 加载阶段完成；渲染与批注交互完全交给 Fresh Air PDF。
+| `PdfReader` | `src/components/PdfReader.tsx` | 加载 PDF、缩放、工具模式、批注持久化、学习侧栏、OCR/导出 |
+| `ContinuousAnnotatablePdf` | `src/components/ContinuousAnnotatablePdf.tsx` | 连续页 `PDFPageView`、批注 overlay、选区浮动条 |
+| `SelectionToolbar` | `src/components/SelectionToolbar.tsx` | 高亮/下划线/批注切换、颜色、术语/佳句 |
+| `AnnotationHistory` | `src/lib/annotationHistory.ts` | 批注撤销/重做 |
+| `pdfRenderScale` | `src/lib/pdfRenderScale.ts` | 适应宽度/页面与 96/72 CSS 单位 |
 
 ---
 
@@ -115,17 +108,26 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   A[用户选择 PDF] --> B[import_pdfs 命令]
-  B --> C[fs::copy 到 pdf/originals]
+  B --> C[复制到 pdf/originals 并算 SHA-256]
   C --> D[写入 papers 表]
-  D --> E{标题/DOI 重复?}
-  E -->|是| F[返回 DuplicateCandidate]
-  E -->|否| G[可选 LLM 分析]
-  G --> H[rebuild_paper_search FTS 索引]
+  D --> E[哈希/DOI 判重 ask]
+  E -->|取消| J[purge]
+  E -->|通过| F[extractForImport 单次 PDF.js 会话]
+  F --> G[封面元数据写入]
+  G --> H{标题/arXiv 再判重}
+  H -->|取消| J
+  H -->|通过| I[可选 LLM 用已提取文本]
 ```
 
 - 导入仅复制文件，不修改原件。
-- 重复检测依据 DOI 与标题匹配，不做文件哈希门禁。
-- 导入后可选择运行 LLM 提取元数据（需用户配置 API）。
+- **同文件一好一坏的根因**：封面与 LLM 各开一次 PDF.js 时，`destroy` 后立刻再 `getDocument` 会与共享 worker 竞态。导入现走 `extractForImport`：一次打开同时得到封面与分析用正文；全局 `enqueuePdfWork` 保证打开串行，关闭用 `loadingTask.destroy()`。
+- 封面读取文档 Info 与首页/次页文本，填写标题、作者、日期、英文摘要；单字拆开的 Abstract 会拼回单词，折行会拼成段落。
+- 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
+- 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（vision 失败则纯文本重试）写回摘要/总结/术语，LLM 字段覆盖封面启发式。
+- 扫描件或字段缺失时保留文件名，不编造；封面读取失败会出现在导入提示里。
+- 文件哈希由 `import_pdfs` 在 Rust 侧写入。导入后先按哈希/DOI 判重（Tauri `ask`，能力清单需含 `dialog:allow-ask`），取消则 purge；通过后再读封面，读完再判一次标题/arXiv。同一 arXiv 稿的不同版本写入 `relatedPaperIds`。
+- 论文库表格不使用 sticky。WebView2 中 sticky 表头与横向滚动会错位；`table-layout: fixed` + `colgroup` 固定列宽，整表同一滚动容器。
+- 论文库标题栏提供「刷新」，调用 `initialize_library` 重载快照。
 
 ### 3.3 阅读台打开与批注同步
 
@@ -134,29 +136,23 @@ sequenceDiagram
   participant U as 用户
   participant PR as PdfReader
   participant PDFJS as pdfjs-dist
-  participant FAP as FAPDFViewer
-  participant BR as freshAirBridge
+  participant Page as ContinuousAnnotatablePdf
   participant BE as backend / SQLite
 
   U->>PR: 进入阅读台
   PR->>BE: readPdf(pdfPath)
-  PR->>PDFJS: getDocument + 逐页 getViewport
-  PR->>PR: 建立 pageSizes + 全文索引
-  PR->>FAP: document=Uint8Array
-  FAP-->>PR: onDocumentLoaded
-  PR->>FAP: importAnnotations(bridge JSON)
-  U->>FAP: 添加/修改/删除批注
-  FAP->>PR: onAnnotationChanged
-  PR->>BR: freshAirToPaper
+  PR->>PDFJS: getDocument
+  PR->>Page: 按页挂载 PDFPageView
+  U->>Page: 选字 / 点已有批注
+  Page->>PR: 添加或取消批注
   PR->>BE: save_annotation / delete_annotation
-  Note over BE: 侧栏删除时 annotations 变更<br/>触发 re-import 刷新视图
 ```
 
 **同步规则：**
 
-1. **SQLite → Fresh Air**：`annotations` 或 `updatedAt` 变化时，`FreshAirPdfPane` 调用 `importAnnotations`；`syncLock` 防止回环。
-2. **Fresh Air → SQLite**：`onAnnotationChanged` 经 `freshAirToPaper` 写入；`action` 为 `added`/`modified`/`deleted`。
-3. **阅读页码**：`onPageChanged` 更新 `papers.readingPage`。
+1. 批注几何以页面归一化坐标（0–1）写入 SQLite，overlay 按当前页 CSS 尺寸绘制。
+2. 选区消失或点选区外时收起浮动条。已有高亮/下划线/批注不能叠层，需先取消。
+3. 当前页由舞台顶部位置计算；打开后滚动钉在首页，直到用户自己滚动。
 
 ### 3.4 批注坐标系
 
@@ -166,16 +162,14 @@ PaperNest 在数据库中存储 **页面归一化坐标**（0–1，左上角原
 { "rects": [{ "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 }] }
 ```
 
-Fresh Air PDF 使用 **PDF 页面点坐标**（viewport scale=1 的宽高）。`freshAirBridge` 在导入/导出时用 `pageSizes` 映射：
+阅读台 overlay 使用同一套归一化坐标，按 `pageCssSize(viewport, scale)` 映射到 CSS 像素：
 
-| PaperNest 类型 | Fresh Air 类型 | 映射方式 |
-|----------------|----------------|----------|
-| `highlight` | `Rectangle` + fillColor | 归一化 rect → PDF rect，半透明填充 |
-| `underline` | `Underline` | 归一化 rect → quads |
-| `text` | `FreeText` | rect + content |
-| `ink` | `Ink` | 归一化 points → paths |
-
-高亮在 Fresh Air 侧以半透明矩形渲染；用户在 Fresh Air 工具栏中创建的下划线、手绘等按上表写回 SQLite。
+| 类型 | 绘制方式 |
+|------|----------|
+| `highlight` | 半透明矩形 |
+| `underline` | 底边线 |
+| `text` | 圆点标记 + 评论文本 |
+| `ink` | 折线路径 |
 
 ### 3.5 全文搜索
 
@@ -204,8 +198,9 @@ flowchart LR
   Excerpt --> FTS
 ```
 
-- 选择监听挂载在 `.fresh-air-stage` 容器上，mouseup 时读取 `window.getSelection()`。
-- 可选调用 LibreTranslate（`translation.ts`）翻译后一并保存。
+- 文本层选区在 mouseup 时捕获；点选区外或选区折叠后收起浮动条。
+- 收录时先走 LibreTranslate（若已配置）；不可用或失败则用已配置的 LLM（`translate_with_llm`）译成中文后写入术语释义 / 写作句译文。
+- 「加入写作库」弹出写作用途对话框：下拉选择已有类别（含内置与历史自定义），或选「新增类别…」命名后保存。
 
 ### 3.7 备份与恢复
 
@@ -222,13 +217,20 @@ paperReader/
 ├── src/
 │   ├── App.tsx                 # 屏幕路由：library / writing / knowledge / tasks / trash / settings
 │   ├── components/
-│   │   ├── PdfReader.tsx       # 阅读台壳层
-│   │   ├── FreshAirPdfPane.tsx # Fresh Air PDF 封装
-│   │   ├── LibraryView.tsx     # 论文表格 + 筛选
-│   │   ├── DetailPanel.tsx     # 论文详情
+│   │   ├── PdfReader.tsx                  # 阅读台壳层
+│   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
+│   │   ├── LibraryView.tsx                # 论文表格 + 范围/状态/领域筛选
+│   │   ├── FilterMenu.tsx                 # 带过渡的自定义筛选菜单
+│   │   ├── DetailPanel.tsx                # 论文详情
 │   │   └── ...
 │   ├── lib/
-│   │   └── freshAirBridge.ts   # 批注格式转换
+│   │   ├── annotationHistory.ts
+│   │   ├── annotationHit.ts
+│   │   ├── paperDuplicate.ts
+│   │   ├── pdfCoverMeta.ts
+│   │   ├── pdfSession.ts                  # PDF.js 串行打开 / destroy
+│   │   ├── extractPdfCover.ts             # 导入：单次会话封面+分析文本
+│   │   └── pdfRenderScale.ts
 │   ├── services/
 │   │   ├── backend.ts          # Tauri invoke 统一入口
 │   │   ├── translation.ts      # LibreTranslate 客户端
@@ -240,8 +242,6 @@ paperReader/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   └── schema.sql              # 数据库迁移
-├── public/
-│   └── fresh-air-worker.mjs    # Fresh Air PDF worker（npm install 后需存在）
 └── docs/
     ├── DEVELOPMENT.md          # 本文档
     ├── CHANGELOG.md
@@ -282,6 +282,10 @@ paperReader/
 | `index_pdf` / `indexed_pdf_pages` | 页级全文索引 |
 | `ocr_page` | Tesseract OCR 单页 |
 | `search` | FTS5 + PDF 页搜索 |
+| `save_vocabulary` / `delete_vocabulary` | 术语增删 |
+| `translate_text` / `translate_with_llm` | LibreTranslate；不可用时 LLM 英译中 |
+| `save_excerpt` / `delete_excerpt` | 写作素材增改删；写作库卡片可改正用途 |
+| `purge_paper` | 回收站论文永久删除（记录 + 受管文件） |
 | `create_backup` / `restore_backup` | 备份恢复 |
 | `lookup_online_metadata` | Crossref 元数据（可选） |
 
@@ -312,7 +316,8 @@ flowchart TB
 ```
 
 - 阅读台以 **fixed overlay** 覆盖工作区（`embedded` 模式），不占用独立路由。
-- `Escape` 关闭阅读台（`App.tsx` 全局快捷键）。
+- 左侧导航在阅读台打开时也会关闭 overlay；若本会话有批注或收录改动，先弹出保存确认。
+- `Escape` 关闭阅读台（`App.tsx` 全局快捷键），同样走保存确认。
 
 ---
 
@@ -322,13 +327,12 @@ flowchart TB
 |------|------|
 | 桌面壳 | Tauri 2 |
 | UI | React 19 + TypeScript + Vite |
-| 阅读内核 | fresh-air-pdf（基于 PDF.js） |
-| 索引 / 页尺寸 | pdfjs-dist |
+| 阅读 / 索引 | pdfjs-dist |
 | 带批注导出 | pdf-lib |
 | 数据库 | SQLite + SQLx + FTS5 |
 | OCR | 本机 Tesseract |
 
-**双 PDF.js 说明：** 项目同时依赖 `pdfjs-dist`（索引、OCR 渲染）与 `fresh-air-pdf` 内置的 PDF.js（阅读渲染）。Fresh Air PDF 默认从 unpkg 加载 worker，Tauri 离线环境无法访问；`vite.config.ts` 中的 `patchFreshAirPdfWorker` 插件将其替换为 `public/fresh-air-worker.mjs`（自 `fresh-air-pdf` 包复制，版本匹配）。
+阅读、全文索引和 OCR 渲染共用同一套 `pdfjs-dist` worker（Vite 打包路径）。
 
 ---
 
@@ -352,16 +356,6 @@ npm run tauri build      # 安装包
 npm run check            # test + build
 ```
 
-### 9.3 Fresh Air PDF Worker
-
-`fresh-air-pdf` 的 worker 未通过 npm exports 暴露，需复制到 `public/`：
-
-```powershell
-Copy-Item node_modules/fresh-air-pdf/dist/pdf.worker.min.mjs public/fresh-air-worker.mjs
-```
-
-`npm install` 后若该文件缺失，阅读台无法加载 PDF。
-
 ---
 
 ## 10. 验证清单
@@ -377,13 +371,18 @@ cd src-tauri; cargo check
 
 | 场景 | 预期 |
 |------|------|
-| 导入 PDF | 文件进入 `pdf/originals`，表格可见 |
-| 打开阅读台 | Fresh Air 工具栏、缩略图、Ctrl+滚轮缩放正常 |
+| 导入 PDF | 文件进入 `pdf/originals`，表格可见；英文摘要来自首页 Abstract，不含 Introduction / CCS LaTeX 残片；开启 LLM 时首次导入即有中文摘要/总结/术语 |
+| 重复导入 | 同一文件弹出「重复文献」确认；取消后库中仍只有一篇；不同 arXiv 版本可同时存在并互相引用 |
+| 论文库横向滚动 | 勾选框与各列表头、表体列宽一致，无叠影 |
+| 论文库横向滚动 | 窗口非全屏时滚到最右并向下滚，表头整行吸顶，逐列与表体对齐 |
+| 打开阅读台 | 从第 1 页起读，文本可选，Ctrl+滚轮与适应宽度/页面可反复切换 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |
 | 术语收录 | 选中文本 → 侧栏术语库有条目 |
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
 | 备份恢复 | ZIP 可还原完整资料库 |
+| 术语 / 写作库 | 单条或批量删除后列表更新 |
 | 回收站 | 软删除可恢复，永久删除文件清除 |
+| 阅读台跳转 | 无改动直接进入任务/写作库等；有改动先询问保存 |
 
 ---
 

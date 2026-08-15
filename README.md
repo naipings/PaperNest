@@ -37,28 +37,28 @@ flowchart TB
 1. 在论文库右上角点击「导入 PDF」，选择一个或多个 PDF；也可导入 BibTeX/RIS。
 2. 补充中英文标题、作者、领域、标签和一句话总结。
 3. 单击论文打开右侧详情；双击或点击 PDF 图标进入阅读台。
-4. 阅读台由 [Fresh Air PDF](https://github.com/VeARCTechnologies/FRESH-AIR-PDF) 驱动：普通滚轮上下阅读，**Ctrl + 滚轮**缩放，工具栏提供高亮、下划线、手绘等批注。
+4. 阅读台用 PDF.js 连续滚动阅读：普通滚轮上下翻页，**Ctrl + 滚轮**缩放，顶栏提供高亮、下划线、手绘等批注。
 
 ### 3. 批注与知识沉淀
 
 ```mermaid
 sequenceDiagram
   participant U as 用户
-  participant FAP as Fresh Air PDF
+  participant Reader as PDF.js 阅读台
   participant PN as PaperNest 侧栏
   participant DB as SQLite
 
-  U->>FAP: 拖选文本 / 使用批注工具
-  FAP->>DB: 批注变更同步
+  U->>Reader: 拖选文本 / 使用批注工具
+  Reader->>DB: 批注变更同步
   U->>PN: 选中文本 → 收为术语 / 加入写作库
   PN->>DB: 保存术语或佳句（含页码）
   U->>PN: 导出带批注副本
   PN->>U: pdf-lib 生成新 PDF
 ```
 
-1. 在 Fresh Air PDF 工具栏中高亮、下划线或手绘批注。
-2. 拖选英文词语或句子，使用浮动工具栏「收为术语」或「加入写作库」。
-3. 术语和佳句保留来源论文和页码，可从资料库跳回原文。
+1. 在阅读台顶栏切换高亮、下划线或手绘，再拖选文字批注。
+2. 拖选英文词语或句子，使用浮动工具栏「收为术语」或「加入写作库」。加入写作库时可从下拉选择已有写作用途，也可新增类别。
+3. 术语和佳句保留来源论文和页码，可从资料库跳回原文；中文优先走 LibreTranslate，不可用则用已配置的 LLM。
 4. 导出时生成带可见批注的新 PDF 副本，原始文件不修改。
 
 ### 4. 整理、备份与可选服务
@@ -66,14 +66,14 @@ sequenceDiagram
 - 使用领域、标签、阅读状态、保存视图和全局搜索定位论文。
 - 勾选表格第一列可批量移入回收站；回收站中可恢复或永久删除。
 - 定期在「设置」中创建完整备份。
-- 需要翻译时，首次使用输入 LibreTranslate 兼容地址；免费本地方案见下文。
+- 需要翻译时，优先配置 LibreTranslate；未配置时，若已保存 LLM API Key，收录术语/写作句会自动用 LLM 翻译。
 
 ## 功能概览
 
 | 模块 | 能力 |
 |------|------|
 | 论文库 | 表格检索、分类标签、保存视图、批量回收站、重复检测 |
-| 阅读台 | Fresh Air PDF 内核：连续滚动、缩略图、搜索、批注、撤销/重做 |
+| 阅读台 | PDF.js 连续滚动、缩放、批注、撤销/重做 |
 | 学习侧栏 | 速览、批注列表、术语库、框架图（与阅读台同屏） |
 | 写作资料库 | 英文原句、中文译文、用途标签、回到原文页码 |
 | 本地知识树 | 按领域/标签/文本相似度组织节点，双击定位论文 |
@@ -85,30 +85,30 @@ sequenceDiagram
 - 表格展示中英文标题、作者、状态、领域、标签、一句话总结、期刊/会议、日期和链接。
 - Category 为单选主领域，Tags 为多选标签；可维护颜色、名称及合并关系。
 - 支持内置视图、保存视图、排序、横向滚动、表格密度切换和全文搜索。
-- 导入 PDF 后根据标题、作者、年份和 DOI 提示疑似重复。
+- 导入 PDF 后根据 DOI、arXiv 版本、文件哈希和标题提示已有相同文献；不同 arXiv 版本会作为历史版本交叉引用。
+- 封面文本会填写英文摘要；CCS 分类树、LaTeX 残片和作者上标编号不会写入元数据。导入时封面与 LLM 共用一次 PDF.js 会话，避免同文件第一次解析残缺、第二次才正常。
+- 论文库表格横向滚动时表头与勾选列同步；标题栏可手动刷新资料库。
 
 ### PDF 阅读与学习
 
-阅读台采用 **Fresh Air PDF + PaperNest 学习侧栏** 的分层结构：
+阅读台采用 **pdfjs-dist `PDFPageView` + PaperNest 学习侧栏**：
 
 ```mermaid
 flowchart LR
   subgraph PaperNest
     PdfReader["PdfReader 壳层"]
-    FreshAirPdfPane["FreshAirPdfPane"]
+    ContinuousPdf["ContinuousAnnotatablePdf"]
     StudySidebar["学习侧栏"]
     SQLite["SQLite 批注"]
   end
-  FreshAirPdfPane --> FAPDFViewer["FAPDFViewer"]
-  FAPDFViewer --> freshAirBridge["freshAirBridge"]
-  freshAirBridge --> SQLite
+  ContinuousPdf --> PDFPageView["PDFPageView"]
+  PdfReader --> SQLite
   PdfReader --> StudySidebar
 ```
 
-- 默认在应用右侧以 overlay 打开阅读台，并恢复上次阅读页码。
-- Fresh Air PDF 负责渲染、缩放、批注工具栏、缩略图与文档内搜索。
-- PaperNest 通过 `freshAirBridge` 将批注与 SQLite 双向同步。
-- 选中文本后可收录术语或写作佳句；OCR 与带批注导出由 PaperNest 壳层处理。
+- 默认在应用右侧以 overlay 打开阅读台，从第 1 页起读。
+- PDF.js 负责 canvas、文本层和高 DPI；PaperNest 负责缩放、批注 overlay 与 SQLite 持久化。
+- 选中文本后可收录术语或写作佳句；OCR 与带批注导出由壳层处理。
 
 ### 资料沉淀
 

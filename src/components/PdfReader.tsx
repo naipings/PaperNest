@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Download, FileText, Highlighter, MessageSquarePlus, MousePointer2, PanelRightOpen, Pencil, Plus, Redo2, SidebarClose, Trash2, Underline, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 import { PDFDocument, rgb } from "pdf-lib";
 import { backend } from "../services/backend";
+import { translateEnglishToChineseWithFallback } from "../services/translation";
+import { writingPurposeLabels } from "../lib/writingPurposes";
 import { useLibrary } from "../state/LibraryContext";
 import type { Annotation, Paper, Point, VocabularyEntry, WritingExcerpt } from "../types";
 import { now, uuid } from "../types";
@@ -12,6 +14,7 @@ import type { ReaderTool } from "../lib/readerTools";
 import { readerToolLabel } from "../lib/readerTools";
 import { findOverlappingAnnotation } from "../lib/annotationHit";
 import { fitPdfScale } from "../lib/pdfRenderScale";
+import { PurposePickerDialog } from "./PurposePickerDialog";
 import "./PdfReader.css";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -20,8 +23,10 @@ type ZoomPreset = "fit-width" | "fit-page" | "custom";
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
-export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; onBack(): void; embedded?: boolean }) {
-  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, saveExcerpt } = useLibrary();
+export type PdfReaderHandle = { isDirty(): boolean; discard(): Promise<void> };
+
+export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean }>(function PdfReader({ paper, onBack, embedded = false }, ref) {
+  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt } = useLibrary();
   const stageRef = useRef<HTMLElement>(null);
   const pageSizeRef = useRef({ width: 612, height: 792 });
   const pendingScale = useRef(1.15);
@@ -46,11 +51,40 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   const [selectedAnnotation, setSelectedAnnotation] = useState<{ id: string; page: number; x: number; y: number }>();
   const [highlightColor, setHighlightColor] = useState("#f2ce67");
   const [canUndo, setCanUndo] = useState(false);
+  const [purposeAsk, setPurposeAsk] = useState<{ resolve(value: string | null): void }>();
+  const purposeOptions = useMemo(() => writingPurposeLabels(data?.excerpts ?? []), [data?.excerpts]);
+  const llmReady = Boolean(data?.llm.apiKeySaved);
   const [canRedo, setCanRedo] = useState(false);
 
   const annotations = useMemo(() => data?.annotations.filter(item => item.paperId === paper.id) ?? [], [data, paper.id]);
   const vocab = data?.vocabulary.filter(item => item.paperId === paper.id) ?? [];
+  const excerpts = data?.excerpts.filter(item => item.paperId === paper.id) ?? [];
   const figures = data?.figures.filter(item => item.paperId === paper.id) ?? [];
+  const snapshotPaperId = useRef(paper.id);
+  const snapshot = useRef<{ annotations: Annotation[]; vocab: VocabularyEntry[]; excerpts: WritingExcerpt[] } | undefined>(undefined);
+  const dirtyRef = useRef(false);
+  if (snapshotPaperId.current !== paper.id) {
+    snapshotPaperId.current = paper.id;
+    snapshot.current = undefined;
+  }
+  if (data && !snapshot.current) {
+    snapshot.current = { annotations: annotations.map(item => ({ ...item })), vocab: vocab.map(item => ({ ...item })), excerpts: excerpts.map(item => ({ ...item })) };
+  }
+  const sameIds = (left: { id: string }[], right: { id: string }[]) => left.length === right.length && left.every(item => right.some(other => other.id === item.id));
+  dirtyRef.current = Boolean(snapshot.current) && (!sameIds(annotations, snapshot.current!.annotations) || !sameIds(vocab, snapshot.current!.vocab) || !sameIds(excerpts, snapshot.current!.excerpts));
+  useImperativeHandle(ref, () => ({
+    isDirty: () => dirtyRef.current,
+    discard: async () => {
+      const origin = snapshot.current;
+      if (!origin) return;
+      for (const item of annotations) if (!origin.annotations.some(entry => entry.id === item.id)) await deleteAnnotation(item.id);
+      for (const item of origin.annotations) if (!annotations.some(entry => entry.id === item.id)) await saveAnnotation(item);
+      for (const item of vocab) if (!origin.vocab.some(entry => entry.id === item.id)) await deleteVocabulary(item.id);
+      for (const item of origin.vocab) if (!vocab.some(entry => entry.id === item.id)) await saveVocabulary(item);
+      for (const item of excerpts) if (!origin.excerpts.some(entry => entry.id === item.id)) await deleteExcerpt(item.id);
+      for (const item of origin.excerpts) if (!excerpts.some(entry => entry.id === item.id)) await saveExcerpt(item);
+    },
+  }), [annotations, deleteAnnotation, deleteExcerpt, deleteVocabulary, excerpts, saveAnnotation, saveExcerpt, saveVocabulary, vocab]);
 
   const touchHistory = () => {
     setCanUndo(history.current.canUndo());
@@ -252,6 +286,7 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
   };
 
   const addTextNote = async (selection: CapturedSelection) => {
+    if (findOverlappingAnnotation(annotations, selection.page, "text", selection.rects)) return;
     const comment = window.prompt("输入批注内容", selection.text.slice(0, 120));
     if (comment === null) return;
     await trackAdd({
@@ -365,6 +400,7 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest(".selection-toolbar") || target.closest(".annotation-shape")) return;
+      window.getSelection()?.removeAllRanges();
       setCaptured(undefined);
       setSelectedAnnotation(undefined);
     };
@@ -403,36 +439,50 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedAnnotation, setReaderTool, toggleReaderTool]);
 
+  const askPurpose = () => new Promise<string | null>(resolve => setPurposeAsk({ resolve }));
+
   const termFromSelection = async () => {
     if (!captured) return;
     const termEn = window.prompt("要收录的英文词汇 / 短语", captured.text);
     if (!termEn) return;
-    const meaningZh = window.prompt("中文释义") || "待补充";
+    setMessage("正在翻译术语…");
+    const sentenceEn = representativeSentence(pageText[captured.page], termEn, captured.text);
+    const [meaningZh, sentenceZh] = await Promise.all([
+      translateEnglishToChineseWithFallback(termEn, llmReady),
+      translateEnglishToChineseWithFallback(sentenceEn, llmReady)
+    ]);
     await saveVocabulary({
       id: uuid(),
       paperId: paper.id,
       termEn,
-      meaningZh,
-      sentenceEn: representativeSentence(pageText[captured.page], termEn, captured.text),
+      meaningZh: meaningZh || "待补充",
+      sentenceEn,
+      sentenceZh,
       page: captured.page,
     });
     clearSelection();
     setTab("vocabulary");
+    setMessage(meaningZh ? "已收录术语" : "已收录术语（未配置翻译服务且无 LLM，释义待补充）");
   };
 
   const excerptFromSelection = async () => {
     if (!captured) return;
-    const purpose = window.prompt("写作用途", "待分类") || "待分类";
+    const purpose = await askPurpose();
+    if (!purpose) return;
+    setMessage("正在翻译写作句…");
+    const translationZh = await translateEnglishToChineseWithFallback(captured.text, llmReady);
     await saveExcerpt({
       id: uuid(),
       paperId: paper.id,
       sourceText: captured.text,
+      translationZh,
       purpose,
       page: captured.page,
       tags: [],
       createdAt: now(),
     });
     clearSelection();
+    setMessage(translationZh ? "已加入写作库" : "已加入写作库（未配置翻译服务且无 LLM，译文待补充）");
   };
 
   const runOcr = async () => {
@@ -603,9 +653,15 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
           </>}
           {tab === "vocabulary" && <>
             {vocab.map(item => (
-              <article className="vocab-card" key={item.id}><header><strong>{item.termEn}</strong><span>{item.meaningZh}</span></header><p>{item.sentenceZh}</p></article>
+              <article className="vocab-card" key={item.id}>
+                <header>
+                  <div className="vocab-card-copy"><strong>{item.termEn}</strong><span>{item.meaningZh}</span></div>
+                  <button className="annotation-delete" title="删除术语" onClick={() => { if (confirm("删除这条术语？")) void deleteVocabulary(item.id); }}><Trash2 size={14} /></button>
+                </header>
+                <p>{item.sentenceZh}</p>
+              </article>
             ))}
-            <QuickCapture paperId={paper.id} page={page} pageText={pageText[page]} onTerm={saveVocabulary} onExcerpt={saveExcerpt} />
+            <QuickCapture paperId={paper.id} page={page} pageText={pageText[page]} llmReady={llmReady} askPurpose={askPurpose} onTerm={saveVocabulary} onExcerpt={saveExcerpt} />
           </>}
           {tab === "framework" && <>
             {figures.map(item => (
@@ -616,22 +672,38 @@ export function PdfReader({ paper, onBack, embedded = false }: { paper: Paper; o
         </div>
       </aside>}
     </div>
+    {purposeAsk && <PurposePickerDialog options={purposeOptions} onCancel={() => { purposeAsk.resolve(null); setPurposeAsk(undefined); }} onConfirm={purpose => { purposeAsk.resolve(purpose); setPurposeAsk(undefined); }} />}
   </main>;
-}
+});
 
-function QuickCapture({ paperId, page, pageText, onTerm, onExcerpt }: { paperId: string; page: number; pageText?: string; onTerm(v: VocabularyEntry): Promise<void>; onExcerpt(v: WritingExcerpt): Promise<void> }) {
-  const term = () => {
+function QuickCapture({ paperId, page, pageText, llmReady, askPurpose, onTerm, onExcerpt }: {
+  paperId: string;
+  page: number;
+  pageText?: string;
+  llmReady: boolean;
+  askPurpose(): Promise<string | null>;
+  onTerm(v: VocabularyEntry): Promise<void>;
+  onExcerpt(v: WritingExcerpt): Promise<void>;
+}) {
+  const term = async () => {
     const termEn = prompt("英文词汇 / 短语");
     if (!termEn) return;
-    const meaningZh = prompt("中文释义") || "待补充";
-    void onTerm({ id: uuid(), paperId, termEn, meaningZh, sentenceEn: pageText?.slice(0, 240), page });
+    const sentenceEn = pageText?.slice(0, 240);
+    const [meaningZh, sentenceZh] = await Promise.all([
+      translateEnglishToChineseWithFallback(termEn, llmReady),
+      sentenceEn ? translateEnglishToChineseWithFallback(sentenceEn, llmReady) : Promise.resolve(undefined)
+    ]);
+    await onTerm({ id: uuid(), paperId, termEn, meaningZh: meaningZh || "待补充", sentenceEn, sentenceZh, page });
   };
-  const excerpt = () => {
+  const excerpt = async () => {
     const sourceText = prompt("粘贴要收藏的英文佳句");
     if (!sourceText) return;
-    void onExcerpt({ id: uuid(), paperId, sourceText, purpose: "待分类", page, tags: [], createdAt: now() });
+    const purpose = await askPurpose();
+    if (!purpose) return;
+    const translationZh = await translateEnglishToChineseWithFallback(sourceText, llmReady);
+    await onExcerpt({ id: uuid(), paperId, sourceText, translationZh, purpose, page, tags: [], createdAt: now() });
   };
-  return <div className="quick-capture"><button onClick={term}><Plus size={14} />收录术语</button><button onClick={excerpt}><BookOpen size={14} />加入写作库</button></div>;
+  return <div className="quick-capture"><button onClick={() => void term()}><Plus size={14} />收录术语</button><button onClick={() => void excerpt()}><BookOpen size={14} />加入写作库</button></div>;
 }
 
 function hexColor(hex: string) {

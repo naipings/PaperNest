@@ -33,6 +33,7 @@ export interface Paper {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
+  relatedPaperIds?: string[];
 }
 
 export interface Rect { x: number; y: number; width: number; height: number; }

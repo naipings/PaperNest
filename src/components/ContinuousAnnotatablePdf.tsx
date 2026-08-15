@@ -185,6 +185,7 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
     const capture = () => {
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+      if (!selection.anchorNode || !target.contains(selection.anchorNode)) return;
       const pageRect = target.getBoundingClientRect();
       const clientRects = Array.from(selection.getRangeAt(0).getClientRects());
       const rects: Rect[] = clientRects

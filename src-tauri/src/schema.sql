@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS papers (
   category_id TEXT, tag_ids_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'unread', summary TEXT,
   abstract_en TEXT, abstract_zh TEXT, venue TEXT, publication_date TEXT, doi TEXT, arxiv_id TEXT, source_url TEXT,
   pdf_path TEXT, pdf_sha256 TEXT, page_count INTEGER, has_text_layer INTEGER, favorite INTEGER NOT NULL DEFAULT 0,
-  reading_page INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+  reading_page INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
+  related_paper_ids_json TEXT NOT NULL DEFAULT '[]'
 );
 DROP INDEX IF EXISTS idx_papers_sha;
 CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status, deleted_at);

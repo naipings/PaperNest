@@ -17,3 +17,5 @@ vite.config.d.ts
 .npm-cache/
 *.bak
 .translation_language.patch
+release/
+test-fixtures/
