@@ -92,6 +92,6 @@ INSERT OR IGNORE INTO tags(id,name,color) VALUES
  ('tag-repro','实验复现','#b89a5a');
 
 INSERT OR IGNORE INTO settings(key,value) VALUES
- ('profile','{"displayName":"研究生同学","researchField":"计算机科学","theme":"system"}'),
+ ('profile','{"displayName":"研究生同学","researchField":"计算机科学","theme":"system","visualTheme":"workbench"}'),
  ('llm_settings','{"baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini","autoAnalyzeOnImport":true,"visionEnabled":true}'),
  ('schema_version','3');

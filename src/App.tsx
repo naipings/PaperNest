@@ -63,7 +63,12 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [readerPaper, requestLeave]);
-  useEffect(() => { if (!data) return; const theme = data.profile.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.profile.theme; document.documentElement.dataset.theme = theme; }, [data?.profile.theme]);
+  useEffect(() => {
+    if (!data) return;
+    const theme = data.profile.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.profile.theme;
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.uiTheme = data.profile.visualTheme ?? "workbench";
+  }, [data?.profile.theme, data?.profile.visualTheme]);
   if (loading) return <div className="splash"><LoaderCircle className="spin" /><strong>正在打开本地论文库…</strong></div>;
   if (error || !data) return <div className="splash error"><AlertTriangle /><strong>无法打开资料库</strong><p>{error}</p><button className="primary" onClick={refresh}>重试</button></div>;
   const openPdf = (paper: Paper, page?: number) => { setReaderPaper(page ? { ...paper, readingPage: page } : paper); setScreen("library"); };

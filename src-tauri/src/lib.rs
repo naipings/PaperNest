@@ -40,7 +40,7 @@ struct WritingExcerpt { id: String, paper_id: String, source_text: String, trans
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct SavedView { id: String, name: String, builtin: Option<bool>, filter: serde_json::Value, sorting: serde_json::Value, column_visibility: serde_json::Value, density: String }
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
-struct Profile { display_name: String, research_field: String, avatar_path: Option<String>, theme: String }
+struct Profile { display_name: String, research_field: String, avatar_path: Option<String>, theme: String, #[serde(default = "default_visual_theme")] visual_theme: String }
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct Task { id: String, title: String, notes: Option<String>, due_date: Option<String>, status: String, priority: String, paper_id: Option<String>, created_at: String, updated_at: String, completed_at: Option<String> }
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
@@ -118,6 +118,7 @@ async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot>
   Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,library_path:dir.to_string_lossy().into_owned() })
 }
 
+fn default_visual_theme() -> String { "workbench".into() }
 fn default_llm_settings() -> LlmSettings { LlmSettings { base_url:"https://api.openai.com/v1".into(), model:"gpt-4.1-mini".into(), auto_analyze_on_import:true, vision_enabled:true, api_key_saved:false } }
 fn llm_key_entry() -> Result<keyring::Entry> { keyring::Entry::new("PaperNest", "llm_api_key").map_err(err) }
 async fn load_llm_settings(pool:&SqlitePool)->Result<LlmSettings> {

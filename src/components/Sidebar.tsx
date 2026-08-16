@@ -14,7 +14,7 @@ export function Sidebar({ screen, onNavigate, profile, onTheme }: { screen: Scre
   ];
   return <aside className="sidebar">
     <div className="brand"><span className="brand-mark"><BookOpen size={18} /></span><div><strong>PaperNest</strong><small>本地论文工作台</small></div></div>
-    <nav>{items.map(({ id, label, icon: Icon }) => <button key={id} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}><Icon size={17} />{label}</button>)}</nav>
+    <nav>{items.map(({ id, label, icon: Icon }) => <button key={id} title={label} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}><Icon size={17} />{label}</button>)}</nav>
     <div className="sidebar-spacer" />
     <button className="theme-switch" onClick={onTheme}>{profile.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />} 切换主题</button>
     <div className="profile-mini"><span>{profile.displayName.slice(0, 1)}</span><div><strong>{profile.displayName}</strong><small>{profile.researchField || "未填写研究方向"}</small></div></div>

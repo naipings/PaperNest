@@ -1,6 +1,6 @@
 # 界面风格
 
-PaperNest 采用浅蓝数据工作台风格，服务于论文管理与阅读任务。
+PaperNest 提供两套可切换的工作界面，服务于论文管理与阅读任务。
 
 页眉对齐 [Helios Page Header](https://helios.hashicorp.design/components/page-header) 与 [Boreal PageHeader](https://www.borealui.ca/docs/components/pageheader)：标题与右侧操作同一基线，说明单行跟在标题下；去掉嵌套白卡片，避免背景接缝与左右错位。
 
@@ -16,4 +16,8 @@ PaperNest 采用浅蓝数据工作台风格，服务于论文管理与阅读任�
 | 控件 | 使用圆角筛选器、轻边框和低对比阴影，强调当前操作而不遮挡数据。 |
 | 文案 | 页面标题、导航、分组标签和操作按钮均使用中文。 |
 
-实现位置：`src/reference-theme.css`（覆盖视觉层）与 `src/styles.css`（页眉结构）。不改变导入、阅读、搜索和本地存储流程。
+## 柔光紫仪表盘
+
+在“设置 → 个人资料 → 界面风格”选择“柔光紫仪表盘”。该风格采用窄图标导航、柔光网格底纹、紫粉渐变与半透明白色卡片，适配论文库、任务日历、写作资料库、知识树和设置页。
+
+实现位置：`src/reference-theme.css`（经典工作台）、`src/lilac-dashboard-theme.css`（柔光紫仪表盘）与 `src/styles.css`（结构样式）。界面风格保存于个人资料的 `visualTheme` 字段。

@@ -38,3 +38,17 @@ describe("library overview density", () => {
     expect(base).toMatch(/\.page-kicker/);
   });
 });
+
+describe("visual theme selection", () => {
+  it("persists and applies the lilac dashboard selection", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const settings = readFileSync("src/components/SettingsView.tsx", "utf8");
+    const theme = readFileSync("src/lilac-dashboard-theme.css", "utf8");
+    const schema = readFileSync("src-tauri/src/schema.sql", "utf8");
+
+    expect(app).toMatch(/dataset\.uiTheme = data\.profile\.visualTheme \?\? "workbench"/);
+    expect(settings).toContain("柔光紫仪表盘");
+    expect(theme).toContain(':root[data-ui-theme="lilac"]');
+    expect(schema).toContain('"visualTheme":"workbench"');
+  });
+});

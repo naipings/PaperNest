@@ -113,7 +113,7 @@ export interface SavedView {
   density: "compact" | "comfortable";
 }
 
-export interface Profile { displayName: string; researchField: string; avatarPath?: string; theme: "light" | "dark" | "system"; }
+export interface Profile { displayName: string; researchField: string; avatarPath?: string; theme: "light" | "dark" | "system"; visualTheme?: "workbench" | "lilac"; }
 
 /** The key itself is deliberately never returned to the webview or stored in SQLite. */
 export interface LlmSettings { baseUrl: string; model: string; autoAnalyzeOnImport: boolean; visionEnabled: boolean; apiKeySaved: boolean; }
