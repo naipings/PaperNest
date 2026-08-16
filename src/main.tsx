@@ -7,5 +7,6 @@ import "./llm.css";
 import "./reference-theme.css";
 import "./lilac-dashboard-theme.css";
 import "./mist-dashboard-theme.css";
+import "./willow-dashboard-theme.css";
 
 createRoot(document.getElementById("root")!).render(<StrictMode><LibraryProvider><App /></LibraryProvider></StrictMode>);

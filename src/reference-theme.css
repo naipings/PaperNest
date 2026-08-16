@@ -236,6 +236,13 @@
 
   &[data-theme="dark"] .research-overview { background: linear-gradient(118deg, #1b2a42, #19263b); }
   &[data-theme="dark"] .overview-metrics article { background: #202c3f; border-color: #30415b; box-shadow: none; }
+  &[data-theme="dark"] .metric-icon.blue { color: #8eb6ef; background: #243447; }
+  &[data-theme="dark"] .metric-icon.coral { color: #f08a94; background: #3a2428; }
+  &[data-theme="dark"] .metric-icon.mint { color: #6ec4b0; background: #1f3530; }
+  &[data-theme="dark"] .overview-assistant {
+    background: linear-gradient(125deg, #3a5f8f 0%, #4a5690 48%, #8a5070 100%);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .28);
+  }
   &[data-theme="dark"] .content-page,
   &[data-theme="dark"] .settings-page,
   &[data-theme="dark"] .knowledge-graph-page { background: linear-gradient(135deg, #151d2b, #192536); }
@@ -245,6 +252,40 @@
   &[data-theme="dark"] .page-kicker { background: #243447; color: #8eb6ef; }
   &[data-theme="dark"] .page-heading .stat-card,
   &[data-theme="dark"] .page-heading-actions .knowledge-search { background: #202c3f; border-color: #30415b; box-shadow: none; }
+  &[data-theme="dark"] .library-view .paper-table th,
+  &[data-theme="dark"] .library-view .paper-table th.col-select {
+    background: #243041;
+    color: #9aa5b8;
+    border-color: #30415b;
+  }
+  &[data-theme="dark"] .library-view .paper-table {
+    border-color: #30415b;
+  }
+  &[data-theme="dark"] .library-view .paper-table td { background: #1c2230; border-color: #2d3648; }
+  &[data-theme="dark"] .library-view .paper-table tr:hover td { background: #243041; }
+  &[data-theme="dark"] .task-summary-card,
+  &[data-theme="dark"] .task-list-panel,
+  &[data-theme="dark"] .calendar-panel,
+  &[data-theme="dark"] .excerpt-card,
+  &[data-theme="dark"] .settings-content,
+  &[data-theme="dark"] .knowledge-map-layout,
+  &[data-theme="dark"] .reading-heatmap-board,
+  &[data-theme="dark"] .reading-heatmap-stats {
+    background: #1c2230;
+    border-color: #30415b;
+    box-shadow: none;
+  }
+  &[data-theme="dark"] .task-summary-card span { color: #9aa5b8; }
+  &[data-theme="dark"] .calendar-day.today {
+    background: #243447;
+    box-shadow: inset 0 0 0 1px #6ba3e8;
+  }
+  &[data-theme="dark"] .purpose-chips button.active,
+  &[data-theme="dark"] .filter-trigger.active,
+  &[data-theme="dark"] .filter-menu-panel button.active {
+    background: #243447;
+    color: #8eb6ef;
+  }
 }
 
 @media (max-width: 1380px) {

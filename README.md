@@ -29,7 +29,7 @@ flowchart TB
 ### 1. 首次启动
 
 1. 安装并启动 PaperNest。
-2. 首次启动时选择资料库目录。建议选择容量充足、会定期备份的非系统盘。
+2. 首次启动默认在软件安装目录下创建 `PaperNestLibrary`（可在设置中迁移到其它位置）。建议选择容量充足、会定期备份的非系统盘。
 3. 程序会在该目录创建 `library.db`、`pdf/originals`、`figures` 和 `backups`。不要手动移动其中的单个文件。
 
 ### 2. 导入与阅读
@@ -127,7 +127,7 @@ flowchart LR
 ## 资料库目录结构
 
 ```text
-<用户选择的资料库>/
+<软件安装目录>/PaperNestLibrary/   # 默认；迁移后为用户选定路径
 ├── library.db              # SQLite 主库（论文、批注、术语、任务等）
 ├── pdf/originals/          # 受管 PDF 原件
 ├── figures/                # 方法框架图
@@ -162,6 +162,6 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | 文档 | 内容 |
 |------|------|
 | [开发文档](docs/DEVELOPMENT.md) | 架构分层、模块职责、批注同步流程、数据模型、视觉令牌、验证清单 |
-| [界面风格](docs/UI_STYLE.md) | 单一「主题」选项（经典工作台 / 柔光紫 / 雾蓝日程 × 明暗）与视觉规范 |
+| [界面风格](docs/UI_STYLE.md) | 单一「主题」选项（经典工作台 / 柔光紫 / 雾蓝 / 苔绿暖黄 × 明暗）与视觉规范 |
 | [更新记录](docs/CHANGELOG.md) | 版本变更 |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界 |

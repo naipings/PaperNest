@@ -82,7 +82,56 @@ fn read_library_location(config: &Path) -> Option<PathBuf> {
   if path.is_absolute() { Some(path) } else { None }
 }
 
-fn resolve_library_dir(app:&tauri::App)->Result<(PathBuf,PathBuf)> { let config_dir=app.path().app_config_dir().map_err(err)?; fs::create_dir_all(&config_dir).map_err(err)?; let config=config_dir.join("library-location.json"); if let Some(path)=read_library_location(&config) { return Ok((path,config)); } let legacy=app.path().app_local_data_dir().map_err(err)?.join("PaperNestLibrary"); if legacy.join("library.db").exists() { return Ok((legacy,config)); } let documents=app.path().document_dir().or_else(|_|app.path().app_local_data_dir()).map_err(err)?; Ok((documents.join("PaperNestLibrary"),config)) }
+/// 默认资料库：安装目录（可执行文件所在目录）下的 PaperNestLibrary。
+fn install_library_dir() -> Option<PathBuf> {
+  let exe = env::current_exe().ok()?;
+  Some(exe.parent()?.join("PaperNestLibrary"))
+}
+
+#[cfg(test)]
+mod library_path_tests {
+  use super::*;
+
+  #[test]
+  fn install_library_dir_is_next_to_executable() {
+    let dir = install_library_dir().expect("current_exe parent");
+    assert_eq!(dir.file_name().and_then(|n| n.to_str()), Some("PaperNestLibrary"));
+    let exe = env::current_exe().unwrap();
+    assert_eq!(dir.parent(), exe.parent());
+  }
+
+  #[test]
+  fn read_library_location_prefers_absolute_saved_path() {
+    let config = env::temp_dir().join(format!("papernest-library-location-{}.json", Uuid::new_v4()));
+    fs::write(&config, r#"{"libraryPath":"E:/Custom/PaperNestLibrary"}"#).unwrap();
+    let path = read_library_location(&config);
+    let _ = fs::remove_file(&config);
+    assert_eq!(path, Some(PathBuf::from("E:/Custom/PaperNestLibrary")));
+  }
+}
+
+fn resolve_library_dir(app: &tauri::App) -> Result<(PathBuf, PathBuf)> {
+  let config_dir = app.path().app_config_dir().map_err(err)?;
+  fs::create_dir_all(&config_dir).map_err(err)?;
+  let config = config_dir.join("library-location.json");
+  // 用户通过设置迁移后写入的路径优先。
+  if let Some(path) = read_library_location(&config) {
+    return Ok((path, config));
+  }
+  // 兼容旧默认：应用本地数据目录与「文档」下已有资料库。
+  let legacy_local = app.path().app_local_data_dir().map_err(err)?.join("PaperNestLibrary");
+  if legacy_local.join("library.db").exists() {
+    return Ok((legacy_local, config));
+  }
+  if let Ok(documents) = app.path().document_dir() {
+    let legacy_docs = documents.join("PaperNestLibrary");
+    if legacy_docs.join("library.db").exists() {
+      return Ok((legacy_docs, config));
+    }
+  }
+  let default_dir = install_library_dir().unwrap_or(legacy_local);
+  Ok((default_dir, config))
+}
 fn copy_library(source:&Path,target:&Path)->Result<()> { for entry in WalkDir::new(source).into_iter().filter_map(|e|e.ok()) { let path=entry.path(); let relative=path.strip_prefix(source).map_err(err)?; let destination=target.join(relative); if entry.file_type().is_dir() { fs::create_dir_all(&destination).map_err(err)?; } else if entry.file_type().is_file() { if let Some(parent)=destination.parent(){fs::create_dir_all(parent).map_err(err)?;} fs::copy(path,&destination).map_err(err)?; } } Ok(()) }
 fn tesseract_executable()->PathBuf { if let Ok(program_files)=env::var("ProgramFiles") { let candidate=PathBuf::from(program_files).join("Tesseract-OCR").join("tesseract.exe"); if candidate.exists(){return candidate;} } PathBuf::from("tesseract") }
 
