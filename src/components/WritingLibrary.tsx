@@ -20,7 +20,13 @@ export function WritingLibrary({ onOpenPaper }: { onOpenPaper(paper: Paper, page
     for (const id of ids) await deleteExcerpt(id);
     setCheckedIds(new Set());
   };
-  return <main className="content-page"><header className="page-heading"><div><span className="eyebrow"><Feather size={15} />ACADEMIC WRITING</span><h1>写作资料库</h1><p>将阅读中的好句子沉淀为可追溯、可复用的写作素材。</p></div><div className="stat-card"><strong>{data.excerpts.length}</strong><small>已收藏佳句</small></div></header>
+  return <main className="content-page"><header className="page-heading">
+    <div className="page-title-block">
+      <div className="page-title-row"><span className="page-title-icon"><Feather size={18} /></span><h1>写作资料库</h1><span className="page-kicker">学术写作</span></div>
+      <p>将阅读中的好句子沉淀为可追溯、可复用的写作素材。</p>
+    </div>
+    <div className="page-heading-actions"><div className="stat-card"><strong>{data.excerpts.length}</strong><small>已收藏佳句</small></div></div>
+  </header>
     <div className="writing-toolbar"><label className="search-box"><Search size={16} /><input placeholder="搜索佳句、译文或个人改写" value={search} onChange={e => setSearch(e.target.value)} /></label><FilterMenu icon={<Filter size={15} />} value={purpose} onChange={setPurpose} groups={[{ title: "写作用途", options: purposes.map(item => ({ id: item, label: item })) }]} /></div>
     <div className="purpose-chips">{purposes.map(p => <button key={p} className={purpose === p ? "active" : ""} onClick={() => setPurpose(p)}>{p}{p !== "全部" && <small>{data.excerpts.filter(e => e.purpose === p).length}</small>}</button>)}</div>
     {checkedIds.size > 0 && <div className="table-bulk-actions writing-bulk"><strong>已选 {checkedIds.size} 条</strong><button className="secondary danger" onClick={() => void remove([...checkedIds])}><Trash2 size={15} />删除选中</button><button className="ghost" onClick={() => setCheckedIds(new Set())}>取消选择</button></div>}

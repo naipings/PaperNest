@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookmarkPlus, Filter, LayoutList, RefreshCw, Rows3, Tags } from "lucide-react";
+import { BookOpenCheck, BookmarkPlus, BrainCircuit, Clock3, Filter, LayoutList, RefreshCw, Rows3, Sparkles, Tags } from "lucide-react";
 import { useLibrary } from "../state/LibraryContext";
 import type { Paper, PaperStatus, SavedView } from "../types";
 import { uuid } from "../types";
@@ -53,10 +53,22 @@ export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, o
   const localIds = new Set(localMatches.map(paper => paper.id));
   const backendIds = new Set(searchHitPaperIds);
   const papers = search.trim() ? visibleInView.filter(paper => localIds.has(paper.id) || backendIds.has(paper.id)) : visibleInView;
+  const readingCount = data.papers.filter(paper => !paper.deletedAt && paper.status === "reading").length;
+  const unreadCount = data.papers.filter(paper => !paper.deletedAt && paper.status === "unread").length;
+  const completedCount = data.papers.filter(paper => !paper.deletedAt && paper.status === "read").length;
   const saveCurrent = async () => { const name = window.prompt("视图名称", "我的筛选"); if (!name) return; const custom: SavedView = { ...view, id: uuid(), name, builtin: false }; await saveView(custom); setViewId(custom.id); };
   const recyclePapers = (items: Paper[]) => { const timestamp = new Date().toISOString(); void Promise.all(items.map(paper => savePaper({ ...paper, deletedAt: timestamp, updatedAt: timestamp }))); };
   const refreshLibrary = async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } };
   return <main className="library-view">
+    <section className="research-overview" aria-label="论文库概览">
+      <div className="overview-intro"><span className="eyebrow"><Sparkles size={14} />研究工作台</span><h1>今天，从一篇论文开始</h1><p>集中查看阅读进度、待办论文与本地研究素材。</p></div>
+      <div className="overview-metrics">
+        <article><span className="metric-icon blue"><BookOpenCheck size={18} /></span><div><strong>{data.papers.filter(paper => !paper.deletedAt).length}</strong><small>已收录论文</small></div></article>
+        <article><span className="metric-icon coral"><Clock3 size={18} /></span><div><strong>{readingCount}</strong><small>正在阅读</small></div></article>
+        <article><span className="metric-icon mint"><BookOpenCheck size={18} /></span><div><strong>{completedCount}</strong><small>已完成阅读</small></div></article>
+      </div>
+      <aside className="overview-assistant"><div><span className="assistant-label"><BrainCircuit size={15} />智能研读</span><strong>{unreadCount ? `有 ${unreadCount} 篇论文等待开始` : "论文库已整理完成"}</strong><small>在设置中配置 LLM 后，可自动整理摘要、术语和方法框架。</small></div><span className="assistant-orb" aria-hidden="true" /></aside>
+    </section>
     <div className="view-header">
       <div><h1>我的论文库</h1><p>{papers.length} 篇论文 · 数据仅保存在本机</p></div>
       <div className="view-tools">

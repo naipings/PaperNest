@@ -37,7 +37,13 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
   }, [data, query, threshold]);
   const selected = graph.nodes.find(node => node.paper.id === selectedId) ?? graph.nodes[0];
   return <main className="knowledge-graph-page">
-    <header className="knowledge-graph-header"><div><span className="eyebrow"><Network size={15} />LOCAL PAPER MAP</span><h1>{ui.title}</h1><p>{ui.description}</p></div><label className="knowledge-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={ui.filter} /></label></header>
+    <header className="page-heading knowledge-graph-header">
+      <div className="page-title-block">
+        <div className="page-title-row"><span className="page-title-icon"><Network size={18} /></span><h1>{ui.title}</h1><span className="page-kicker">论文关系图</span></div>
+        <p>{ui.description}</p>
+      </div>
+      <div className="page-heading-actions"><label className="knowledge-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={ui.filter} /></label></div>
+    </header>
     <div className="knowledge-controls"><label>{ui.threshold} <input type="range" min=".12" max=".62" step=".02" value={threshold} onChange={event => setThreshold(Number(event.target.value))} /><strong>{Math.round(threshold * 100)}%</strong></label><span>{graph.nodes.length} {ui.papers} · {graph.edges.length} {ui.edges}</span><span className="knowledge-gesture-hint">{ui.gestures}</span></div>
     <div className="knowledge-map-layout"><section className={"knowledge-map " + (viewport.panning ? "panning" : "")}>
       <div className="knowledge-zoom" aria-label={ui.title}><button onClick={() => viewport.zoomBy(-.15)} title={ui.zoomOut} aria-label={ui.zoomOut}><Minus size={18} /></button><strong>{Math.round(viewport.camera.zoom * 100)}%</strong><button onClick={() => viewport.zoomBy(.15)} title={ui.zoomIn} aria-label={ui.zoomIn}><Plus size={18} /></button><button onClick={viewport.reset} title={ui.reset} aria-label={ui.reset}><RotateCcw size={16} /></button></div>
@@ -46,4 +52,3 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
     </section><aside className="knowledge-inspector">{selected ? <><span className="status">{ui.local}</span><h2>{selected.paper.titleZh || selected.paper.titleEn}</h2>{selected.paper.titleZh && <p className="english-title">{selected.paper.titleEn}</p>}<p>{selected.paper.authors.map(author => author.name).join(", ") || ui.authors} · {selected.paper.publicationDate?.slice(0, 4) || ui.year}</p><dl><div><dt>{ui.strength}</dt><dd>{Math.round(selected.degree * 100)}%</dd></div><div><dt>{ui.summary}</dt><dd>{selected.paper.summary || ui.pending}</dd></div><div><dt>{ui.abstract}</dt><dd className="knowledge-abstract">{selected.paper.abstractZh || ui.noAbstract}</dd></div></dl><button className="primary" onClick={() => onOpenPaper(selected.paper)}><ExternalLink size={16} />{ui.locate}</button><small>{ui.hint}</small></> : <p>{ui.empty}</p>}</aside></div>
   </main>;
 }
-

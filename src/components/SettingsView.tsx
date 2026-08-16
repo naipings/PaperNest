@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Database, Download, HardDrive, Laptop, LockKeyhole, Palette, RotateCcw, Save, ShieldCheck, Sparkles, Tags as TagsIcon, UserRound } from "lucide-react";
+import { Archive, Database, Download, HardDrive, Laptop, LockKeyhole, Palette, RotateCcw, Save, Settings, ShieldCheck, Sparkles, Tags as TagsIcon, UserRound } from "lucide-react";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import type { Category, Profile, Tag } from "../types";
@@ -10,7 +10,12 @@ import { OnlineMetadataSettingsForm } from "./OnlineMetadataSettingsForm";
 export function SettingsView() {
   const { data, saveProfile, saveCategory, saveTag, mergeTaxonomy, refresh } = useLibrary(); const [section, setSection] = useState("profile"); const [notice, setNotice] = useState("");
   if (!data) return null; const sections = [{ id: "profile", label: "个人资料", icon: UserRound }, { id: "llm", label: "LLM 自动整理", icon: Sparkles }, { id: "metadata", label: "在线元数据", icon: Database }, { id: "taxonomy", label: "分类与标签", icon: TagsIcon }, { id: "data", label: "本地数据", icon: HardDrive }, { id: "privacy", label: "隐私与安全", icon: ShieldCheck }];
-  return <main className="settings-page"><header className="page-heading"><div><h1>设置</h1><p>管理个人偏好、本地资料目录和数据安全。</p></div></header><div className="settings-layout"><nav>{sections.map(({ id, label, icon: Icon }) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}><Icon size={16} />{label}</button>)}</nav><section className="settings-content">
+  return <main className="settings-page"><header className="page-heading">
+    <div className="page-title-block">
+      <div className="page-title-row"><span className="page-title-icon"><Settings size={18} /></span><h1>设置</h1><span className="page-kicker">系统偏好</span></div>
+      <p>管理个人偏好、本地资料目录和数据安全。</p>
+    </div>
+  </header><div className="settings-layout"><nav>{sections.map(({ id, label, icon: Icon }) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}><Icon size={16} />{label}</button>)}</nav><section className="settings-content">
     {section === "profile" && <ProfileForm profile={data.profile} onSave={async profile => { await saveProfile(profile); setNotice("个人资料已保存"); }} />}
     {section === "llm" && <LlmSettingsForm />}
     {section === "metadata" && <OnlineMetadataSettingsForm />}

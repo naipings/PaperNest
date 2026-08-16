@@ -154,10 +154,14 @@ npm install
 npm run dev          # 浏览器预览（localStorage 模拟后端）
 npm run tauri dev    # 桌面端完整功能
 npm run check        # 测试 + 构建
+npm run tauri build  # 生成 paper-reader.exe 与 NSIS 安装包
+Copy-Item src-tauri\target\release\paper-reader.exe release\windows\PaperNest.exe -Force
+Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release\windows\ -Force
 ```
 
 | 文档 | 内容 |
 |------|------|
-| [开发文档](docs/DEVELOPMENT.md) | 架构分层、模块职责、批注同步流程、数据模型、验证清单 |
+| [开发文档](docs/DEVELOPMENT.md) | 架构分层、模块职责、批注同步流程、数据模型、视觉令牌、验证清单 |
+| [界面风格](docs/UI_STYLE.md) | 论文工作台的颜色、模块层级与中文文案规范 |
 | [更新记录](docs/CHANGELOG.md) | 版本变更 |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界 |

@@ -7,8 +7,8 @@
 .pdfjs-reader .reader-layout.pdfjs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; flex: 1; }
 .pdfjs-reader .reader-layout.pdfjs-layout.right-closed { grid-template-columns: minmax(0, 1fr); }
 .pdfjs-reader .pdf-stage { position: relative; min-height: 0; height: calc(100vh - 54px); overflow: auto; overflow-anchor: none; overscroll-behavior: contain; background: #ececec; padding: 42px 25px 55px; display: block; }
-.reader-screen.embedded { position: fixed; top: 0; right: 0; bottom: 0; left: 224px; z-index: 20; }
-.pdfjs-reader.embedded .pdf-stage { height: calc(100vh - 54px); }
+.reader-screen.embedded { position: absolute; inset: 0; z-index: 20; height: auto; border-radius: inherit; overflow: hidden; }
+.pdfjs-reader.embedded .pdf-stage { height: calc(100% - 54px); }
 .pdfjs-reader.embedded .reader-layout.pdfjs-layout { grid-template-columns: minmax(0, 1fr); }
 .pdfjs-reader.embedded .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr) 320px; }
 .pdfjs-reader.embedded .study-sidebar { min-height: 0; }
