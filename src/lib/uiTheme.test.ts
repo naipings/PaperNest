@@ -17,9 +17,10 @@ describe("appearance theme unification", () => {
     expect(next.visualTheme).toBe("lilac");
   });
 
-  it("exposes six labeled theme options for settings", () => {
-    expect(APPEARANCE_OPTIONS).toHaveLength(6);
+  it("exposes nine labeled theme options for settings", () => {
+    expect(APPEARANCE_OPTIONS).toHaveLength(9);
     expect(APPEARANCE_OPTIONS.some(item => item.label.includes("柔光紫"))).toBe(true);
+    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("雾蓝日程"))).toBe(true);
   });
 });
 
@@ -43,8 +44,8 @@ describe("ui theme tokens", () => {
 describe("library overview density", () => {
   const css = readFileSync("src/reference-theme.css", "utf8");
 
-  it("scopes workbench overview styles away from lilac", () => {
-    expect(css).toContain(':root:not([data-ui-theme="lilac"])');
+  it("scopes workbench overview styles to workbench", () => {
+    expect(css).toContain(':root[data-ui-theme="workbench"]');
   });
 
   it("keeps metric number and label on one row", () => {
@@ -95,5 +96,13 @@ describe("visual theme selection", () => {
     expect(theme).toMatch(/grid-template-columns:\s*232px/);
     expect(theme).not.toMatch(/\.brand div,\s*\n?\s*\.profile-mini,\s*\n?\s*\.theme-switch\s*\{\s*display:\s*none/);
     expect(theme).not.toMatch(/\.sidebar nav button\s*\{[^}]*font-size:\s*0/);
+  });
+
+  it("keeps mist theme rules in its own stylesheet", () => {
+    const theme = readFileSync("src/mist-dashboard-theme.css", "utf8");
+
+    expect(theme).toContain(':root[data-ui-theme="mist"]');
+    expect(theme).toContain(':root[data-ui-theme="mist"][data-theme="dark"]');
+    expect(theme).toMatch(/--accent:\s*#596d7f/);
   });
 });

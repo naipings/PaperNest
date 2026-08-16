@@ -24,5 +24,6 @@ PaperNest 通过设置中的单一「主题」选择界面外观，服务于论�
 |---|---|
 | 经典工作台 · 跟随系统 / 浅色 / 深色 | 默认海军蓝工作台；`reference-theme.css` + `styles.css` |
 | 柔光紫仪表盘 · 跟随系统 / 浅色 / 深色 | 暖丁香壳层 + orchid 主色 + 玫粉品牌色；保留侧栏文字导航；`lilac-dashboard-theme.css` |
+| 雾蓝日程面板 · 跟随系统 / 浅色 / 深色 | 海盐蓝与雾白卡片；使用窄图标导航和低对比日程面板；`mist-dashboard-theme.css` |
 
 底层仍写入 `profile.theme` 与 `profile.visualTheme`，由 `html[data-theme]` / `html[data-ui-theme]` 落地。

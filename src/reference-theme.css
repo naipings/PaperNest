@@ -1,6 +1,6 @@
 /* 论文库顶部概览：紧凑单行，把纵向空间留给表格。
-   仅经典工作台生效；柔光紫由 lilac-dashboard-theme.css 接管。 */
-:root:not([data-ui-theme="lilac"]) {
+   仅经典工作台生效；其他主题由各自样式文件接管。 */
+:root[data-ui-theme="workbench"] {
   --overview-blue: #4b8de5;
   --overview-coral: #ed6c77;
   --overview-mint: #4eae9a;
@@ -248,15 +248,15 @@
 }
 
 @media (max-width: 1380px) {
-  :root:not([data-ui-theme="lilac"]) .research-overview {
+  :root[data-ui-theme="workbench"] .research-overview {
     grid-template-columns: minmax(180px, .9fr) minmax(320px, 1.5fr);
   }
-  :root:not([data-ui-theme="lilac"]) .overview-assistant { grid-column: 1 / -1; }
-  :root:not([data-ui-theme="lilac"]) .overview-assistant > div { max-width: calc(100% - 48px); }
+  :root[data-ui-theme="workbench"] .overview-assistant { grid-column: 1 / -1; }
+  :root[data-ui-theme="workbench"] .overview-assistant > div { max-width: calc(100% - 48px); }
 }
 
 @media (max-width: 1180px) {
-  :root:not([data-ui-theme="lilac"]) .overview-intro p,
-  :root:not([data-ui-theme="lilac"]) .overview-assistant small { display: none; }
-  :root:not([data-ui-theme="lilac"]) .page-title-block > p { display: none; }
+  :root[data-ui-theme="workbench"] .overview-intro p,
+  :root[data-ui-theme="workbench"] .overview-assistant small { display: none; }
+  :root[data-ui-theme="workbench"] .page-title-block > p { display: none; }
 }
