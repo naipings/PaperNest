@@ -83,6 +83,13 @@ export interface Task {
   paperId?: Id; createdAt: string; updatedAt: string; completedAt?: string;
 }
 
+/** 某天在阅读台累计停留秒数（按本地日 + 论文） */
+export interface PaperDayRead {
+  day: string;
+  paperId: Id;
+  seconds: number;
+}
+
 export interface WritingExcerpt {
   id: Id;
   paperId: Id;
@@ -137,6 +144,7 @@ export interface LibrarySnapshot {
   profile: Profile;
   llm: LlmSettings;
   tasks: Task[];
+  readingDays: PaperDayRead[];
   libraryPath: string;
   metadata: OnlineMetadataSettings;
 }

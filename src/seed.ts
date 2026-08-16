@@ -93,6 +93,7 @@ export const seedSnapshot: LibrarySnapshot = {
   excerpts: [{ id: "ext-1", paperId: "paper-1", sourceText: "We propose a new simple network architecture, the Transformer, based solely on attention mechanisms.", translationZh: "我们提出了一种仅基于注意力机制的简单网络架构 Transformer。", purpose: "方法描述", personalRewrite: "We develop a unified architecture built entirely upon ...", page: 1, tags: ["提出方法"], createdAt: "2026-08-02T12:00:00Z" }],
   views: [],
   tasks: [],
+  readingDays: [],
   profile: { displayName: "研究生同学", researchField: "计算机科学", theme: "system" },
   llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4.1-mini", autoAnalyzeOnImport: true, visionEnabled: true, apiKeySaved: false },
   metadata: { enabled: false, provider: "crossref" }

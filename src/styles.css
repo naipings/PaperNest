@@ -448,3 +448,104 @@ body { font-size:15px; } button,input,textarea,select { font-size:14px; }.brand 
 .version-links { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .version-links button { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; font: inherit; }
 .version-links button:hover { text-decoration: underline; }
+
+/* 阅读打卡热力图（GitHub / Codex 风格，挂在任务页） */
+.reading-heatmap { max-width: 1240px; margin: 18px auto 0; }
+.reading-heatmap-board {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(40, 70, 120, .05);
+  padding: 16px 18px 14px;
+}
+.reading-heatmap-board > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.reading-heatmap-board h2 { margin: 0; font-size: 16px; }
+.reading-heatmap-legend { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.reading-heatmap-grid-wrap { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: end; }
+.reading-heatmap-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, 12px);
+  gap: 3px;
+  padding-top: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 12px;
+}
+.reading-heatmap-scroll { overflow-x: auto; padding-bottom: 2px; }
+.reading-heatmap-months {
+  display: grid;
+  gap: 3px;
+  min-height: 16px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.reading-heatmap-months span { white-space: nowrap; }
+.reading-heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 3px; width: max-content; }
+.reading-heat-dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ebf1f8;
+  box-shadow: inset 0 0 0 1px rgba(80, 110, 150, .08);
+}
+button.reading-heat-dot { cursor: default; }
+.reading-heat-dot.level-1 { background: #c7dbf5; }
+.reading-heat-dot.level-2 { background: #8eb6ef; }
+.reading-heat-dot.level-3 { background: #4f86d8; }
+.reading-heat-dot.level-4 { background: #1e4f9c; }
+.reading-heatmap-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+.reading-heatmap-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 18px;
+  flex: 1;
+  min-width: 0;
+}
+.reading-heatmap-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, auto));
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.reading-heatmap-stats article {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+.reading-heatmap-stats article:last-child { border-right: 0; }
+.reading-heatmap-stats strong { font-size: 18px; line-height: 1.1; letter-spacing: -.03em; color: var(--accent); }
+.reading-heatmap-stats span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+:root[data-theme="dark"] .reading-heat-dot { background: #243041; box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
+:root[data-theme="dark"] .reading-heat-dot.level-1 { background: #2f4f78; }
+:root[data-theme="dark"] .reading-heat-dot.level-2 { background: #3f6eab; }
+:root[data-theme="dark"] .reading-heat-dot.level-3 { background: #5b8fd4; }
+:root[data-theme="dark"] .reading-heat-dot.level-4 { background: #8eb6ef; }
+@media (max-width: 1100px) {
+  .reading-heatmap-footer { flex-direction: column; align-items: stretch; }
+  .reading-heatmap-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reading-heatmap-stats article:nth-child(2) { border-right: 0; }
+  .reading-heatmap-stats article:nth-child(1),
+  .reading-heatmap-stats article:nth-child(2) { border-bottom: 1px solid var(--line); }
+}

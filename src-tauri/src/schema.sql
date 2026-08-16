@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS excerpts (id TEXT PRIMARY KEY, paper_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS saved_views (id TEXT PRIMARY KEY, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pdf_pages (paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE, page INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(paper_id,page));
+CREATE TABLE IF NOT EXISTS paper_day_reads (
+  day TEXT NOT NULL,
+  paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+  seconds INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(day, paper_id)
+);
+CREATE INDEX IF NOT EXISTS idx_paper_day_reads_day ON paper_day_reads(day);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_search USING fts5(paper_id UNINDEXED, content, tokenize='trigram');
 CREATE VIRTUAL TABLE IF NOT EXISTS pdf_search USING fts5(paper_id UNINDEXED, page UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
@@ -87,4 +94,4 @@ INSERT OR IGNORE INTO tags(id,name,color) VALUES
 INSERT OR IGNORE INTO settings(key,value) VALUES
  ('profile','{"displayName":"研究生同学","researchField":"计算机科学","theme":"system"}'),
  ('llm_settings','{"baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini","autoAnalyzeOnImport":true,"visionEnabled":true}'),
- ('schema_version','2');
+ ('schema_version','3');

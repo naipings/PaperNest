@@ -1,6 +1,7 @@
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 import { Modal } from "./Modal";
+import { ReadingHeatmap } from "./ReadingHeatmap";
 import { useLibrary } from "../state/LibraryContext";
 import { partitionTasks } from "../lib/taskBuckets";
 import type { Task, TaskPriority, TaskStatus } from "../types";
@@ -207,5 +208,6 @@ export function TaskCalendar() {
       </div>
     </Modal>}
     {hoverTip && <div className="task-hover-tip" role="tooltip" style={{ top: hoverTip.top, left: hoverTip.left }}>{hoverTip.text}</div>}
+    <ReadingHeatmap />
   </main>;
 }

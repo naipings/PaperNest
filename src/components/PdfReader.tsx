@@ -26,7 +26,7 @@ const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 export type PdfReaderHandle = { isDirty(): boolean; discard(): Promise<void> };
 
 export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean }>(function PdfReader({ paper, onBack, embedded = false }, ref) {
-  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt } = useLibrary();
+  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, addReadingSeconds } = useLibrary();
   const stageRef = useRef<HTMLElement>(null);
   const pageSizeRef = useRef({ width: 612, height: 792 });
   const pendingScale = useRef(1.15);
@@ -213,6 +213,35 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     }, 800);
     return () => window.clearTimeout(timer);
   }, [pdf, page]);
+
+  useEffect(() => {
+    let active = document.visibilityState === "visible";
+    let last = Date.now();
+    const flush = () => {
+      const elapsed = Math.floor((Date.now() - last) / 1000);
+      last = Date.now();
+      if (elapsed <= 0 || !active) return;
+      const local = new Date();
+      const day = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+      void addReadingSeconds(paper.id, day, elapsed);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        flush();
+        active = false;
+      } else {
+        active = true;
+        last = Date.now();
+      }
+    };
+    const timer = window.setInterval(flush, 30_000);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      flush();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [paper.id, addReadingSeconds]);
 
   useEffect(() => {
     const stage = stageRef.current;

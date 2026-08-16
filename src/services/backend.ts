@@ -2,12 +2,21 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
 import type { Annotation, Category, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, OnlineMetadataLookup, OnlineMetadataSettings, Paper, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import { dayKey } from "../lib/readingActivity";
 
 const STORAGE_KEY = "papernest-preview-v1";
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 function loadPreview(): LibrarySnapshot {
-  try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "") as Partial<LibrarySnapshot>; return { ...structuredClone(seedSnapshot), ...saved, llm: saved.llm ?? structuredClone(seedSnapshot.llm) }; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "") as Partial<LibrarySnapshot>;
+    return {
+      ...structuredClone(seedSnapshot),
+      ...saved,
+      llm: saved.llm ?? structuredClone(seedSnapshot.llm),
+      readingDays: saved.readingDays ?? structuredClone(seedSnapshot.readingDays)
+    };
+  }
   catch { return structuredClone(seedSnapshot); }
 }
 function persistPreview(snapshot: LibrarySnapshot) { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); }
@@ -20,6 +29,17 @@ export const backend = {
     if (isTauri()) return invoke("save_paper", { paper });
     const data = loadPreview(); const index = data.papers.findIndex(p => p.id === paper.id);
     index >= 0 ? data.papers[index] = paper : data.papers.unshift(paper); persistPreview(data);
+  },
+  async addReadingSeconds(paperId: string, day: string, seconds: number): Promise<number> {
+    if (seconds <= 0) return 0;
+    if (isTauri()) return invoke("add_reading_seconds", { paperId, day, seconds });
+    const data = loadPreview();
+    const key = day || dayKey(new Date());
+    const index = data.readingDays.findIndex(row => row.day === key && row.paperId === paperId);
+    if (index >= 0) data.readingDays[index] = { ...data.readingDays[index], seconds: data.readingDays[index].seconds + seconds };
+    else data.readingDays.push({ day: key, paperId, seconds });
+    persistPreview(data);
+    return data.readingDays.find(row => row.day === key && row.paperId === paperId)!.seconds;
   },
   async saveAnnotation(annotation: Annotation): Promise<void> {
     if (isTauri()) return invoke("save_annotation", { annotation });
@@ -58,6 +78,7 @@ export const backend = {
     data.vocabulary = data.vocabulary.filter(item => item.paperId !== id);
     data.excerpts = data.excerpts.filter(item => item.paperId !== id);
     data.figures = data.figures.filter(item => item.paperId !== id);
+    data.readingDays = data.readingDays.filter(item => item.paperId !== id);
     persistPreview(data);
   },
   async saveTask(task: Task): Promise<void> {
