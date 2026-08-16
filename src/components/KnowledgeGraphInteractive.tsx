@@ -1,54 +1,271 @@
-import { ExternalLink, Minus, Network, Plus, RotateCcw, Search } from "lucide-react";
+import { ExternalLink, Minus, Network, Plus, RotateCcw, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  authorYearLabel,
+  buildEdges,
+  defaultOriginIndex,
+  forceLayout,
+  layoutWorldForCount,
+  neighborhoodIndices,
+  shortestPath,
+  similarityMatrix,
+  yearColor,
+  yearOf,
+  type GraphEdge,
+} from "../lib/knowledgeGraph";
 import { useGraphViewport } from "../lib/useGraphViewport";
 import { useLibrary } from "../state/LibraryContext";
 import type { Paper } from "../types";
 
-type Edge = { from: number; to: number; score: number };
-type Node = { paper: Paper; x: number; y: number; color: string; radius: number; opacity: number; label: string; degree: number };
-const ui = {
-  title: "\u672c\u5730\u77e5\u8bc6\u6811", filter: "\u7b5b\u9009\u8bba\u6587", threshold: "\u5173\u7cfb\u9608\u503c", papers: "\u7bc7\u8bba\u6587", edges: "\u6761\u5173\u8054",
-  description: "\u989c\u8272\u8868\u793a\u4e3b\u9886\u57df\uff1b\u8282\u70b9\u8d8a\u5927\u3001\u8d8a\u6df1\uff0c\u8868\u793a\u4e0e\u672c\u5730\u8bba\u6587\u7684\u5173\u8054\u8d8a\u591a\u3002\u8fd9\u662f\u672c\u5730\u76f8\u4f3c\u5ea6\u56fe\uff0c\u4e0d\u662f\u5f15\u7528\u7f51\u7edc\u3002",
-  gestures: "\u6eda\u8f6e\u7f29\u653e \u00b7 \u7a7a\u767d\u5904\u62d6\u52a8", zoomOut: "\u7f29\u5c0f", zoomIn: "\u653e\u5927", reset: "\u91cd\u7f6e\u89c6\u56fe",
-  local: "\u672c\u5730\u8bba\u6587", authors: "\u4f5c\u8005\u5f85\u8865\u5145", year: "\u5e74\u4efd\u5f85\u8865\u5145", strength: "\u5c40\u90e8\u5173\u8054\u5f3a\u5ea6",
-  summary: "\u4e00\u53e5\u8bdd\u603b\u7ed3", abstract: "\u4e2d\u6587\u6458\u8981", pending: "\u5f85\u8865\u5145", noAbstract: "\u6682\u65e0\u4e2d\u6587\u6458\u8981",
-  locate: "\u5728\u8bba\u6587\u8868\u683c\u4e2d\u5b9a\u4f4d", hint: "\u5355\u51fb\u8282\u70b9\u67e5\u770b\uff1b\u53cc\u51fb\u8282\u70b9\u76f4\u63a5\u5728\u8bba\u6587\u8868\u683c\u4e2d\u6253\u5f00\u3002",
-  empty: "\u6ca1\u6709\u53ef\u663e\u793a\u7684\u8bba\u6587\u3002"
-};
-const tokens = (paper: Paper) => new Set((paper.titleEn + " " + (paper.titleZh ?? "") + " " + (paper.summary ?? "") + " " + (paper.abstractEn ?? "") + " " + (paper.abstractZh ?? "")).toLowerCase().match(/[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}/g) ?? []);
-const score = (left: Set<string>, right: Set<string>) => { let count = 0; left.forEach(token => { if (right.has(token)) count++; }); return count / Math.max(1, Math.min(left.size, right.size)); };
-const authorYear = (paper: Paper) => { const first = paper.authors[0]?.name?.trim() || "Unknown"; const author = first.split(/[\s,]+/).filter(Boolean).at(-1) || first; return author + ", " + (paper.publicationDate?.match(/^\d{4}/)?.[0] || "n.d."); };
+type ViewMode = "graph" | "prior" | "derivative" | "list";
 
 export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: Paper): void }) {
-  const { data } = useLibrary(); const [query, setQuery] = useState(""); const [threshold, setThreshold] = useState(.24); const [selectedId, setSelectedId] = useState<string>();
-  const viewport = useGraphViewport({ world: { width: 1000, height: 650 } });
+  const { data } = useLibrary();
+  const [query, setQuery] = useState("");
+  const [threshold, setThreshold] = useState(0.12);
+  const [originId, setOriginId] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string>();
+  const [view, setView] = useState<ViewMode>("graph");
+
+  const papers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (data?.papers ?? [])
+      .filter(paper => !paper.deletedAt)
+      .filter(paper => !q || `${paper.titleEn} ${paper.titleZh ?? ""} ${paper.summary ?? ""}`.toLowerCase().includes(q))
+      .slice(0, 200);
+  }, [data, query]);
+
+  const matrix = useMemo(() => (papers.length ? similarityMatrix(papers) : []), [papers]);
+
+  const originIndex = useMemo(() => {
+    if (!papers.length) return 0;
+    const fromId = originId ? papers.findIndex(paper => paper.id === originId) : -1;
+    if (fromId >= 0) return fromId;
+    return defaultOriginIndex(matrix);
+  }, [papers, originId, matrix]);
+
+  const neighborhoodSize = Math.min(40, Math.max(2, papers.length || 12));
+  const world = useMemo(() => layoutWorldForCount(neighborhoodSize), [neighborhoodSize]);
+  const viewport = useGraphViewport({ world });
   const graph = useMemo(() => {
-    const papers = (data?.papers ?? []).filter(paper => !paper.deletedAt && (paper.titleEn + " " + (paper.titleZh ?? "") + " " + (paper.summary ?? "")).toLowerCase().includes(query.toLowerCase())).slice(0, 300);
-    const colors = new Map((data?.categories ?? []).map(category => [category.id, category.color])); const words = papers.map(tokens); const edges: Edge[] = [];
-    for (let from = 0; from < papers.length; from++) for (let to = from + 1; to < papers.length; to++) { const shared = papers[from].tagIds.filter(id => papers[to].tagIds.includes(id)).length; const value = Math.min(.55, shared * .24) + (papers[from].categoryId && papers[from].categoryId === papers[to].categoryId ? .14 : 0) + score(words[from], words[to]) * .42; if (value >= threshold) edges.push({ from, to, score: value }); }
-    const degree = Array.from({ length: papers.length }, () => 0); edges.forEach(edge => { degree[edge.from] += edge.score; degree[edge.to] += edge.score; });
-    const groups = [...new Set(papers.map(paper => paper.categoryId || "unclassified"))];
-    const nodes: Node[] = papers.map((paper, index) => {
-      const key = paper.categoryId || "unclassified"; const peers = papers.filter(item => (item.categoryId || "unclassified") === key); const order = peers.findIndex(item => item.id === paper.id); const cluster = groups.indexOf(key);
-      const density = degree[index]; const clusterAngle = Math.PI * 2 * cluster / Math.max(1, groups.length); const localAngle = Math.PI * 2 * order / Math.max(1, peers.length); const centerX = 500 + Math.cos(clusterAngle) * 170; const centerY = 330 + Math.sin(clusterAngle) * 125; const localRadius = 38 + (order % 4) * 27 + Math.max(0, 55 - density * 45);
-      return { paper, x: centerX + Math.cos(localAngle) * localRadius, y: centerY + Math.sin(localAngle) * localRadius, color: colors.get(paper.categoryId || "") || "#7666b9", radius: Math.min(50, 14 + Math.sqrt(density + .2) * 19), opacity: Math.min(.96, .48 + density * .38), label: authorYear(paper), degree: density };
+    if (!papers.length) {
+      return {
+        nodes: [] as Array<{
+          local: number; paper: Paper; x: number; y: number; color: string; radius: number;
+          label: string; toOrigin: number; isOrigin: boolean; year: number | null;
+        }>,
+        edges: [] as GraphEdge[],
+        path: [] as number[],
+        pathEdges: new Set<string>(),
+        list: [] as Array<{
+          local: number; paper: Paper; x: number; y: number; color: string; radius: number;
+          label: string; toOrigin: number; isOrigin: boolean; year: number | null;
+        }>,
+        minYear: 2010,
+        maxYear: 2026,
+        edgesVisible: [] as GraphEdge[],
+      };
+    }
+    const indices = neighborhoodIndices(matrix, originIndex, Math.min(40, papers.length));
+    const localOrigin = 0;
+    const layoutWorld = layoutWorldForCount(indices.length);
+    // Sparse graph like Connected Papers: kNN=2 + MST, avoid dense springs that collapse the layout.
+    const edgesAll = buildEdges(matrix, indices, 2, 0.05);
+    const edges = edgesAll.filter(edge => edge.score >= threshold);
+    const layoutEdges = edges.length ? edges : edgesAll.slice(0, Math.max(indices.length - 1, 1));
+    const roughRadii = indices.map((_, local) => (local === localOrigin ? 18 : 12));
+    const positions = forceLayout(indices.length, layoutEdges, localOrigin, layoutWorld, undefined, roughRadii);
+    const years = indices.map(i => yearOf(papers[i])).filter((y): y is number => y != null);
+    const minYear = years.length ? Math.min(...years) : 2000;
+    const maxYear = years.length ? Math.max(...years) : 2026;
+    const degree = Array.from({ length: indices.length }, () => 0);
+    layoutEdges.forEach(edge => {
+      degree[edge.from] += edge.score;
+      degree[edge.to] += edge.score;
     });
-    return { nodes, edges: edges.sort((left, right) => right.score - left.score).slice(0, 700) };
-  }, [data, query, threshold]);
+    const nodes = indices.map((paperIndex, local) => {
+      const paper = papers[paperIndex];
+      const toOrigin = matrix[paperIndex][indices[localOrigin]];
+      return {
+        local,
+        paper,
+        x: positions[local].x,
+        y: positions[local].y,
+        color: yearColor(yearOf(paper), minYear, maxYear),
+        radius: Math.min(18, 8 + Math.sqrt(degree[local] + 0.15) * 6.5 + (local === localOrigin ? 3 : 0)),
+        label: authorYearLabel(paper),
+        toOrigin: local === localOrigin ? 1 : toOrigin,
+        isOrigin: local === localOrigin,
+        year: yearOf(paper),
+      };
+    });
+    const selectedLocal = nodes.findIndex(node => node.paper.id === (selectedId ?? nodes[0]?.paper.id));
+    const path = selectedLocal >= 0
+      ? (shortestPath(layoutEdges, selectedLocal, localOrigin) ?? [selectedLocal])
+      : [];
+    const pathEdges = new Set<string>();
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = Math.min(path[i], path[i + 1]);
+      const b = Math.max(path[i], path[i + 1]);
+      pathEdges.add(`${a}:${b}`);
+    }
+    const list = nodes
+      .slice()
+      .sort((a, b) => b.toOrigin - a.toOrigin);
+    return { nodes, edges: layoutEdges, path, pathEdges, list, minYear, maxYear, edgesVisible: edges };
+  }, [papers, matrix, originIndex, threshold, selectedId]);
+
   const selected = graph.nodes.find(node => node.paper.id === selectedId) ?? graph.nodes[0];
-  return <main className="knowledge-graph-page">
+  const originYear = yearOf(papers[originIndex] ?? selected?.paper);
+  const filteredList = graph.list.filter(node => {
+    if (view === "prior" && originYear != null) return (node.year ?? 0) < originYear;
+    if (view === "derivative" && originYear != null) return (node.year ?? 9999) > originYear;
+    return true;
+  });
+
+  const makeOrigin = (paper: Paper) => {
+    setOriginId(paper.id);
+    setSelectedId(paper.id);
+    setView("graph");
+  };
+
+  return <main className="knowledge-graph-page cp-page">
     <header className="page-heading knowledge-graph-header">
       <div className="page-title-block">
-        <div className="page-title-row"><span className="page-title-icon"><Network size={18} /></span><h1>{ui.title}</h1><span className="page-kicker">论文关系图</span></div>
-        <p>{ui.description}</p>
+        <div className="page-title-row">
+          <span className="page-title-icon"><Network size={18} /></span>
+          <h1>本地知识树</h1>
+          <span className="page-kicker">Connected Papers 风格</span>
+        </div>
+        <p>
+          以原点论文为中心的力导向邻域图。底层为本地 L1：BM25 + TF-IDF（标题加权、中文二字切分）与标签/领域；非 Semantic Scholar 共引。颜色越深越新；选中高亮到原点的最短相似路径。
+        </p>
       </div>
-      <div className="page-heading-actions"><label className="knowledge-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={ui.filter} /></label></div>
+      <div className="page-heading-actions">
+        <label className="knowledge-search">
+          <Search size={17} />
+          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="筛选论文…" />
+        </label>
+      </div>
     </header>
-    <div className="knowledge-controls"><label>{ui.threshold} <input type="range" min=".12" max=".62" step=".02" value={threshold} onChange={event => setThreshold(Number(event.target.value))} /><strong>{Math.round(threshold * 100)}%</strong></label><span>{graph.nodes.length} {ui.papers} · {graph.edges.length} {ui.edges}</span><span className="knowledge-gesture-hint">{ui.gestures}</span></div>
-    <div className="knowledge-map-layout"><section className={"knowledge-map " + (viewport.panning ? "panning" : "")}>
-      <div className="knowledge-zoom" aria-label={ui.title}><button onClick={() => viewport.zoomBy(-.15)} title={ui.zoomOut} aria-label={ui.zoomOut}><Minus size={18} /></button><strong>{Math.round(viewport.camera.zoom * 100)}%</strong><button onClick={() => viewport.zoomBy(.15)} title={ui.zoomIn} aria-label={ui.zoomIn}><Plus size={18} /></button><button onClick={viewport.reset} title={ui.reset} aria-label={ui.reset}><RotateCcw size={16} /></button></div>
-      <svg {...viewport.svgProps} role="img" aria-label={ui.title}>{graph.edges.map((edge, index) => <line key={index} x1={graph.nodes[edge.from].x} y1={graph.nodes[edge.from].y} x2={graph.nodes[edge.to].x} y2={graph.nodes[edge.to].y} style={{ strokeWidth: .6 + edge.score * 2.8, opacity: .1 + edge.score * .38 }} />)}{graph.nodes.map(node => <g className={"knowledge-map-node " + (selected?.paper.id === node.paper.id ? "selected" : "")} key={node.paper.id} transform={"translate(" + node.x + " " + node.y + ")"} onPointerDown={event => event.stopPropagation()} onClick={() => setSelectedId(node.paper.id)} onDoubleClick={() => onOpenPaper(node.paper)}><circle r={node.radius + 3} fill="transparent" stroke={node.color} strokeOpacity={selected?.paper.id === node.paper.id ? 1 : 0} strokeWidth="3" /><circle r={node.radius} fill={node.color} fillOpacity={node.opacity} /><text y={node.radius + 15}>{node.label}</text><title>{node.paper.titleZh || node.paper.titleEn}</title></g>)}</svg>
-      {!graph.nodes.length && <div className="knowledge-empty">{ui.empty}</div>}
-    </section><aside className="knowledge-inspector">{selected ? <><span className="status">{ui.local}</span><h2>{selected.paper.titleZh || selected.paper.titleEn}</h2>{selected.paper.titleZh && <p className="english-title">{selected.paper.titleEn}</p>}<p>{selected.paper.authors.map(author => author.name).join(", ") || ui.authors} · {selected.paper.publicationDate?.slice(0, 4) || ui.year}</p><dl><div><dt>{ui.strength}</dt><dd>{Math.round(selected.degree * 100)}%</dd></div><div><dt>{ui.summary}</dt><dd>{selected.paper.summary || ui.pending}</dd></div><div><dt>{ui.abstract}</dt><dd className="knowledge-abstract">{selected.paper.abstractZh || ui.noAbstract}</dd></div></dl><button className="primary" onClick={() => onOpenPaper(selected.paper)}><ExternalLink size={16} />{ui.locate}</button><small>{ui.hint}</small></> : <p>{ui.empty}</p>}</aside></div>
+
+    <div className="cp-toolbar">
+      <div className="cp-origin-title" title={papers[originIndex]?.titleEn}>
+        <Sparkles size={14} />
+        <strong>原点</strong>
+        <span>{papers[originIndex] ? (papers[originIndex].titleZh || papers[originIndex].titleEn) : "—"}</span>
+      </div>
+      <div className="cp-view-tabs">
+        {([["graph", "图谱"], ["prior", "先前工作"], ["derivative", "衍生工作"], ["list", "列表"]] as const).map(([id, label]) => (
+          <button key={id} type="button" className={view === id ? "active" : ""} onClick={() => setView(id)}>{label}</button>
+        ))}
+      </div>
+    </div>
+
+    <div className="knowledge-controls">
+      <label>关系阈值 <input type="range" min="0.04" max="0.45" step="0.02" value={threshold} onChange={event => setThreshold(Number(event.target.value))} /><strong>{Math.round(threshold * 100)}%</strong></label>
+      <span>{graph.nodes.length} 篇邻域 · {graph.edgesVisible.length} 条可见关联</span>
+      <span className="knowledge-gesture-hint">滚轮缩放 · 空白处拖动 · 双击打开论文</span>
+    </div>
+
+    <div className="cp-layout">
+      <aside className="cp-list">
+        <header>按与原点相似度</header>
+        <ul>
+          {filteredList.map(node => (
+            <li key={node.paper.id} className={selected?.paper.id === node.paper.id ? "active" : ""}>
+              <button type="button" onClick={() => setSelectedId(node.paper.id)}>
+                <span className="cp-dot" style={{ background: node.color }} />
+                <span className="cp-list-copy">
+                  <strong>{node.paper.titleZh || node.paper.titleEn}</strong>
+                  <small>{node.label} · {Math.round(node.toOrigin * 100)}%</small>
+                </span>
+              </button>
+            </li>
+          ))}
+          {!filteredList.length && <li className="cp-list-empty">无匹配论文</li>}
+        </ul>
+      </aside>
+
+      <section className={"knowledge-map " + (viewport.panning ? "panning" : "") + (view === "list" ? " is-list" : "")}>
+        {view !== "list" && <>
+          <div className="knowledge-zoom" aria-label="缩放">
+            <button type="button" onClick={() => viewport.zoomBy(-0.15)} title="缩小"><Minus size={18} /></button>
+            <strong>{Math.round(viewport.camera.zoom * 100)}%</strong>
+            <button type="button" onClick={() => viewport.zoomBy(0.15)} title="放大"><Plus size={18} /></button>
+            <button type="button" onClick={viewport.reset} title="重置视图"><RotateCcw size={16} /></button>
+          </div>
+          <div className="cp-legend">
+            <span>旧</span>
+            <i style={{ background: yearColor(graph.minYear ?? 2010, graph.minYear ?? 2010, graph.maxYear ?? 2026) }} />
+            <i style={{ background: yearColor(Math.round(((graph.minYear ?? 2010) + (graph.maxYear ?? 2026)) / 2), graph.minYear ?? 2010, graph.maxYear ?? 2026) }} />
+            <i style={{ background: yearColor(graph.maxYear ?? 2026, graph.minYear ?? 2010, graph.maxYear ?? 2026) }} />
+            <span>新</span>
+          </div>
+          <svg {...viewport.svgProps} role="img" aria-label="本地知识树">
+            {graph.edges.map((edge, index) => {
+              const key = `${Math.min(edge.from, edge.to)}:${Math.max(edge.from, edge.to)}`;
+              const onPath = graph.pathEdges.has(key);
+              const dim = selected && graph.path.length > 1 && !onPath;
+              return <line
+                className={"knowledge-edge" + (onPath ? " on-path" : "") + (dim ? " dim" : "")}
+                key={index}
+                x1={graph.nodes[edge.from].x}
+                y1={graph.nodes[edge.from].y}
+                x2={graph.nodes[edge.to].x}
+                y2={graph.nodes[edge.to].y}
+                style={{ strokeWidth: (onPath ? 2.2 : 0.7) + edge.score * 1.4, opacity: dim ? 0.1 : (onPath ? 0.95 : 0.28 + edge.score * 0.35) }}
+              />;
+            })}
+            {graph.nodes.map(node => {
+              const onPath = graph.path.includes(node.local);
+              const dim = selected && graph.path.length > 1 && !onPath && selected.paper.id !== node.paper.id;
+              return <g
+                className={"knowledge-map-node" + (selected?.paper.id === node.paper.id ? " selected" : "") + (node.isOrigin ? " origin" : "") + (dim ? " dim" : "")}
+                key={node.paper.id}
+                transform={`translate(${node.x} ${node.y})`}
+                onPointerDown={event => event.stopPropagation()}
+                onClick={() => setSelectedId(node.paper.id)}
+                onDoubleClick={() => onOpenPaper(node.paper)}
+              >
+                {node.isOrigin && <circle className="cp-origin-ring" r={node.radius + 7} />}
+                <circle r={node.radius + 3} fill="transparent" stroke={node.color} strokeOpacity={selected?.paper.id === node.paper.id ? 1 : 0} strokeWidth="3" />
+                <circle r={node.radius} fill={node.color} fillOpacity={dim ? 0.35 : 0.92} />
+                <text y={node.radius + 14}>{node.label}</text>
+                <title>{node.paper.titleZh || node.paper.titleEn}</title>
+              </g>;
+            })}
+          </svg>
+        </>}
+        {view === "list" && <div className="cp-list-panel">
+          {filteredList.map(node => (
+            <article key={node.paper.id} className={selected?.paper.id === node.paper.id ? "active" : ""} onClick={() => setSelectedId(node.paper.id)}>
+              <strong>{node.paper.titleZh || node.paper.titleEn}</strong>
+              <p>{node.label} · 与原点相似度 {Math.round(node.toOrigin * 100)}%</p>
+            </article>
+          ))}
+        </div>}
+        {!graph.nodes.length && <div className="knowledge-empty">没有可显示的论文。</div>}
+      </section>
+
+      <aside className="knowledge-inspector cp-inspector">
+        {selected ? <>
+          {selected.isOrigin ? <span className="status">原点论文</span> : <span className="status">邻域论文</span>}
+          <h2>{selected.paper.titleZh || selected.paper.titleEn}</h2>
+          {selected.paper.titleZh && <p className="english-title">{selected.paper.titleEn}</p>}
+          <p>{selected.paper.authors.map(author => author.name).join(", ") || "作者待补充"} · {selected.year ?? "年份待补充"}</p>
+          <dl>
+            <div><dt>与原点相似度</dt><dd>{Math.round(selected.toOrigin * 100)}%</dd></div>
+            <div><dt>一句话总结</dt><dd>{selected.paper.summary || "待补充"}</dd></div>
+            <div><dt>中文摘要</dt><dd className="knowledge-abstract">{selected.paper.abstractZh || "暂无中文摘要"}</dd></div>
+          </dl>
+          <div className="cp-inspector-actions">
+            {!selected.isOrigin && <button type="button" className="secondary" onClick={() => makeOrigin(selected.paper)}>设为原点重建图</button>}
+            <button type="button" className="primary" onClick={() => onOpenPaper(selected.paper)}><ExternalLink size={16} />在论文表格中定位</button>
+          </div>
+          <small>单击查看；双击打开。选中非原点时高亮到原点的最短相似路径。相似度：本地 BM25+TF-IDF（L1），不是共引网络。</small>
+        </> : <p>没有可显示的论文。</p>}
+      </aside>
+    </div>
   </main>;
 }

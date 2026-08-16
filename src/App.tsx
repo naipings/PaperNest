@@ -107,7 +107,7 @@ export default function App() {
       {readerPaper && <PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} />}
       {screen === "settings" && <SettingsView />}
     </div>
-    {creating && <Modal title="新建论文" onClose={() => setCreating(false)} wide><PaperEditor categories={data.categories} tags={data.tags} onCancel={() => setCreating(false)} onSave={async paper => { await savePaper(paper); setCreating(false); setSelectedId(paper.id); }} /></Modal>}
+    {creating && <PaperEditor modalTitle="新建论文" categories={data.categories} tags={data.tags} onCancel={() => setCreating(false)} onSave={async paper => { await savePaper(paper); setCreating(false); setSelectedId(paper.id); }} />}
     {leavePrompt && <Modal title="离开阅读台" onClose={() => { leaveAfterRef.current = undefined; setLeavePrompt(false); }}>
       <div className="paper-editor">
         <p>当前有高亮、批注或收录改动。是否保存后离开？</p>

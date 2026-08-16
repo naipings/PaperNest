@@ -118,7 +118,7 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
       </section>}
       {tab === "framework" && figures.length > 0 && <div className="llm-figure-gallery">{figures.map(item => <ManagedFigure key={`image-${item.id}`} path={item.imagePath} />)}</div>}
     </div>
-    {editing && <Modal title="编辑论文" onClose={() => setEditing(false)} wide><PaperEditor initial={paper} categories={data.categories} tags={data.tags} onCancel={() => setEditing(false)} onSave={async p => { await savePaper(p); setEditing(false); }} /></Modal>}
+    {editing && <PaperEditor modalTitle="编辑论文" initial={paper} categories={data.categories} tags={data.tags} onCancel={() => setEditing(false)} onSave={async p => { await savePaper(p); setEditing(false); }} />}
     {newTerm && <TermEditor paperId={paper.id} onClose={() => setNewTerm(false)} onSave={async item => { await saveVocabulary(item); setNewTerm(false); }} />}
   </aside>;
 }

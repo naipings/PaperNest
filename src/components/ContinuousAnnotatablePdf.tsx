@@ -56,7 +56,7 @@ export function AnnotationOverlay({ annotation, selected, onSelect }: {
   </>;
 }
 
-export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClearSelection }: {
+export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf?: PDFDocumentProxy;
   scale: number;
   pageWidth: number;
@@ -75,6 +75,7 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
   onHighlightColor(color: string): void;
   onTerm(): void;
   onExcerpt(): void;
+  onClip?(): void;
   onClearSelection(): void;
 }) {
   if (!pdf) return null;
@@ -101,13 +102,14 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
         onHighlightColor={onHighlightColor}
         onTerm={onTerm}
         onExcerpt={onExcerpt}
+        onClip={onClip}
         onClearSelection={onClearSelection}
       />
     ))}
   </div>;
 }
 
-function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClearSelection }: {
+function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf: PDFDocumentProxy;
   page: number;
   scale: number;
@@ -127,6 +129,7 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   onHighlightColor(color: string): void;
   onTerm(): void;
   onExcerpt(): void;
+  onClip?(): void;
   onClearSelection(): void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -135,9 +138,22 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   const scaleRef = useRef(scale);
   const inkPoints = useRef<Point[]>([]);
   const [draftPoints, setDraftPoints] = useState<Point[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string }>();
   const css = pageCssSize(pageWidth, pageHeight, scale);
   scaleRef.current = scale;
   const selected = selectedAnnotation && annotations.find(item => item.id === selectedAnnotation.id);
+
+  const copyText = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    setContextMenu(undefined);
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(undefined);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [contextMenu]);
 
   useEffect(() => {
     const container = viewerHost.current;
@@ -226,7 +242,18 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
     };
   };
 
-  return <article ref={host} className="continuous-page-host" data-page={page} style={{ width: css.width, height: css.height }}>
+  return <article
+    ref={host}
+    className="continuous-page-host"
+    data-page={page}
+    style={{ width: css.width, height: css.height }}
+    onContextMenu={event => {
+      const text = (captured?.text || window.getSelection()?.toString() || "").trim();
+      if (!text) return;
+      event.preventDefault();
+      setContextMenu({ x: event.clientX, y: event.clientY, text });
+    }}
+  >
     <div ref={viewerHost} className="pdfViewer continuous-page-viewer" />
     <div
       className={`annotation-layer continuous-annotation-layer tool-${tool}`}
@@ -282,8 +309,10 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
           onHighlight={() => captured.highlightId ? onRemoveAnnotation(captured.highlightId) : onAnnotate("highlight")}
           onUnderline={() => captured.underlineId ? onRemoveAnnotation(captured.underlineId) : onAnnotate("underline")}
           onNote={captured.noteId ? () => onRemoveAnnotation(captured.noteId!) : onNote ? () => onNote(captured) : undefined}
+          onCopy={() => void copyText(captured.text)}
           onTerm={onTerm}
           onExcerpt={onExcerpt}
+          onClip={onClip}
           onClose={onClearSelection}
         />
       )}
@@ -303,6 +332,15 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
         />
       )}
     </div>
+    {contextMenu && (
+      <div
+        className="pdf-context-menu"
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onPointerDown={event => event.stopPropagation()}
+      >
+        <button type="button" onClick={() => void copyText(contextMenu.text)}>复制</button>
+      </div>
+    )}
     <small>{page}</small>
   </article>;
 }

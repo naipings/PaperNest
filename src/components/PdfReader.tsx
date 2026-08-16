@@ -15,10 +15,11 @@ import { readerToolLabel } from "../lib/readerTools";
 import { findOverlappingAnnotation } from "../lib/annotationHit";
 import { fitPdfScale } from "../lib/pdfRenderScale";
 import { PurposePickerDialog } from "./PurposePickerDialog";
+import { StudyClipPanel } from "./StudyClipPanel";
 import "./PdfReader.css";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-type SideTab = "overview" | "annotations" | "vocabulary" | "framework";
+type SideTab = "overview" | "annotations" | "vocabulary" | "framework" | "clip";
 type ZoomPreset = "fit-width" | "fit-page" | "custom";
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
@@ -53,6 +54,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   const [highlightColor, setHighlightColor] = useState("#f2ce67");
   const [canUndo, setCanUndo] = useState(false);
   const [purposeAsk, setPurposeAsk] = useState<{ resolve(value: string | null): void }>();
+  const [clipSeed, setClipSeed] = useState<{ key: number; text: string }>({ key: 0, text: "" });
   const purposeOptions = useMemo(() => writingPurposeLabels(data?.excerpts ?? []), [data?.excerpts]);
   const llmReady = Boolean(data?.llm.apiKeySaved);
   const [canRedo, setCanRedo] = useState(false);
@@ -438,9 +440,15 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       setCaptured(undefined);
     };
     const onPointerDown = (event: PointerEvent) => {
+      if (event.button === 2) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(".selection-toolbar") || target.closest(".annotation-shape")) return;
+      if (
+        target.closest(".selection-toolbar")
+        || target.closest(".annotation-shape")
+        || target.closest(".study-sidebar")
+        || target.closest(".pdf-context-menu")
+      ) return;
       window.getSelection()?.removeAllRanges();
       setCaptured(undefined);
       setSelectedAnnotation(undefined);
@@ -481,6 +489,14 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   }, [selectedAnnotation, setReaderTool, toggleReaderTool]);
 
   const askPurpose = () => new Promise<string | null>(resolve => setPurposeAsk({ resolve }));
+
+  const sendSelectionToClip = () => {
+    if (!captured?.text.trim()) return;
+    setClipSeed({ key: Date.now(), text: captured.text });
+    setRightOpen(true);
+    setTab("clip");
+    setMessage("已送入右侧编辑框，可整理后再翻译或收录");
+  };
 
   const termFromSelection = async () => {
     if (!captured) return;
@@ -668,12 +684,13 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           onHighlightColor={setHighlightColor}
           onTerm={() => void termFromSelection()}
           onExcerpt={() => void excerptFromSelection()}
+          onClip={sendSelectionToClip}
           onClearSelection={clearSelection}
         />
         {(message || toolHint) && <div className={`reader-message ${busy ? "busy" : ""}`}>{message || toolHint}</div>}
       </section>
       <aside className={`study-sidebar${rightOpen ? "" : " is-closed"}`} aria-hidden={!rightOpen}>
-        <nav>{([["overview", "速览"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`]] as [SideTab, string][]).map(([id, label]) => (
+        <nav>{([["overview", "速览"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`], ["clip", "编辑"]] as [SideTab, string][]).map(([id, label]) => (
           <button className={tab === id ? "active" : ""} onClick={() => setTab(id)} key={id}>{label}</button>
         ))}</nav>
         <div className="study-body">
@@ -720,6 +737,18 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
             ))}
             {!figures.length && <p className="muted centered">可在论文详情上传框架图</p>}
           </>}
+          {tab === "clip" && <StudyClipPanel
+            paperId={paper.id}
+            page={captured?.page ?? page}
+            pageText={pageText[captured?.page ?? page]}
+            selectionText={captured?.text}
+            seedKey={clipSeed.key}
+            seedText={clipSeed.text}
+            llmReady={llmReady}
+            askPurpose={askPurpose}
+            onTerm={async entry => { await saveVocabulary(entry); setTab("vocabulary"); }}
+            onExcerpt={async entry => { await saveExcerpt(entry); }}
+          />}
         </div>
       </aside>
     </div>

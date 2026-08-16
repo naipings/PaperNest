@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEventHandler, type WheelEventHandler } from "react";
+import { useEffect, useRef, useState, type PointerEventHandler, type WheelEventHandler } from "react";
 
 export type GraphCamera = { centerX: number; centerY: number; zoom: number };
 type GraphWorld = { width: number; height: number };
@@ -12,11 +12,16 @@ export function graphViewBox(camera: GraphCamera, world: GraphWorld) {
   return [camera.centerX - width / 2, camera.centerY - height / 2, width, height].join(" ");
 }
 
-export function useGraphViewport({ world, initial = { centerX: world.width / 2, centerY: world.height / 2, zoom: 1 }, minZoom = .65, maxZoom = 2.2 }: { world: GraphWorld; initial?: GraphCamera; minZoom?: number; maxZoom?: number }) {
+export function useGraphViewport({ world, minZoom = .65, maxZoom = 2.2 }: { world: GraphWorld; minZoom?: number; maxZoom?: number }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState>(undefined);
-  const [camera, setCamera] = useState<GraphCamera>(initial);
+  const home = () => ({ centerX: world.width / 2, centerY: world.height / 2, zoom: 1 });
+  const [camera, setCamera] = useState<GraphCamera>(home);
   const [panning, setPanning] = useState(false);
+
+  useEffect(() => {
+    setCamera(home());
+  }, [world.width, world.height]);
 
   const zoomAt = (clientX: number, clientY: number, requestedZoom: number) => {
     const nextZoom = clamp(requestedZoom, minZoom, maxZoom);
@@ -65,8 +70,7 @@ export function useGraphViewport({ world, initial = { centerX: world.width / 2, 
     const rect = svgRef.current?.getBoundingClientRect();
     zoomAt(rect ? rect.left + rect.width / 2 : 0, rect ? rect.top + rect.height / 2 : 0, camera.zoom + amount);
   };
-  const reset = () => setCamera(initial);
+  const reset = () => setCamera(home());
 
   return { camera, panning, zoomBy, reset, svgProps: { ref: svgRef, viewBox: graphViewBox(camera, world), onWheel, onPointerDown, onPointerMove, onPointerUp: endPan, onPointerCancel: endPan } };
 }
-

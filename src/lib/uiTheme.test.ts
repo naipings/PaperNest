@@ -170,4 +170,13 @@ describe("visual theme selection", () => {
     expect(app).toContain("sidebar-collapsed");
     expect(app).toContain("papernest.sidebarCollapsed");
   });
+
+  it("uses theme-aware knowledge graph edge strokes", () => {
+    const base = readFileSync("src/styles.css", "utf8");
+    const interactive = readFileSync("src/components/KnowledgeGraphInteractive.tsx", "utf8");
+    expect(base).toMatch(/--knowledge-edge:/);
+    expect(base).toMatch(/\.knowledge-map line\s*\{[^}]*stroke:\s*var\(--knowledge-edge\)/);
+    expect(interactive).toMatch(/opacity:\s*\.42\s*\+\s*edge\.score\s*\*\s*\.42/);
+    expect(interactive).not.toMatch(/opacity:\s*\.1\s*\+\s*edge\.score/);
+  });
 });

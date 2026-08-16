@@ -41,3 +41,114 @@
 .selection-colors button.active { outline: 2px solid white; }
 .selection-colors label { width: 16px; height: 16px; overflow: hidden; border-radius: 50%; }
 .selection-colors input[type="color"] { width: 22px; height: 22px; border: 0; padding: 0; background: transparent; cursor: pointer; }
+
+.pdf-context-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 88px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #24222b;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.pdf-context-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pdf-context-menu button:hover { background: #494451; }
+.study-clip { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.study-clip-head { display: flex; gap: 8px; align-items: flex-start; color: var(--accent); }
+.study-clip-head > div:first-of-type { flex: 1; min-width: 0; }
+.study-clip-head strong { display: block; font-size: 13px; color: var(--text, inherit); }
+.study-clip-head small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.study-clip-font {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.study-clip-font button {
+  border: 0;
+  background: var(--soft);
+  color: var(--muted);
+  padding: 4px 8px;
+  font-size: 11px;
+  min-height: 28px;
+  cursor: pointer;
+}
+.study-clip-font button + button { border-left: 1px solid var(--line); }
+.study-clip-font button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.study-clip-label { font-size: 11px; color: var(--muted); }
+.study-clip-input,
+.study-clip-output {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--soft);
+  color: inherit;
+  font-family: inherit;
+  line-height: 1.55;
+}
+.study-clip-input { min-height: 132px; }
+.study-clip-output { min-height: 220px; }
+.study-clip[data-font="sm"] .study-clip-input,
+.study-clip[data-font="sm"] .study-clip-output { font-size: 12px; }
+.study-clip[data-font="md"] .study-clip-input,
+.study-clip[data-font="md"] .study-clip-output { font-size: 14px; }
+.study-clip[data-font="lg"] .study-clip-input,
+.study-clip[data-font="lg"] .study-clip-output { font-size: 16px; }
+.study-clip-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.study-clip-toolbar .secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.study-clip-toolbar select {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 12px;
+  flex: 1;
+  min-width: 120px;
+}
+.study-clip-transfer { display: flex; justify-content: center; padding: 2px 0; }
+.study-clip-arrow {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.study-clip-arrow:disabled { opacity: .45; cursor: default; }
+.study-clip-arrow:not(:disabled):hover { filter: brightness(1.06); }
+.study-clip-disclaimer { margin: 0; text-align: center; color: var(--muted); font-size: 10px; }
+.study-clip-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.study-clip-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  font-size: 12px;
+}
+.study-clip-notice { margin: 0; color: var(--accent); font-size: 11px; line-height: 1.45; }

@@ -20,6 +20,7 @@
   --sidebar: rgba(250, 251, 252, .92);
   --panel: #fafbfc;
   --shadow: 0 14px 36px rgba(55, 70, 80, .09);
+  --knowledge-edge: color-mix(in srgb, var(--accent) 52%, #5a6670);
   --app-bg:
     radial-gradient(circle at 8% -6%, rgba(170, 190, 205, .35), transparent 40%),
     radial-gradient(circle at 96% 4%, rgba(200, 195, 185, .22), transparent 36%),
@@ -466,6 +467,7 @@
   --panel: #1e262c;
   --shadow: 0 18px 46px rgba(0, 0, 0, .42);
   --mist-line: #3a4750;
+  --knowledge-edge: color-mix(in srgb, var(--accent) 45%, #c5d0d6);
   --app-bg:
     radial-gradient(circle at 16% 0%, rgba(90, 111, 125, .32), transparent 36%),
     radial-gradient(circle at 92% 8%, rgba(168, 137, 110, .1), transparent 30%),
