@@ -35,7 +35,7 @@
 }
 
 :root[data-ui-theme="lilac"] .app-shell {
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-rail, 232px) minmax(0, 1fr);
   gap: 0;
   padding: 12px;
   background: var(--app-bg);
@@ -44,7 +44,7 @@
 :root[data-ui-theme="lilac"] .sidebar {
   z-index: 2;
   min-width: 0;
-  width: 232px;
+  width: var(--sidebar-rail, 232px);
   align-items: stretch;
   padding: 18px 12px 14px;
   border: 1px solid rgba(228, 212, 244, .9);

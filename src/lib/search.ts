@@ -22,6 +22,7 @@ export function filterPapers(data: LibrarySnapshot, search: string, view: SavedV
     if (view.filter.categoryId && paper.categoryId !== view.filter.categoryId) return false;
     if (view.filter.uncategorized && paper.categoryId) return false;
     if (view.filter.missingInfo && paper.titleEn && paper.authors.length && paper.venue) return false;
+    if (view.filter.favorite && !paper.favorite) return false;
     return true;
   });
 }

@@ -35,10 +35,24 @@ describe("ui theme tokens", () => {
     expect(css).not.toMatch(/--accent:\s*#7464c8/);
   });
 
+  it("styles dark-mode scrollbars without a bright white track", () => {
+    expect(css).toMatch(/--scrollbar-track:\s*var\(--soft\)/);
+    expect(css).toContain("*::-webkit-scrollbar-track");
+    expect(css).toContain("*::-webkit-scrollbar-thumb");
+    expect(css).toMatch(/scrollbar-color:\s*var\(--scrollbar-thumb\)\s+var\(--scrollbar-track\)/);
+  });
+
   it("keeps embedded reader inside the workspace card", () => {
     const readerCss = readFileSync("src/components/PdfReader.css", "utf8");
     expect(readerCss).toMatch(/\.reader-screen\.embedded\s*\{[^}]*position:\s*absolute/);
     expect(readerCss).not.toMatch(/left:\s*224px/);
+  });
+
+  it("fills the reader stage without double-subtracting the toolbar", () => {
+    const readerCss = readFileSync("src/components/PdfReader.css", "utf8");
+    expect(readerCss).toMatch(/\.pdfjs-reader \.pdf-stage\s*\{[^}]*height:\s*100%/);
+    expect(readerCss).not.toMatch(/height:\s*calc\(100%\s*-\s*54px\)/);
+    expect(readerCss).not.toMatch(/height:\s*calc\(100vh\s*-\s*54px\)/);
   });
 });
 
@@ -103,7 +117,7 @@ describe("visual theme selection", () => {
     expect(theme).not.toContain("#e8f1f5");
     expect(theme).not.toContain("#1e2f4d");
     expect(theme).not.toContain("#e85d6a");
-    expect(theme).toMatch(/grid-template-columns:\s*232px/);
+    expect(theme).toMatch(/grid-template-columns:\s*var\(--sidebar-rail/);
     expect(theme).not.toMatch(/\.brand div,\s*\n?\s*\.profile-mini,\s*\n?\s*\.theme-switch\s*\{\s*display:\s*none/);
     expect(theme).not.toMatch(/\.sidebar nav button\s*\{[^}]*font-size:\s*0/);
   });
@@ -117,7 +131,7 @@ describe("visual theme selection", () => {
     expect(theme).toContain(':root[data-ui-theme="mist"][data-theme="dark"]');
     expect(theme).toMatch(/--accent:\s*#5a6f7d/);
     expect(theme).toMatch(/--brand:\s*#a8896e/);
-    expect(theme).toMatch(/grid-template-columns:\s*232px/);
+    expect(theme).toMatch(/grid-template-columns:\s*var\(--sidebar-rail/);
     expect(theme).toMatch(/\.research-overview\s*\{[^}]*display:\s*grid/);
     expect(theme).not.toMatch(/\.brand div,\s*\n?\s*\.profile-mini,\s*\n?\s*\.theme-switch\s*\{\s*display:\s*none/);
     expect(theme).not.toMatch(/\.sidebar nav button\s*\{[^}]*font-size:\s*0/);
@@ -136,10 +150,24 @@ describe("visual theme selection", () => {
     expect(theme).toContain(':root[data-ui-theme="willow"][data-theme="dark"]');
     expect(theme).toMatch(/--accent:\s*#5f7a56/);
     expect(theme).toMatch(/--brand:\s*#c4a35a/);
-    expect(theme).toMatch(/grid-template-columns:\s*232px/);
+    expect(theme).toMatch(/grid-template-columns:\s*var\(--sidebar-rail/);
     expect(theme).toMatch(/\.research-overview\s*\{[^}]*display:\s*grid/);
     expect(theme).not.toContain("#1e2f4d");
     expect(theme).not.toContain("#7c3aed");
     expect(theme).not.toContain("#5a6f7d");
+  });
+
+  it("toggles sidebar labels via brand mark across themes", () => {
+    const base = readFileSync("src/styles.css", "utf8");
+    const sidebar = readFileSync("src/components/Sidebar.tsx", "utf8");
+    const app = readFileSync("src/App.tsx", "utf8");
+    expect(base).toMatch(/--sidebar-rail:\s*232px/);
+    expect(base).toMatch(/\.app-shell\.sidebar-collapsed\s*\{\s*--sidebar-rail:\s*72px/);
+    expect(base).toMatch(/\.app-shell\.sidebar-collapsed \.nav-label/);
+    expect(sidebar).toContain("onToggleCollapsed");
+    expect(sidebar).toContain('className="brand-mark"');
+    expect(sidebar).toContain('className="nav-label"');
+    expect(app).toContain("sidebar-collapsed");
+    expect(app).toContain("papernest.sidebarCollapsed");
   });
 });

@@ -9,5 +9,6 @@ describe("local bilingual search", () => {
   it("finds Chinese titles", () => expect(filterPapers(seedSnapshot, "目标检测", allView).map(p => p.id)).toContain("paper-2"));
   it("finds vocabulary and example sentences", () => expect(paperHaystack(seedSnapshot.papers[0], seedSnapshot)).toContain("sequence transduction"));
   it("applies status views", () => expect(filterPapers(seedSnapshot, "", { ...allView, filter: { status: "reading" } }).map(p => p.id)).toEqual(["paper-2"]));
+  it("filters favorited papers only", () => expect(filterPapers(seedSnapshot, "", { ...allView, filter: { favorite: true } }).map(p => p.id)).toEqual(["paper-1"]));
   it("keeps deleted papers out of normal views", () => { const data = structuredClone(seedSnapshot); data.papers[0].deletedAt = new Date().toISOString(); expect(filterPapers(data, "attention", allView)).toHaveLength(0); expect(filterPapers(data, "attention", allView, true)).toHaveLength(1); });
 });

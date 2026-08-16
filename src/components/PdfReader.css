@@ -4,14 +4,14 @@
 .annotation-delete { flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; }
 .annotation-delete:hover { color: #b43d51; background: color-mix(in srgb, #b43d51 10%, var(--soft)); }
 
-.pdfjs-reader .reader-layout.pdfjs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; flex: 1; }
+.pdfjs-reader .reader-layout.pdfjs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; flex: 1; height: 0; align-items: stretch; }
 .pdfjs-reader .reader-layout.pdfjs-layout.right-closed { grid-template-columns: minmax(0, 1fr); }
-.pdfjs-reader .pdf-stage { position: relative; min-height: 0; height: calc(100vh - 54px); overflow: auto; overflow-anchor: none; overscroll-behavior: contain; background: #ececec; padding: 42px 25px 55px; display: block; }
-.reader-screen.embedded { position: absolute; inset: 0; z-index: 20; height: auto; border-radius: inherit; overflow: hidden; }
-.pdfjs-reader.embedded .pdf-stage { height: calc(100% - 54px); }
+.pdfjs-reader .pdf-stage { position: relative; min-height: 0; height: 100%; overflow: auto; overflow-anchor: none; overscroll-behavior: contain; background: #ececec; padding: 42px 25px 55px; display: block; }
+.reader-screen.embedded { position: absolute; inset: 0; z-index: 20; height: auto; border-radius: inherit; overflow: hidden; background: #ececec; }
 .pdfjs-reader.embedded .reader-layout.pdfjs-layout { grid-template-columns: minmax(0, 1fr); }
 .pdfjs-reader.embedded .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr) 320px; }
-.pdfjs-reader.embedded .study-sidebar { min-height: 0; }
+.pdfjs-reader.embedded .study-sidebar { min-height: 0; height: 100%; }
+.pdfjs-reader .study-sidebar.is-closed { display: none; }
 .reader-annotate-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 8px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--soft) 70%, white); border: 1px solid var(--line); flex-wrap: wrap; }
 .reader-annotate-tools button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--text); padding: 5px 8px; border-radius: 6px; font-size: 12px; min-height: 30px; }
 .reader-annotate-tools button:disabled { opacity: 0.4; cursor: default; }
@@ -24,7 +24,7 @@
 .reader-zoom-tools button:hover { background: color-mix(in srgb, var(--accent) 10%, white); color: var(--accent); }
 .reader-zoom-tools select { border: 0; background: transparent; font-size: 12px; color: var(--text); min-width: 88px; cursor: pointer; }
 .pdfjs-reader .reader-toolbar { gap: 8px; flex-wrap: wrap; }
-.reader-screen.pdfjs-reader { display: flex; flex-direction: column; min-height: 0; }
+.reader-screen.pdfjs-reader { display: flex; flex-direction: column; min-height: 0; background: #ececec; }
 
 .continuous-pdf { width: 100%; display: block; overflow-anchor: none; }
 .continuous-page-host { position: relative; display: block; margin: 0 auto 18px; background: white; box-shadow: 0 8px 28px rgba(0,0,0,.28); overflow: hidden; overflow-anchor: none; box-sizing: border-box; }

@@ -175,8 +175,16 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   useEffect(() => {
     const pageView = pageViewRef.current;
     if (!pageView) return;
-    pageView.update({ scale });
-    void pageView.draw();
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      pageView.update({ scale });
+      void pageView.draw();
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [scale]);
 
   useEffect(() => {

@@ -100,7 +100,8 @@ sequenceDiagram
 ```
 
 - 资料库路径优先读取 `%APPDATA%/.../library-location.json`（用户迁移后的设定）。
-- 若无自定义路径：已存在的旧版 `%LocalAppData%/.../PaperNestLibrary` 或「文档/PaperNestLibrary」继续沿用；否则默认使用**软件安装目录**（可执行文件所在目录）下的 `PaperNestLibrary`。
+- 若无自定义路径：已存在的旧版 `%LocalAppData%/.../PaperNestLibrary`、「文档/PaperNestLibrary」或**安装目录旁**已有 `library.db` 的 `PaperNestLibrary` 继续沿用，并写入 `library-location.json`；否则默认使用软件安装目录下的 `PaperNestLibrary`。
+- 同一 `identifier` 的 NSIS setup 可检测旧版并覆盖安装；`PaperNestLibrary` 不在卸载清单内，升级后仍加载原资料库（卸载时勿勾选删除应用数据，否则会清掉配置指针）。
 - 浏览器预览模式（`npm run dev`）使用 `localStorage` 模拟后端，见 `backend.ts` 中 `isTauri()` 分支。
 
 ### 3.2 PDF 导入
@@ -294,6 +295,7 @@ paperReader/
 | `ocr_page` | Tesseract OCR 单页 |
 | `search` | FTS5 + PDF 页搜索 |
 | `save_vocabulary` / `delete_vocabulary` | 术语增删 |
+| `save_figure` / `delete_figure` | 方法框架图增删（删除时清除图片文件） |
 | `translate_text` / `translate_with_llm` | LibreTranslate；不可用时 LLM 英译中 |
 | `save_excerpt` / `delete_excerpt` | 写作素材增改删；写作库卡片可改正用途 |
 | `purge_paper` | 回收站论文永久删除（记录 + 受管文件） |
@@ -390,15 +392,16 @@ cd src-tauri; cargo check
 | 重复导入 | 同一文件弹出「重复文献」确认；取消后库中仍只有一篇；不同 arXiv 版本可同时存在并互相引用 |
 | 论文库横向滚动 | 勾选框与各列表头、表体列宽一致，无叠影 |
 | 论文库横向滚动 | 窗口非全屏时滚到最右并向下滚，表头整行吸顶，逐列与表体对齐 |
-| 打开阅读台 | 从第 1 页起读，文本可选，Ctrl+滚轮与适应宽度/页面可反复切换 |
+| 打开阅读台 | 从第 1 页起读，文本可选，Ctrl+滚轮与适应宽度/页面可反复切换；底部无暗色空隙；展开/收起学习侧栏与滚轮缩放无明显整页闪断 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |
 | 术语收录 | 选中文本 → 侧栏术语库有条目 |
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
 | 备份恢复 | ZIP 可还原完整资料库 |
 | 术语 / 写作库 | 单条或批量删除后列表更新 |
+| 框架图 | 论文详情「框架」可单条删除；图片文件一并清除 |
 | 回收站 | 软删除可恢复，永久删除文件清除 |
 | 任务页 | 概览「今天待办 / 已逾期 / 已完成」；清单仅今日与未来未完成项；逾期与已完成经卡片弹窗查看；日历格仍显示当日全部任务；页底为近一年阅读打卡（新增 + 满 5 分钟阅读） |
-| 界面壳层 | 浅蓝灰渐变背景、侧栏胶囊高亮、工作区大圆角卡片；阅读台铺满工作区卡片 |
+| 安装升级 | 新 setup 检测旧版 PaperNest；覆盖安装后仍打开原 `PaperNestLibrary`；卸载勿勾选删除应用数据 |
 | 论文库概览 | 顶部显示收录、在读、已读数量与中文智能研读提示；筛选和论文表格正常可用 |
 
 ---

@@ -107,7 +107,7 @@ export interface SavedView {
   id: Id;
   name: string;
   builtin?: boolean;
-  filter: { status?: PaperStatus; categoryId?: Id; missingInfo?: boolean; uncategorized?: boolean };
+  filter: { status?: PaperStatus; categoryId?: Id; missingInfo?: boolean; uncategorized?: boolean; favorite?: boolean };
   sorting: { id: string; desc: boolean }[];
   columnVisibility: Record<string, boolean>;
   density: "compact" | "comfortable";

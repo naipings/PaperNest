@@ -22,7 +22,7 @@ function readDetailWidth() {
 }
 
 export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Paper; onClose(): void; onOpenPdf(paper: Paper): void; onSelect(paper: Paper): void }) {
-  const { data, savePaper, saveVocabulary, deleteVocabulary, saveFigure } = useLibrary();
+  const { data, savePaper, saveVocabulary, deleteVocabulary, saveFigure, deleteFigure } = useLibrary();
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState(false);
   const [newTerm, setNewTerm] = useState(false);
@@ -105,7 +105,15 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
             event.target.value = "";
           }} />
         </label>
-        {figures.map(item => <article className="figure-card" key={item.id}><div className="figure-placeholder"><FileImage size={30} /></div><h3>{item.title || "方法框架图"}</h3><p>{item.explanationZh || "待补充中文解释"}</p><small>来源：第 {item.page ?? "?"} 页</small></article>)}
+        {figures.map(item => <article className="figure-card" key={item.id}>
+          <div className="figure-placeholder"><FileImage size={30} /></div>
+          <header>
+            <div className="vocab-card-copy"><strong>{item.title || "方法框架图"}</strong></div>
+            <button className="annotation-delete" title="删除框架图" onClick={() => { if (confirm("删除这张框架图？")) void deleteFigure(item.id); }}><Trash2 size={14} /></button>
+          </header>
+          <p>{item.explanationZh || "待补充中文解释"}</p>
+          <small>来源：第 {item.page ?? "?"} 页</small>
+        </article>)}
         {!figures.length && <p className="muted centered">还没有方法框架图</p>}
       </section>}
       {tab === "framework" && figures.length > 0 && <div className="llm-figure-gallery">{figures.map(item => <ManagedFigure key={`image-${item.id}`} path={item.imagePath} />)}</div>}

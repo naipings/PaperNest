@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpenCheck, BookmarkPlus, BrainCircuit, Clock3, Filter, LayoutList, RefreshCw, Rows3, Sparkles, Tags } from "lucide-react";
+import { BookOpenCheck, BookmarkPlus, BrainCircuit, Clock3, Filter, Heart, LayoutList, RefreshCw, Rows3, Sparkles, Tags } from "lucide-react";
 import { useLibrary } from "../state/LibraryContext";
 import type { Paper, PaperStatus, SavedView } from "../types";
 import { uuid } from "../types";
@@ -20,11 +20,17 @@ const statusOptions = [
   { id: "archived", label: "已归档" }
 ];
 
+const favoriteOptions = [
+  { id: "", label: "全部收藏" },
+  { id: "favorite", label: "仅收藏" }
+];
+
 export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, onOpenPdf }: { search: string; searchHitPaperIds: string[]; selectedId?: string; onSelect(paper: Paper): void; onOpenPdf(paper: Paper): void }) {
   const { data, refresh, savePaper, saveView } = useLibrary();
   const [viewId, setViewId] = useState("all");
   const [status, setStatus] = useState<PaperStatus | "">("");
   const [category, setCategory] = useState("");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const toggleDensity = () => { document.documentElement.dataset.tableDensity = document.documentElement.dataset.tableDensity !== "compact" ? "compact" : "comfortable"; };
@@ -41,12 +47,15 @@ export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, o
   if (category === "uncategorized") { filter.uncategorized = true; delete filter.categoryId; }
   else if (category) { filter.categoryId = category; delete filter.uncategorized; }
   else { delete filter.uncategorized; delete filter.categoryId; }
+  if (favoriteOnly) filter.favorite = true;
+  else delete filter.favorite;
   const view: SavedView = { ...baseView, filter };
   const applyView = (id: string) => {
     setViewId(id);
     const next = allViews.find(item => item.id === id);
     setStatus(next?.filter.status ?? "");
     setCategory(next?.filter.uncategorized ? "uncategorized" : (next?.filter.categoryId ?? ""));
+    setFavoriteOnly(Boolean(next?.filter.favorite));
   };
   const localMatches = filterPapers(data, search, view);
   const visibleInView = filterPapers(data, "", view);
@@ -76,6 +85,7 @@ export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, o
           { title: "范围", options: builtinViews.map(item => ({ id: item.id, label: item.name })) },
           ...(data.views.length ? [{ title: "我的视图", options: data.views.map(item => ({ id: item.id, label: item.name })) }] : [])
         ]} />
+        <FilterMenu icon={<Heart size={15} />} value={favoriteOnly ? "favorite" : ""} onChange={value => setFavoriteOnly(value === "favorite")} groups={[{ title: "收藏", options: favoriteOptions }]} />
         <FilterMenu icon={<Filter size={15} />} value={status} onChange={value => setStatus(value as PaperStatus | "")} groups={[{ title: "阅读状态", options: statusOptions }]} />
         <FilterMenu icon={<Tags size={15} />} value={category} onChange={setCategory} groups={[{ title: "领域", options: [
           { id: "", label: "全部领域" },

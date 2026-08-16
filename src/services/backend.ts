@@ -95,6 +95,10 @@ export const backend = {
     const data = loadPreview(); const index = data.figures.findIndex(v => v.id === figure.id);
     index >= 0 ? data.figures[index] = figure : data.figures.push(figure); persistPreview(data);
   },
+  async deleteFigure(id: string): Promise<void> {
+    if (isTauri()) return invoke("delete_figure", { id });
+    const data = loadPreview(); data.figures = data.figures.filter(item => item.id !== id); persistPreview(data);
+  },
   async saveCategory(category: Category): Promise<void> {
     if (isTauri()) return invoke("save_category", { category });
     const data = loadPreview(); const index = data.categories.findIndex(v => v.id === category.id);

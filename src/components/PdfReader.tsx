@@ -26,11 +26,12 @@ const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 export type PdfReaderHandle = { isDirty(): boolean; discard(): Promise<void> };
 
 export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean }>(function PdfReader({ paper, onBack, embedded = false }, ref) {
-  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, addReadingSeconds } = useLibrary();
+  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, deleteFigure, addReadingSeconds } = useLibrary();
   const stageRef = useRef<HTMLElement>(null);
   const pageSizeRef = useRef({ width: 612, height: 792 });
   const pendingScale = useRef(1.15);
-  const scaleRaf = useRef<number | undefined>(undefined);
+  const scaleTimer = useRef<number | undefined>(undefined);
+  const fitTimer = useRef<number | undefined>(undefined);
   const keepTop = useRef(true);
   const history = useRef(new AnnotationHistory());
   const historyLock = useRef(false);
@@ -109,12 +110,19 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     const stage = stageRef.current;
     if (!stage) return;
     const observer = new ResizeObserver(() => {
-      recomputeFitScale();
-      if (keepTop.current) stage.scrollTop = 0;
+      if (fitTimer.current !== undefined) window.clearTimeout(fitTimer.current);
+      fitTimer.current = window.setTimeout(() => {
+        fitTimer.current = undefined;
+        recomputeFitScale();
+        if (keepTop.current) stage.scrollTop = 0;
+      }, 80);
     });
     observer.observe(stage);
-    return () => observer.disconnect();
-  }, [recomputeFitScale, rightOpen, pdf]);
+    return () => {
+      observer.disconnect();
+      if (fitTimer.current !== undefined) window.clearTimeout(fitTimer.current);
+    };
+  }, [recomputeFitScale, pdf]);
 
   useLayoutEffect(() => {
     if (keepTop.current && stageRef.current) stageRef.current.scrollTop = 0;
@@ -124,14 +132,18 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     pendingScale.current = scale;
   }, [scale]);
 
+  useEffect(() => () => {
+    if (scaleTimer.current !== undefined) window.clearTimeout(scaleTimer.current);
+  }, []);
+
   const bumpScale = (delta: number) => {
     pendingScale.current = Math.max(0.55, Math.min(2.5, pendingScale.current + delta));
-    if (scaleRaf.current !== undefined) return;
-    scaleRaf.current = requestAnimationFrame(() => {
-      scaleRaf.current = undefined;
+    if (scaleTimer.current !== undefined) window.clearTimeout(scaleTimer.current);
+    scaleTimer.current = window.setTimeout(() => {
+      scaleTimer.current = undefined;
       setZoomPreset("custom");
       setScale(pendingScale.current);
-    });
+    }, 50);
   };
 
   useEffect(() => {
@@ -660,7 +672,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
         />
         {(message || toolHint) && <div className={`reader-message ${busy ? "busy" : ""}`}>{message || toolHint}</div>}
       </section>
-      {rightOpen && <aside className="study-sidebar">
+      <aside className={`study-sidebar${rightOpen ? "" : " is-closed"}`} aria-hidden={!rightOpen}>
         <nav>{([["overview", "速览"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`]] as [SideTab, string][]).map(([id, label]) => (
           <button className={tab === id ? "active" : ""} onClick={() => setTab(id)} key={id}>{label}</button>
         ))}</nav>
@@ -697,12 +709,19 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           </>}
           {tab === "framework" && <>
             {figures.map(item => (
-              <article className="figure-card" key={item.id}><h3>{item.title || "方法框架"}</h3><p>{item.explanationZh}</p><small>第 {item.page} 页</small></article>
+              <article className="figure-card" key={item.id}>
+                <header>
+                  <div className="vocab-card-copy"><strong>{item.title || "方法框架"}</strong></div>
+                  <button className="annotation-delete" title="删除框架图" onClick={() => { if (confirm("删除这张框架图？")) void deleteFigure(item.id); }}><Trash2 size={14} /></button>
+                </header>
+                <p>{item.explanationZh}</p>
+                <small>第 {item.page} 页</small>
+              </article>
             ))}
             {!figures.length && <p className="muted centered">可在论文详情上传框架图</p>}
           </>}
         </div>
-      </aside>}
+      </aside>
     </div>
     {purposeAsk && <PurposePickerDialog options={purposeOptions} onCancel={() => { purposeAsk.resolve(null); setPurposeAsk(undefined); }} onConfirm={purpose => { purposeAsk.resolve(purpose); setPurposeAsk(undefined); }} />}
   </main>;

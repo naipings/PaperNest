@@ -16,6 +16,12 @@ import { useLibrary } from "./state/LibraryContext";
 import { backend } from "./services/backend";
 import type { Paper } from "./types";
 
+const SIDEBAR_COLLAPSED_KEY = "papernest.sidebarCollapsed";
+
+function readSidebarCollapsed() {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+}
+
 export default function App() {
   const { data, loading, error, refresh, savePaper, saveProfile, importBusy, importNotice } = useLibrary();
   const [screen, setScreen] = useState<Screen>("library");
@@ -25,9 +31,18 @@ export default function App() {
   const [readerPaper, setReaderPaper] = useState<Paper>();
   const [creating, setCreating] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const readerRef = useRef<PdfReaderHandle>(null);
   const leaveAfterRef = useRef<(() => void) | undefined>(undefined);
   const selected = useMemo(() => data?.papers.find(p => p.id === selectedId), [data, selectedId]);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed(current => {
+      const next = !current;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
 
   const requestLeave = useCallback((after?: () => void) => {
     if (!readerPaper || !readerRef.current?.isDirty()) {
@@ -73,8 +88,15 @@ export default function App() {
   if (error || !data) return <div className="splash error"><AlertTriangle /><strong>无法打开资料库</strong><p>{error}</p><button className="primary" onClick={refresh}>重试</button></div>;
   const openPdf = (paper: Paper, page?: number) => { setReaderPaper(page ? { ...paper, readingPage: page } : paper); setScreen("library"); };
   const theme = async () => saveProfile({ ...data.profile, theme: data.profile.theme === "dark" ? "light" : "dark" });
-  return <div className="app-shell">
-    <Sidebar screen={screen} onNavigate={value => requestLeave(() => { setScreen(value); setSelectedId(undefined); })} profile={data.profile} onTheme={theme} />
+  return <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+    <Sidebar
+      screen={screen}
+      onNavigate={value => requestLeave(() => { setScreen(value); setSelectedId(undefined); })}
+      profile={data.profile}
+      onTheme={theme}
+      collapsed={sidebarCollapsed}
+      onToggleCollapsed={toggleSidebarCollapsed}
+    />
     <div className="workspace">
       {screen === "library" && <><Topbar search={search} onSearch={setSearch} onCreate={() => setCreating(true)} onRefresh={refresh} /><div className={`main-with-detail ${selected ? "has-detail" : ""}`}><LibraryView search={search} searchHitPaperIds={searchHitPaperIds} selectedId={selectedId} onSelect={p => setSelectedId(p.id)} onOpenPdf={openPdf} />{selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}</div></>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}

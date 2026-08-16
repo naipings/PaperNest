@@ -82,7 +82,20 @@ fn read_library_location(config: &Path) -> Option<PathBuf> {
   if path.is_absolute() { Some(path) } else { None }
 }
 
+fn library_db_exists(dir: &Path) -> bool {
+  dir.join("library.db").exists()
+}
+
+fn write_library_location(config: &Path, library: &Path) -> Result<()> {
+  let temp = config.with_extension("json.tmp");
+  let location = LibraryLocation { library_path: library.to_string_lossy().into_owned() };
+  fs::write(&temp, serde_json::to_vec_pretty(&location).map_err(err)?).map_err(err)?;
+  fs::rename(&temp, config).map_err(err)?;
+  Ok(())
+}
+
 /// 默认资料库：安装目录（可执行文件所在目录）下的 PaperNestLibrary。
+/// 升级覆盖安装时该目录不在 NSIS 卸载文件清单内，非空则保留。
 fn install_library_dir() -> Option<PathBuf> {
   let exe = env::current_exe().ok()?;
   Some(exe.parent()?.join("PaperNestLibrary"))
@@ -108,28 +121,62 @@ mod library_path_tests {
     let _ = fs::remove_file(&config);
     assert_eq!(path, Some(PathBuf::from("E:/Custom/PaperNestLibrary")));
   }
+
+  #[test]
+  fn write_library_location_roundtrips() {
+    let config = env::temp_dir().join(format!("papernest-library-location-write-{}.json", Uuid::new_v4()));
+    let library = PathBuf::from(r"D:\Data\PaperNestLibrary");
+    write_library_location(&config, &library).unwrap();
+    assert_eq!(read_library_location(&config), Some(library));
+    let _ = fs::remove_file(&config);
+  }
+
+  #[test]
+  fn library_db_exists_checks_file() {
+    let root = env::temp_dir().join(format!("papernest-lib-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    assert!(!library_db_exists(&root));
+    fs::write(root.join("library.db"), b"").unwrap();
+    assert!(library_db_exists(&root));
+    let _ = fs::remove_dir_all(&root);
+  }
 }
 
 fn resolve_library_dir(app: &tauri::App) -> Result<(PathBuf, PathBuf)> {
   let config_dir = app.path().app_config_dir().map_err(err)?;
   fs::create_dir_all(&config_dir).map_err(err)?;
   let config = config_dir.join("library-location.json");
-  // 用户通过设置迁移后写入的路径优先。
+
+  // 用户迁移或升级后写入的路径优先；路径失效时继续发现已有资料库。
   if let Some(path) = read_library_location(&config) {
-    return Ok((path, config));
+    if library_db_exists(&path) || path.exists() {
+      return Ok((path, config));
+    }
   }
-  // 兼容旧默认：应用本地数据目录与「文档」下已有资料库。
+
   let legacy_local = app.path().app_local_data_dir().map_err(err)?.join("PaperNestLibrary");
-  if legacy_local.join("library.db").exists() {
-    return Ok((legacy_local, config));
+  let mut existing = Vec::new();
+  if library_db_exists(&legacy_local) {
+    existing.push(legacy_local.clone());
   }
   if let Ok(documents) = app.path().document_dir() {
     let legacy_docs = documents.join("PaperNestLibrary");
-    if legacy_docs.join("library.db").exists() {
-      return Ok((legacy_docs, config));
+    if library_db_exists(&legacy_docs) {
+      existing.push(legacy_docs);
     }
   }
+  if let Some(install) = install_library_dir() {
+    if library_db_exists(&install) {
+      existing.push(install);
+    }
+  }
+  if let Some(path) = existing.into_iter().next() {
+    write_library_location(&config, &path)?;
+    return Ok((path, config));
+  }
+
   let default_dir = install_library_dir().unwrap_or(legacy_local);
+  write_library_location(&config, &default_dir)?;
   Ok((default_dir, config))
 }
 fn copy_library(source:&Path,target:&Path)->Result<()> { for entry in WalkDir::new(source).into_iter().filter_map(|e|e.ok()) { let path=entry.path(); let relative=path.strip_prefix(source).map_err(err)?; let destination=target.join(relative); if entry.file_type().is_dir() { fs::create_dir_all(&destination).map_err(err)?; } else if entry.file_type().is_file() { if let Some(parent)=destination.parent(){fs::create_dir_all(parent).map_err(err)?;} fs::copy(path,&destination).map_err(err)?; } } Ok(()) }
@@ -223,6 +270,17 @@ async fn rebuild_paper_search(pool:&SqlitePool,id:&str)->Result<()> { let row=sq
   Ok(())
 }
 #[tauri::command] async fn save_figure(state:State<'_,AppState>,mut figure:FrameworkFigure,bytes:Option<Vec<u8>>)->Result<()> { if let Some(bytes)=bytes { let rel=format!("figures/{}.png",figure.id); fs::write(state.library_dir.join(&rel),bytes).map_err(err)?; figure.image_path=rel; } let p=state.pool.read().await; sqlx::query("INSERT INTO figures VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET image_path=excluded.image_path,title=excluded.title,explanation_en=excluded.explanation_en,explanation_zh=excluded.explanation_zh,page=excluded.page,geometry_json=excluded.geometry_json,is_primary=excluded.is_primary").bind(figure.id).bind(figure.paper_id).bind(figure.image_path).bind(figure.title).bind(figure.explanation_en).bind(figure.explanation_zh).bind(figure.page).bind(figure.geometry.map(|v|v.to_string())).bind(i64::from(figure.is_primary)).execute(&*p).await.map_err(err)?; Ok(()) }
+#[tauri::command] async fn delete_figure(state:State<'_,AppState>,id:String)->Result<()> {
+  let pool=state.pool.read().await;
+  let path:Option<String>=sqlx::query_scalar("SELECT image_path FROM figures WHERE id=?").bind(&id).fetch_optional(&*pool).await.map_err(err)?;
+  sqlx::query("DELETE FROM figures WHERE id=?").bind(&id).execute(&*pool).await.map_err(err)?;
+  drop(pool);
+  if let Some(path)=path.filter(|value|!value.is_empty()) {
+    let file=state.library_dir.join(path);
+    if file.exists() { fs::remove_file(file).map_err(err)?; }
+  }
+  Ok(())
+}
 #[tauri::command] async fn save_category(state:State<'_,AppState>,category:Category)->Result<()> { sqlx::query("INSERT INTO categories VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color").bind(category.id).bind(category.name).bind(category.color).execute(&*state.pool.read().await).await.map_err(err)?; Ok(()) }
 #[tauri::command] async fn save_task(state:State<'_,AppState>,task:Task)->Result<()> { sqlx::query("INSERT INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,notes=excluded.notes,due_date=excluded.due_date,status=excluded.status,priority=excluded.priority,paper_id=excluded.paper_id,updated_at=excluded.updated_at,completed_at=excluded.completed_at").bind(&task.id).bind(&task.title).bind(&task.notes).bind(&task.due_date).bind(&task.status).bind(&task.priority).bind(&task.paper_id).bind(&task.created_at).bind(&task.updated_at).bind(&task.completed_at).execute(&*state.pool.read().await).await.map_err(err)?; Ok(()) }
 #[tauri::command] async fn delete_task(state:State<'_,AppState>,id:String)->Result<()> { sqlx::query("DELETE FROM tasks WHERE id=?").bind(id).execute(&*state.pool.read().await).await.map_err(err)?; Ok(()) }
@@ -430,6 +488,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let pool=tauri::async_runtime::block_on(open_pool(&dir)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool)});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

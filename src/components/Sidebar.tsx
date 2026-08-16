@@ -3,7 +3,21 @@ import type { Profile } from "../types";
 
 export type Screen = "library" | "tasks" | "knowledge" | "writing" | "trash" | "settings" | "reader";
 
-export function Sidebar({ screen, onNavigate, profile, onTheme }: { screen: Screen; onNavigate(screen: Screen): void; profile: Profile; onTheme(): void }) {
+export function Sidebar({
+  screen,
+  onNavigate,
+  profile,
+  onTheme,
+  collapsed,
+  onToggleCollapsed,
+}: {
+  screen: Screen;
+  onNavigate(screen: Screen): void;
+  profile: Profile;
+  onTheme(): void;
+  collapsed: boolean;
+  onToggleCollapsed(): void;
+}) {
   const items = [
     { id: "library" as const, label: "论文库", icon: Library },
     { id: "tasks" as const, label: "任务与日历", icon: CalendarDays },
@@ -12,12 +26,33 @@ export function Sidebar({ screen, onNavigate, profile, onTheme }: { screen: Scre
     { id: "knowledge" as const, label: "本地知识树", icon: Network },
     { id: "settings" as const, label: "设置", icon: Settings }
   ];
-  return <aside className="sidebar">
-    <div className="brand"><span className="brand-mark"><BookOpen size={18} /></span><div><strong>PaperNest</strong><small>本地论文工作台</small></div></div>
-    <nav>{items.map(({ id, label, icon: Icon }) => <button key={id} title={label} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}><Icon size={17} />{label}</button>)}</nav>
+  return <aside className="sidebar" aria-expanded={!collapsed}>
+    <div className="brand">
+      <button
+        type="button"
+        className="brand-mark"
+        title={collapsed ? "展开侧栏标题" : "收起侧栏（仅图标）"}
+        aria-label={collapsed ? "展开侧栏标题" : "收起侧栏（仅图标）"}
+        onClick={onToggleCollapsed}
+      >
+        <BookOpen size={18} />
+      </button>
+      <div><strong>PaperNest</strong><small>本地论文工作台</small></div>
+    </div>
+    <nav>{items.map(({ id, label, icon: Icon }) => (
+      <button key={id} title={label} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}>
+        <Icon size={17} /><span className="nav-label">{label}</span>
+      </button>
+    ))}</nav>
     <div className="sidebar-spacer" />
-    <button className="theme-switch" onClick={onTheme}>{profile.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />} 切换主题</button>
-    <div className="profile-mini"><span>{profile.displayName.slice(0, 1)}</span><div><strong>{profile.displayName}</strong><small>{profile.researchField || "未填写研究方向"}</small></div></div>
+    <button className="theme-switch" title="切换主题" onClick={onTheme}>
+      {profile.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      <span className="nav-label">切换主题</span>
+    </button>
+    <div className="profile-mini" title={`${profile.displayName}${profile.researchField ? ` · ${profile.researchField}` : ""}`}>
+      <span>{profile.displayName.slice(0, 1)}</span>
+      <div><strong>{profile.displayName}</strong><small>{profile.researchField || "未填写研究方向"}</small></div>
+    </div>
   </aside>;
 }
 

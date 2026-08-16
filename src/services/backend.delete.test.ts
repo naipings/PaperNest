@@ -4,13 +4,22 @@ import { backend } from "./backend";
 describe("preview library deletes", () => {
   afterEach(() => backend.resetPreview());
 
-  it("removes vocabulary and excerpts", async () => {
+  it("removes vocabulary, excerpts and figures", async () => {
     backend.resetPreview();
     await backend.deleteVocabulary("voc-1");
     await backend.deleteExcerpt("ext-1");
+    await backend.saveFigure({
+      id: "fig-temp",
+      paperId: "paper-1",
+      imagePath: "figures/fig-temp.png",
+      title: "temp",
+      isPrimary: false,
+    });
+    await backend.deleteFigure("fig-temp");
     const data = await backend.initialize();
     expect(data.vocabulary.some(item => item.id === "voc-1")).toBe(false);
     expect(data.excerpts.some(item => item.id === "ext-1")).toBe(false);
+    expect(data.figures.some(item => item.id === "fig-temp")).toBe(false);
   });
 
   it("purges a paper only after it is in the trash", async () => {

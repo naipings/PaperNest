@@ -28,7 +28,7 @@ flowchart TB
 
 ### 1. 首次启动
 
-1. 安装并启动 PaperNest。
+1. 安装并启动 PaperNest。新版 setup 若检测到本机已安装旧版，会提示升级/覆盖安装；**资料库目录 `PaperNestLibrary` 会保留**（卸载时不要勾选「删除应用数据」，否则会清掉路径配置）。
 2. 首次启动默认在软件安装目录下创建 `PaperNestLibrary`（可在设置中迁移到其它位置）。建议选择容量充足、会定期备份的非系统盘。
 3. 程序会在该目录创建 `library.db`、`pdf/originals`、`figures` 和 `backups`。不要手动移动其中的单个文件。
 

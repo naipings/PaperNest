@@ -11,7 +11,7 @@ interface LibraryContextValue {
   saveExcerpt(entry: WritingExcerpt): Promise<void>; deleteExcerpt(id: string): Promise<void>; purgePaper(id: string): Promise<void>;
   saveTask(task: Task): Promise<void>; deleteTask(id: string): Promise<void>;
   addReadingSeconds(paperId: string, day: string, seconds: number): Promise<void>;
-  saveFigure(figure: FrameworkFigure, bytes?: number[]): Promise<void>; saveCategory(category: Category): Promise<void>; saveTag(tag: Tag): Promise<void>;
+  saveFigure(figure: FrameworkFigure, bytes?: number[]): Promise<void>; deleteFigure(id: string): Promise<void>; saveCategory(category: Category): Promise<void>; saveTag(tag: Tag): Promise<void>;
   mergeTaxonomy(kind: "category" | "tag", sourceId: string, targetId?: string): Promise<void>; saveView(view: SavedView): Promise<void>; saveProfile(profile: Profile): Promise<void>;
 }
 
@@ -41,6 +41,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     purgePaper: async id => { await backend.purgePaper(id); await refresh(); },
     addReadingSeconds,
     saveFigure: async (figure, bytes) => { await backend.saveFigure(figure, bytes); await refresh(); },
+    deleteFigure: async id => { await backend.deleteFigure(id); await refresh(); },
     saveCategory: wrap(backend.saveCategory), saveTag: wrap(backend.saveTag),
     mergeTaxonomy: async (kind, sourceId, targetId) => { await backend.mergeTaxonomy(kind, sourceId, targetId); await refresh(); },
     saveView: wrap(backend.saveView), saveProfile: wrap(backend.saveProfile),
