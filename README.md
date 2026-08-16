@@ -162,6 +162,6 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | 文档 | 内容 |
 |------|------|
 | [开发文档](docs/DEVELOPMENT.md) | 架构分层、模块职责、批注同步流程、数据模型、视觉令牌、验证清单 |
-| [界面风格](docs/UI_STYLE.md) | 经典工作台与柔光紫仪表盘的颜色、模块层级与中文文案规范 |
+| [界面风格](docs/UI_STYLE.md) | 单一「主题」选项（经典工作台 / 柔光紫 × 明暗）与视觉规范 |
 | [更新记录](docs/CHANGELOG.md) | 版本变更 |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界 |

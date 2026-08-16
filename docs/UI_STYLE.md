@@ -1,6 +1,6 @@
 # 界面风格
 
-PaperNest 提供两套可切换的工作界面，服务于论文管理与阅读任务。
+PaperNest 通过设置中的单一「主题」选择界面外观，服务于论文管理与阅读任务。
 
 页眉对齐 [Helios Page Header](https://helios.hashicorp.design/components/page-header) 与 [Boreal PageHeader](https://www.borealui.ca/docs/components/pageheader)：标题与右侧操作同一基线，说明单行跟在标题下；去掉嵌套白卡片，避免背景接缝与左右错位。
 
@@ -16,8 +16,13 @@ PaperNest 提供两套可切换的工作界面，服务于论文管理与阅读�
 | 控件 | 使用圆角筛选器、轻边框和低对比阴影，强调当前操作而不遮挡数据。 |
 | 文案 | 页面标题、导航、分组标签和操作按钮均使用中文。 |
 
-## 柔光紫仪表盘
+## 主题选项
 
-在“设置 → 个人资料 → 界面风格”选择“柔光紫仪表盘”。该风格采用窄图标导航、柔光网格底纹、紫粉渐变与半透明白色卡片，适配论文库、任务日历、写作资料库、知识树和设置页。
+在「设置 → 个人资料 → 主题」一次选择界面风格与明暗：
 
-实现位置：`src/reference-theme.css`（经典工作台）、`src/lilac-dashboard-theme.css`（柔光紫仪表盘）与 `src/styles.css`（结构样式）。界面风格保存于个人资料的 `visualTheme` 字段。
+| 选项 | 说明 |
+|---|---|
+| 经典工作台 · 跟随系统 / 浅色 / 深色 | 默认海军蓝工作台；`reference-theme.css` + `styles.css` |
+| 柔光紫仪表盘 · 跟随系统 / 浅色 / 深色 | 暖丁香壳层 + orchid 主色 + 玫粉品牌色；保留侧栏文字导航；`lilac-dashboard-theme.css` |
+
+底层仍写入 `profile.theme` 与 `profile.visualTheme`，由 `html[data-theme]` / `html[data-ui-theme]` 落地。

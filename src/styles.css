@@ -236,6 +236,7 @@ body.is-detail-resizing { cursor: col-resize; user-select: none; }
   font-size: 12px;
   color: var(--muted);
 }
+.settings-label-row { display: inline-flex; align-items: center; gap: 6px; }
 .paper-editor input, .paper-editor textarea, .paper-editor select,
 .settings-form input, .settings-form select,
 .task-editor input, .task-editor textarea, .task-editor select {
@@ -449,7 +450,7 @@ body { font-size:15px; } button,input,textarea,select { font-size:14px; }.brand 
 .version-links button { border: 0; background: transparent; color: var(--accent); padding: 0; text-align: left; font: inherit; }
 .version-links button:hover { text-decoration: underline; }
 
-/* 阅读打卡热力图（GitHub / Codex 风格，挂在任务页） */
+/* éè¯»æå¡ç­åå¾ï¼GitHub / Codex é£æ ¼ï¼æå¨ä»»å¡é¡µï¼ */
 .reading-heatmap { max-width: 1240px; margin: 18px auto 0; }
 .reading-heatmap-board {
   border: 1px solid var(--line);

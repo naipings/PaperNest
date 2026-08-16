@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Archive, Database, Download, HardDrive, Laptop, LockKeyhole, Palette, RotateCcw, Save, Settings, ShieldCheck, Sparkles, Tags as TagsIcon, UserRound } from "lucide-react";
+import { APPEARANCE_OPTIONS, appearanceFromProfile, applyAppearance, type AppearanceId } from "../lib/appearance";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import type { Category, Profile, Tag } from "../types";
@@ -16,7 +17,7 @@ export function SettingsView() {
       <p>管理个人偏好、本地资料目录和数据安全。</p>
     </div>
   </header><div className="settings-layout"><nav>{sections.map(({ id, label, icon: Icon }) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}><Icon size={16} />{label}</button>)}</nav><section className="settings-content">
-    {section === "profile" && <ProfileForm profile={data.profile} onSave={async profile => { await saveProfile(profile); setNotice("个人资料已保存"); }} />}
+    {section === "profile" && <ProfileForm key={appearanceFromProfile(data.profile)} profile={data.profile} onSave={async profile => { await saveProfile(profile); setNotice("个人资料已保存"); }} />}
     {section === "llm" && <LlmSettingsForm />}
     {section === "metadata" && <OnlineMetadataSettingsForm />}
     {section === "taxonomy" && <TaxonomyManager categories={data.categories} tags={data.tags} saveCategory={saveCategory} saveTag={saveTag} mergeTaxonomy={mergeTaxonomy} />}
@@ -26,7 +27,17 @@ export function SettingsView() {
   </section></div></main>;
 }
 
-function ProfileForm({ profile, onSave }: { profile: Profile; onSave(value: Profile): Promise<void> }) { const [value, setValue] = useState(profile); return <form className="settings-form" onSubmit={e => { e.preventDefault(); void onSave(value); }}><h2><UserRound size={19} />个人资料</h2><p className="settings-description">仅用于本机界面展示，不会上传。</p><label>显示名<input value={value.displayName} onChange={e => setValue(v => ({ ...v, displayName: e.target.value }))} /></label><label>研究方向<input value={value.researchField} onChange={e => setValue(v => ({ ...v, researchField: e.target.value }))} placeholder="例如：计算机视觉 / 推荐系统" /></label><label><Palette size={15} />明暗主题<select value={value.theme} onChange={e => setValue(v => ({ ...v, theme: e.target.value as Profile["theme"] }))}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><label><Palette size={15} />界面风格<select value={value.visualTheme ?? "workbench"} onChange={e => setValue(v => ({ ...v, visualTheme: e.target.value as NonNullable<Profile["visualTheme"]> }))}><option value="workbench">经典工作台</option><option value="lilac">柔光紫仪表盘</option></select></label><button className="primary"><Save size={16} />保存个人资料</button></form>; }
+function ProfileForm({ profile, onSave }: { profile: Profile; onSave(value: Profile): Promise<void> }) {
+  const [value, setValue] = useState(profile);
+  return <form className="settings-form" onSubmit={e => { e.preventDefault(); void onSave(value); }}>
+    <h2><UserRound size={19} />个人资料</h2>
+    <p className="settings-description">仅用于本机界面展示，不会上传。</p>
+    <label>显示名<input value={value.displayName} onChange={e => setValue(v => ({ ...v, displayName: e.target.value }))} /></label>
+    <label>研究方向<input value={value.researchField} onChange={e => setValue(v => ({ ...v, researchField: e.target.value }))} placeholder="例如：计算机视觉 / 推荐系统" /></label>
+    <label><span className="settings-label-row"><Palette size={15} />主题</span><select value={appearanceFromProfile(value)} onChange={e => setValue(v => applyAppearance(v, e.target.value as AppearanceId))}>{APPEARANCE_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+    <button className="primary"><Save size={16} />保存个人资料</button>
+  </form>;
+}
 
 function TaxonomyManager({ categories, tags, saveCategory, saveTag, mergeTaxonomy }: { categories: Category[]; tags: Tag[]; saveCategory(v: Category): Promise<void>; saveTag(v: Tag): Promise<void>; mergeTaxonomy(kind: "category"|"tag", source: string, target?: string): Promise<void> }) {
   const add = async (kind: "category"|"tag") => {
