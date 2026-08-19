@@ -1,5 +1,6 @@
 import { ExternalLink, Minus, Network, Plus, RotateCcw, Search, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   authorYearLabel,
   buildEdges,
@@ -18,64 +19,86 @@ import { useLibrary } from "../state/LibraryContext";
 import type { Paper } from "../types";
 
 type ViewMode = "graph" | "prior" | "derivative" | "list";
+type GraphNode = {
+  local: number;
+  paper: Paper;
+  x: number;
+  y: number;
+  color: string;
+  radius: number;
+  label: string;
+  toOrigin: number;
+  isOrigin: boolean;
+  year: number | null;
+};
+
+const paperMatch = (paper: Paper, q: string) => {
+  if (!q) return true;
+  return `${paper.titleEn} ${paper.titleZh ?? ""} ${paper.summary ?? ""} ${paper.authors.map(a => a.name).join(" ")}`
+    .toLowerCase()
+    .includes(q);
+};
 
 export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: Paper): void }) {
   const { data } = useLibrary();
-  const [query, setQuery] = useState("");
+  const [listQuery, setListQuery] = useState("");
+  const [originDraft, setOriginDraft] = useState("");
+  const [originMenuOpen, setOriginMenuOpen] = useState(false);
+  const [originMenuBox, setOriginMenuBox] = useState<{ left: number; top: number; width: number }>();
+  const originInputRef = useRef<HTMLInputElement>(null);
   const [threshold, setThreshold] = useState(0.12);
   const [originId, setOriginId] = useState<string>();
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("graph");
 
-  const papers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return (data?.papers ?? [])
-      .filter(paper => !paper.deletedAt)
-      .filter(paper => !q || `${paper.titleEn} ${paper.titleZh ?? ""} ${paper.summary ?? ""}`.toLowerCase().includes(q))
-      .slice(0, 200);
-  }, [data, query]);
+  const allPapers = useMemo(
+    () => (data?.papers ?? []).filter(paper => !paper.deletedAt).slice(0, 200),
+    [data],
+  );
 
-  const matrix = useMemo(() => (papers.length ? similarityMatrix(papers) : []), [papers]);
+  const matrix = useMemo(() => (allPapers.length ? similarityMatrix(allPapers) : []), [allPapers]);
+
+  useEffect(() => {
+    if (originId || !allPapers.length || !matrix.length) return;
+    setOriginId(allPapers[defaultOriginIndex(matrix)].id);
+  }, [allPapers, matrix, originId]);
 
   const originIndex = useMemo(() => {
-    if (!papers.length) return 0;
-    const fromId = originId ? papers.findIndex(paper => paper.id === originId) : -1;
-    if (fromId >= 0) return fromId;
-    return defaultOriginIndex(matrix);
-  }, [papers, originId, matrix]);
+    if (!allPapers.length) return 0;
+    const fromId = originId ? allPapers.findIndex(paper => paper.id === originId) : -1;
+    return fromId >= 0 ? fromId : 0;
+  }, [allPapers, originId]);
 
-  const neighborhoodSize = Math.min(40, Math.max(2, papers.length || 12));
+  const originPaper = allPapers[originIndex];
+  const neighborhoodSize = Math.min(40, Math.max(2, allPapers.length || 12));
   const world = useMemo(() => layoutWorldForCount(neighborhoodSize), [neighborhoodSize]);
-  const viewport = useGraphViewport({ world });
+  const viewport = useGraphViewport({
+    world,
+    onBlankClick: () => setSelectedId(null),
+  });
+
   const graph = useMemo(() => {
-    if (!papers.length) {
+    if (!allPapers.length) {
       return {
-        nodes: [] as Array<{
-          local: number; paper: Paper; x: number; y: number; color: string; radius: number;
-          label: string; toOrigin: number; isOrigin: boolean; year: number | null;
-        }>,
+        nodes: [] as GraphNode[],
         edges: [] as GraphEdge[],
         path: [] as number[],
         pathEdges: new Set<string>(),
-        list: [] as Array<{
-          local: number; paper: Paper; x: number; y: number; color: string; radius: number;
-          label: string; toOrigin: number; isOrigin: boolean; year: number | null;
-        }>,
+        list: [] as GraphNode[],
         minYear: 2010,
         maxYear: 2026,
         edgesVisible: [] as GraphEdge[],
       };
     }
-    const indices = neighborhoodIndices(matrix, originIndex, Math.min(40, papers.length));
+    const indices = neighborhoodIndices(matrix, originIndex, Math.min(40, allPapers.length));
     const localOrigin = 0;
     const layoutWorld = layoutWorldForCount(indices.length);
-    // Sparse graph like Connected Papers: kNN=2 + MST, avoid dense springs that collapse the layout.
     const edgesAll = buildEdges(matrix, indices, 2, 0.05);
     const edges = edgesAll.filter(edge => edge.score >= threshold);
     const layoutEdges = edges.length ? edges : edgesAll.slice(0, Math.max(indices.length - 1, 1));
     const roughRadii = indices.map((_, local) => (local === localOrigin ? 18 : 12));
     const positions = forceLayout(indices.length, layoutEdges, localOrigin, layoutWorld, undefined, roughRadii);
-    const years = indices.map(i => yearOf(papers[i])).filter((y): y is number => y != null);
+    const years = indices.map(i => yearOf(allPapers[i])).filter((y): y is number => y != null);
     const minYear = years.length ? Math.min(...years) : 2000;
     const maxYear = years.length ? Math.max(...years) : 2026;
     const degree = Array.from({ length: indices.length }, () => 0);
@@ -83,8 +106,8 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
       degree[edge.from] += edge.score;
       degree[edge.to] += edge.score;
     });
-    const nodes = indices.map((paperIndex, local) => {
-      const paper = papers[paperIndex];
+    const nodes: GraphNode[] = indices.map((paperIndex, local) => {
+      const paper = allPapers[paperIndex];
       const toOrigin = matrix[paperIndex][indices[localOrigin]];
       return {
         local,
@@ -99,7 +122,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
         year: yearOf(paper),
       };
     });
-    const selectedLocal = nodes.findIndex(node => node.paper.id === (selectedId ?? nodes[0]?.paper.id));
+    const selectedLocal = selectedId == null ? -1 : nodes.findIndex(node => node.paper.id === selectedId);
     const path = selectedLocal >= 0
       ? (shortestPath(layoutEdges, selectedLocal, localOrigin) ?? [selectedLocal])
       : [];
@@ -109,25 +132,79 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
       const b = Math.max(path[i], path[i + 1]);
       pathEdges.add(`${a}:${b}`);
     }
-    const list = nodes
-      .slice()
-      .sort((a, b) => b.toOrigin - a.toOrigin);
+    const list = nodes.slice().sort((a, b) => b.toOrigin - a.toOrigin);
     return { nodes, edges: layoutEdges, path, pathEdges, list, minYear, maxYear, edgesVisible: edges };
-  }, [papers, matrix, originIndex, threshold, selectedId]);
+  }, [allPapers, matrix, originIndex, threshold, selectedId]);
 
-  const selected = graph.nodes.find(node => node.paper.id === selectedId) ?? graph.nodes[0];
-  const originYear = yearOf(papers[originIndex] ?? selected?.paper);
+  const selected = selectedId == null ? undefined : graph.nodes.find(node => node.paper.id === selectedId);
+  const originYear = yearOf(originPaper);
+  const listQ = listQuery.trim().toLowerCase();
   const filteredList = graph.list.filter(node => {
+    if (!paperMatch(node.paper, listQ)) return false;
     if (view === "prior" && originYear != null) return (node.year ?? 0) < originYear;
     if (view === "derivative" && originYear != null) return (node.year ?? 9999) > originYear;
     return true;
   });
 
+  const originQ = originDraft.trim().toLowerCase();
+  const originCandidates = useMemo(() => {
+    const ranked = originQ
+      ? allPapers.filter(paper => paperMatch(paper, originQ))
+      : allPapers;
+    return ranked.slice(0, 14);
+  }, [allPapers, originQ]);
+
   const makeOrigin = (paper: Paper) => {
     setOriginId(paper.id);
     setSelectedId(paper.id);
+    setOriginDraft("");
+    setOriginMenuOpen(false);
     setView("graph");
   };
+
+  const syncOriginMenuBox = () => {
+    const el = originInputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setOriginMenuBox({ left: rect.left, top: rect.bottom + 4, width: Math.max(rect.width, 320) });
+  };
+
+  useLayoutEffect(() => {
+    if (!originMenuOpen) return;
+    syncOriginMenuBox();
+    const onReposition = () => syncOriginMenuBox();
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [originMenuOpen]);
+
+  const originMenu = originMenuOpen && originMenuBox
+    ? createPortal(
+      <ul
+        className="cp-origin-menu"
+        style={{ left: originMenuBox.left, top: originMenuBox.top, width: originMenuBox.width }}
+        onMouseDown={event => event.preventDefault()}
+      >
+        {originCandidates.map(paper => (
+          <li key={paper.id}>
+            <button
+              type="button"
+              className={paper.id === originId ? "active" : ""}
+              onClick={() => makeOrigin(paper)}
+            >
+              <strong>{paper.titleZh || paper.titleEn}</strong>
+              <small>{authorYearLabel(paper)}</small>
+            </button>
+          </li>
+        ))}
+        {!originCandidates.length && <li className="cp-origin-empty">无匹配论文</li>}
+      </ul>,
+      document.body,
+    )
+    : null;
 
   return <main className="knowledge-graph-page cp-page">
     <header className="page-heading knowledge-graph-header">
@@ -138,22 +215,43 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
           <span className="page-kicker">Connected Papers 风格</span>
         </div>
         <p>
-          以原点论文为中心的力导向邻域图。底层为本地 L1：BM25 + TF-IDF（标题加权、中文二字切分）与标签/领域；非 Semantic Scholar 共引。颜色越深越新；选中高亮到原点的最短相似路径。
+          以原点论文为中心的力导向邻域图。可在「原点」栏本地搜索切换核心；初始默认一篇。单击节点查看，点空白取消选中。
         </p>
       </div>
       <div className="page-heading-actions">
         <label className="knowledge-search">
           <Search size={17} />
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="筛选论文…" />
+          <input value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="筛选左侧列表…" />
         </label>
       </div>
     </header>
 
-    <div className="cp-toolbar">
-      <div className="cp-origin-title" title={papers[originIndex]?.titleEn}>
+    <div className={"cp-toolbar" + (originMenuOpen ? " is-picking" : "")}>
+      <div className="cp-origin-picker">
         <Sparkles size={14} />
         <strong>原点</strong>
-        <span>{papers[originIndex] ? (papers[originIndex].titleZh || papers[originIndex].titleEn) : "—"}</span>
+        <div className="cp-origin-field">
+          <input
+            ref={originInputRef}
+            value={originMenuOpen ? originDraft : (originPaper ? (originPaper.titleZh || originPaper.titleEn) : "")}
+            placeholder="搜索本地论文并设为原点…"
+            onFocus={() => {
+              setOriginMenuOpen(true);
+              setOriginDraft("");
+              requestAnimationFrame(syncOriginMenuBox);
+            }}
+            onChange={event => {
+              setOriginDraft(event.target.value);
+              setOriginMenuOpen(true);
+              requestAnimationFrame(syncOriginMenuBox);
+            }}
+            onBlur={() => {
+              window.setTimeout(() => setOriginMenuOpen(false), 150);
+            }}
+            aria-label="搜索并设定原点论文"
+            aria-expanded={originMenuOpen}
+          />
+        </div>
       </div>
       <div className="cp-view-tabs">
         {([["graph", "图谱"], ["prior", "先前工作"], ["derivative", "衍生工作"], ["list", "列表"]] as const).map(([id, label]) => (
@@ -161,11 +259,12 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
         ))}
       </div>
     </div>
+    {originMenu}
 
     <div className="knowledge-controls">
       <label>关系阈值 <input type="range" min="0.04" max="0.45" step="0.02" value={threshold} onChange={event => setThreshold(Number(event.target.value))} /><strong>{Math.round(threshold * 100)}%</strong></label>
       <span>{graph.nodes.length} 篇邻域 · {graph.edgesVisible.length} 条可见关联</span>
-      <span className="knowledge-gesture-hint">滚轮缩放 · 空白处拖动 · 双击打开论文</span>
+      <span className="knowledge-gesture-hint">滚轮缩放 · 拖动画布 · 点空白取消选中 · 双击打开</span>
     </div>
 
     <div className="cp-layout">
@@ -206,7 +305,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
             {graph.edges.map((edge, index) => {
               const key = `${Math.min(edge.from, edge.to)}:${Math.max(edge.from, edge.to)}`;
               const onPath = graph.pathEdges.has(key);
-              const dim = selected && graph.path.length > 1 && !onPath;
+              const dim = Boolean(selected && graph.path.length > 1 && !onPath);
               return <line
                 className={"knowledge-edge" + (onPath ? " on-path" : "") + (dim ? " dim" : "")}
                 key={index}
@@ -219,13 +318,16 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
             })}
             {graph.nodes.map(node => {
               const onPath = graph.path.includes(node.local);
-              const dim = selected && graph.path.length > 1 && !onPath && selected.paper.id !== node.paper.id;
+              const dim = Boolean(selected && graph.path.length > 1 && !onPath && selected.paper.id !== node.paper.id);
               return <g
                 className={"knowledge-map-node" + (selected?.paper.id === node.paper.id ? " selected" : "") + (node.isOrigin ? " origin" : "") + (dim ? " dim" : "")}
                 key={node.paper.id}
                 transform={`translate(${node.x} ${node.y})`}
                 onPointerDown={event => event.stopPropagation()}
-                onClick={() => setSelectedId(node.paper.id)}
+                onClick={event => {
+                  event.stopPropagation();
+                  setSelectedId(node.paper.id);
+                }}
                 onDoubleClick={() => onOpenPaper(node.paper)}
               >
                 {node.isOrigin && <circle className="cp-origin-ring" r={node.radius + 7} />}
@@ -263,8 +365,8 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
             {!selected.isOrigin && <button type="button" className="secondary" onClick={() => makeOrigin(selected.paper)}>设为原点重建图</button>}
             <button type="button" className="primary" onClick={() => onOpenPaper(selected.paper)}><ExternalLink size={16} />在论文表格中定位</button>
           </div>
-          <small>单击查看；双击打开。选中非原点时高亮到原点的最短相似路径。相似度：本地 BM25+TF-IDF（L1），不是共引网络。</small>
-        </> : <p>没有可显示的论文。</p>}
+          <small>单击节点查看；点空白取消选中；双击打开。非原点可「设为原点重建图」，或在上方原点栏搜索切换。</small>
+        </> : <p className="cp-inspector-idle">单击图中节点或左侧列表查看详情；点击画布空白处可取消选中。原点请用上方搜索框切换。</p>}
       </aside>
     </div>
   </main>;

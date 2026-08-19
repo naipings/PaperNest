@@ -436,21 +436,58 @@ body { font-size:15px; } button,input,textarea,select { font-size:14px; }.brand 
 .cp-page .cp-toolbar,
 .cp-page .cp-layout { max-width: 1560px; width: 100%; margin-left: auto; margin-right: auto; }
 .cp-toolbar {
+  position: relative;
+  z-index: 40;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px 12px 0 0;
   background: var(--panel); margin-top: 8px;
+  overflow: visible;
 }
 .cp-origin-title { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; }
 .cp-origin-title strong { color: var(--accent); flex-shrink: 0; }
 .cp-origin-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.cp-origin-picker {
+  display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: var(--muted); font-size: 13px;
+  overflow: visible;
+}
+.cp-origin-picker > strong { color: var(--accent); flex-shrink: 0; }
+.cp-origin-field { position: relative; z-index: 41; flex: 1; min-width: 0; max-width: 520px; overflow: visible; }
+.cp-origin-field input {
+  width: 100%; min-height: 34px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 0 10px; background: var(--soft); color: var(--text); font-size: 13px;
+}
+.cp-origin-menu {
+  position: fixed;
+  z-index: 10000;
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 14px 36px rgba(30, 25, 55, .22);
+}
+.cp-origin-menu button {
+  width: 100%; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: 0; background: transparent; padding: 8px 10px; border-radius: 7px; cursor: pointer;
+}
+.cp-origin-menu button:hover, .cp-origin-menu button.active { background: color-mix(in srgb, var(--accent) 10%, var(--soft)); }
+.cp-origin-menu strong { font-size: 13px; color: var(--text); line-height: 1.35; }
+.cp-origin-menu small { color: var(--muted); font-size: 11px; }
+.cp-toolbar.is-picking { z-index: 60; }
+.cp-inspector-idle { margin: 28px 0 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .cp-view-tabs { display: flex; flex-shrink: 0; gap: 2px; padding: 3px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line); }
 .cp-view-tabs button { border: 0; background: transparent; min-height: 30px; padding: 0 12px; border-radius: 7px; color: var(--muted); font-size: 12px; }
 .cp-view-tabs button.active { background: var(--panel); color: var(--text); box-shadow: 0 1px 4px rgba(30,25,55,.08); }
-.cp-page .knowledge-controls { padding-top: 10px; }
+.cp-page .knowledge-controls { padding-top: 10px; position: relative; z-index: 1; }
 .cp-layout {
   flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px;
   border: 1px solid var(--line); border-radius: 0 0 14px 14px; overflow: hidden; background: var(--panel);
   box-shadow: 0 8px 28px rgba(40,70,120,.05);
+  position: relative;
+  z-index: 0;
 }
 .cp-list { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: color-mix(in srgb, var(--soft) 55%, var(--panel)); }
 .cp-list > header { padding: 12px 14px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); letter-spacing: .02em; }

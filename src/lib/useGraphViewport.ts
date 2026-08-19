@@ -12,9 +12,20 @@ export function graphViewBox(camera: GraphCamera, world: GraphWorld) {
   return [camera.centerX - width / 2, camera.centerY - height / 2, width, height].join(" ");
 }
 
-export function useGraphViewport({ world, minZoom = .65, maxZoom = 2.2 }: { world: GraphWorld; minZoom?: number; maxZoom?: number }) {
+export function useGraphViewport({
+  world,
+  minZoom = .65,
+  maxZoom = 2.2,
+  onBlankClick,
+}: {
+  world: GraphWorld;
+  minZoom?: number;
+  maxZoom?: number;
+  onBlankClick?(): void;
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState>(undefined);
+  const movedRef = useRef(false);
   const home = () => ({ centerX: world.width / 2, centerY: world.height / 2, zoom: 1 });
   const [camera, setCamera] = useState<GraphCamera>(home);
   const [panning, setPanning] = useState(false);
@@ -48,12 +59,14 @@ export function useGraphViewport({ world, minZoom = .65, maxZoom = 2.2 }: { worl
     if (event.button !== 0 || (event.target instanceof Element && event.target.closest(".knowledge-map-node"))) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    movedRef.current = false;
     dragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, camera };
     setPanning(true);
   };
   const onPointerMove: PointerEventHandler<SVGSVGElement> = event => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - drag.clientX, event.clientY - drag.clientY) > 4) movedRef.current = true;
     const rect = event.currentTarget.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const visibleWidth = world.width / drag.camera.zoom;
@@ -62,9 +75,11 @@ export function useGraphViewport({ world, minZoom = .65, maxZoom = 2.2 }: { worl
   };
   const endPan: PointerEventHandler<SVGSVGElement> = event => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
+    const wasClick = !movedRef.current;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     dragRef.current = undefined;
     setPanning(false);
+    if (wasClick) onBlankClick?.();
   };
   const zoomBy = (amount: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
