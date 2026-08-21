@@ -31,7 +31,7 @@ flowchart TB
 ### 1. 首次启动
 
 1. 安装并启动 PaperNest。新版 setup 若检测到本机已安装旧版，会提示升级/覆盖安装；**资料库目录** `PaperNestLibrary` **会保留**（卸载时不要勾选「删除应用数据」，否则会清掉路径配置）。
-2. 首次启动默认在软件安装目录下创建 `PaperNestLibrary`（可在设置中迁移到其它位置）。建议选择容量充足、会定期备份的非系统盘。
+2. 首次启动默认在软件安装目录下创建 `PaperNestLibrary`（可在设置中迁移到其它位置）。选择容量充足的本地磁盘；OneDrive、Dropbox、iCloud 等同步目录只存放完整备份包。资料库因只读或 I/O 错误无法启动时，程序会复制资料库到本机应用数据目录并切换到副本。
 3. 程序会在该目录创建 `library.db`、`pdf/originals`、`figures` 和 `backups`。不要手动移动其中的单个文件。
 
 
@@ -198,5 +198,3 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [界面风格](docs/UI_STYLE.md)                                     | 单一「主题」选项（经典工作台 / 柔光紫 / 雾蓝 / 苔绿暖黄 × 明暗）与视觉规范 |
 | [更新记录](docs/CHANGELOG.md)                                    | 版本变更                                        |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界                  |
-
-

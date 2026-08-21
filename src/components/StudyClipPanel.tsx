@@ -115,6 +115,8 @@ export function StudyClipPanel({
         page,
       });
       setNotice("已收为术语");
+    } catch (error) {
+      setNotice(`收录术语失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -143,6 +145,8 @@ export function StudyClipPanel({
         createdAt: now(),
       });
       setNotice("已加入写作库");
+    } catch (error) {
+      setNotice(`加入写作库失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -166,8 +170,9 @@ export function StudyClipPanel({
         ))}
       </div>
     </header>
-    <label className="study-clip-label">原文（可编辑）</label>
+    <label className="study-clip-label" htmlFor="study-clip-source">原文（可编辑）</label>
     <textarea
+      id="study-clip-source"
       className="study-clip-input"
       rows={8}
       value={source}
@@ -187,8 +192,9 @@ export function StudyClipPanel({
         <ArrowDown size={18} />
       </button>
     </div>
-    <label className="study-clip-label">译文</label>
+    <label className="study-clip-label" htmlFor="study-clip-translation">译文</label>
     <textarea
+      id="study-clip-translation"
       className="study-clip-output"
       rows={12}
       value={translated}

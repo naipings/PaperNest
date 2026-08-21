@@ -27,6 +27,7 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
   const [editing, setEditing] = useState(false);
   const [newTerm, setNewTerm] = useState(false);
   const [checkedTermIds, setCheckedTermIds] = useState<Set<string>>(new Set());
+  const [figureNotice, setFigureNotice] = useState("");
   const [width, setWidth] = useState(readDetailWidth);
   const [resizing, setResizing] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
@@ -88,23 +89,27 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
           <input hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={async event => {
             const file = event.target.files?.[0];
             if (!file) return;
-            const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
-            const stem = file.name.replace(/\.[^.]+$/, "");
-            const title = window.prompt("框架图标题", stem) || "方法框架图";
-            const explanationZh = window.prompt("中文解释（可稍后补充）") || undefined;
-            const pageValue = window.prompt("来源页码（可留空）");
-            await saveFigure({
-              id: uuid(),
-              paperId: paper.id,
-              imagePath: "",
-              title,
-              explanationZh,
-              page: pageValue ? Number(pageValue) : undefined,
-              isPrimary: figures.length === 0
-            }, bytes);
-            event.target.value = "";
+            try {
+              setFigureNotice("");
+              const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+              const stem = file.name.replace(/\.[^.]+$/, "");
+              const title = window.prompt("框架图标题", stem) || "方法框架图";
+              const explanationZh = window.prompt("中文解释（可稍后补充）") || undefined;
+              const pageValue = window.prompt("来源页码（可留空）");
+              await saveFigure({
+                id: uuid(),
+                paperId: paper.id,
+                imagePath: "",
+                title,
+                explanationZh,
+                page: pageValue ? Number(pageValue) : undefined,
+                isPrimary: figures.length === 0
+              }, bytes);
+            } catch (error) { setFigureNotice(`保存框架图失败：${error instanceof Error ? error.message : String(error)}`); }
+            finally { event.target.value = ""; }
           }} />
         </label>
+        {figureNotice && <p className="inline-notice" role="alert">{figureNotice}</p>}
         {figures.map(item => <article className="figure-card" key={item.id}>
           <div className="figure-placeholder"><FileImage size={30} /></div>
           <header>
@@ -125,17 +130,20 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
 
 function ManagedFigure({ path }: { path: string }) {
   const [url, setUrl] = useState<string>();
+  const [error, setError] = useState<string>();
   useEffect(() => {
     let active = true;
     let current = "";
+    setUrl(undefined);
+    setError(undefined);
     void backend.readPdf(path).then(bytes => {
       current = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
       if (active) setUrl(current);
       else URL.revokeObjectURL(current);
-    }).catch(() => undefined);
+    }).catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)); });
     return () => { active = false; if (current) URL.revokeObjectURL(current); };
   }, [path]);
-  return url ? <img className="framework-image" src={url} alt="方法框架图" /> : <div className="figure-placeholder"><FileImage size={30} /></div>;
+  return url ? <img className="framework-image" src={url} alt="方法框架图" /> : <div className="figure-load-placeholder"><div className="figure-placeholder"><FileImage size={30} /></div>{error && <p className="figure-load-error" role="alert">框架图加载失败：{error}</p>}</div>;
 }
 
 function VocabularyCard({ entry, checked, onToggle, onDelete }: { entry: VocabularyEntry; checked: boolean; onToggle(): void; onDelete(): void }) {
@@ -153,6 +161,15 @@ function VocabularyCard({ entry, checked, onToggle, onDelete }: { entry: Vocabul
 
 function TermEditor({ paperId, onClose, onSave }: { paperId: string; onClose(): void; onSave(entry: VocabularyEntry): Promise<void> }) {
   const [entry, setEntry] = useState<VocabularyEntry>({ id: uuid(), paperId, termEn: "", meaningZh: "" });
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const set = (key: keyof VocabularyEntry, value: string | number) => setEntry(e => ({ ...e, [key]: value }));
-  return <Modal title="添加专业词汇 / 短语" onClose={onClose}><form className="paper-editor" onSubmit={e => { e.preventDefault(); void onSave(entry); }}><label>英文词汇 / 短语<input autoFocus required value={entry.termEn} onChange={e => set("termEn", e.target.value)} /></label><label>中文释义<textarea required rows={2} value={entry.meaningZh} onChange={e => set("meaningZh", e.target.value)} /></label><label>代表性原句<textarea rows={3} value={entry.sentenceEn ?? ""} onChange={e => set("sentenceEn", e.target.value)} /></label><label>句子中文注释<textarea rows={3} value={entry.sentenceZh ?? ""} onChange={e => set("sentenceZh", e.target.value)} /></label><label>页码<input type="number" min="1" value={entry.page ?? ""} onChange={e => set("page", Number(e.target.value))} /></label><footer><button type="button" className="secondary" onClick={onClose}>取消</button><button className="primary">保存</button></footer></form></Modal>;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try { await onSave(entry); }
+    catch (error) { setNotice(`保存术语失败：${error instanceof Error ? error.message : String(error)}`); }
+    finally { setBusy(false); }
+  };
+  return <Modal title="添加专业词汇 / 短语" onClose={onClose}><form className="paper-editor" onSubmit={submit}><label>英文词汇 / 短语<input autoFocus required value={entry.termEn} onChange={e => set("termEn", e.target.value)} /></label><label>中文释义<textarea required rows={2} value={entry.meaningZh} onChange={e => set("meaningZh", e.target.value)} /></label><label>代表性原句<textarea rows={3} value={entry.sentenceEn ?? ""} onChange={e => set("sentenceEn", e.target.value)} /></label><label>句子中文注释<textarea rows={3} value={entry.sentenceZh ?? ""} onChange={e => set("sentenceZh", e.target.value)} /></label><label>页码<input type="number" min="1" value={entry.page ?? ""} onChange={e => set("page", Number(e.target.value))} /></label>{notice && <p className="inline-notice" role="alert">{notice}</p>}<footer><button type="button" className="secondary" disabled={busy} onClick={onClose}>取消</button><button className="primary" disabled={busy}>{busy ? "正在保存…" : "保存术语"}</button></footer></form></Modal>;
 }

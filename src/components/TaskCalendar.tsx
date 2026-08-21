@@ -19,23 +19,29 @@ function TaskForm({ task, defaultDate, onClose }: { task?: Task; defaultDate?: s
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? "todo");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "medium");
   const [paperId, setPaperId] = useState(task?.paperId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!title.trim()) return;
     const timestamp = new Date().toISOString();
-    await saveTask({
-      id: task?.id ?? crypto.randomUUID(),
-      title: title.trim(),
-      notes: notes.trim() || undefined,
-      dueDate: dueDate || undefined,
-      status,
-      priority,
-      paperId: paperId || undefined,
-      createdAt: task?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-      completedAt: status === "done" ? task?.completedAt ?? timestamp : undefined
-    });
-    onClose();
+    setBusy(true);
+    try {
+      await saveTask({
+        id: task?.id ?? crypto.randomUUID(),
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        dueDate: dueDate || undefined,
+        status,
+        priority,
+        paperId: paperId || undefined,
+        createdAt: task?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+        completedAt: status === "done" ? task?.completedAt ?? timestamp : undefined
+      });
+      onClose();
+    } catch (error) { setNotice(`保存任务失败：${error instanceof Error ? error.message : String(error)}`); }
+    finally { setBusy(false); }
   };
   return <form className="task-editor" onSubmit={submit}>
     <label>任务名称<input autoFocus value={title} onChange={event => setTitle(event.target.value)} placeholder="例如：精读方法部分" /></label>
@@ -46,7 +52,8 @@ function TaskForm({ task, defaultDate, onClose }: { task?: Task; defaultDate?: s
       <label>优先级<select value={priority} onChange={event => setPriority(event.target.value as TaskPriority)}>{Object.entries(priorityLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     </div>
     <label>关联论文<select value={paperId} onChange={event => setPaperId(event.target.value)}><option value="">不关联论文</option>{data?.papers.filter(paper => !paper.deletedAt).map(paper => <option key={paper.id} value={paper.id}>{paper.titleZh || paper.titleEn}</option>)}</select></label>
-    <footer><button type="button" className="secondary" onClick={onClose}>取消</button><button className="primary" type="submit">保存任务</button></footer>
+    {notice && <p className="inline-notice" role="alert">{notice}</p>}
+    <footer><button type="button" className="secondary" disabled={busy} onClick={onClose}>取消</button><button className="primary" type="submit" disabled={busy}>{busy ? "正在保存…" : "保存任务"}</button></footer>
   </form>;
 }
 

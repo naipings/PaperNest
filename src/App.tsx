@@ -1,22 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
 import { Sidebar, type Screen } from "./components/Sidebar";
 import { Topbar } from "./components/LlmTopbar";
 import { LibraryView } from "./components/LibraryView";
 import { DetailPanel } from "./components/DetailPanel";
-import { PdfReader, type PdfReaderHandle } from "./components/PdfReader";
-import { WritingLibrary } from "./components/WritingLibrary";
-import { TrashView } from "./components/TrashView";
-import { SettingsView } from "./components/SettingsView";
-import { KnowledgeGraphInteractive } from "./components/KnowledgeGraphInteractive";
-import { TaskCalendar } from "./components/TaskCalendar";
+import type { PdfReaderHandle } from "./components/PdfReader";
 import { Modal } from "./components/Modal";
 import { PaperEditor } from "./components/PaperEditor";
+import { LazyScreenBoundary } from "./components/LazyScreenBoundary";
 import { useLibrary } from "./state/LibraryContext";
 import { backend } from "./services/backend";
 import type { Paper } from "./types";
 
 const SIDEBAR_COLLAPSED_KEY = "papernest.sidebarCollapsed";
+const PdfReader = lazy(() => import("./components/PdfReader").then(module => ({ default: module.PdfReader })));
+const WritingLibrary = lazy(() => import("./components/WritingLibrary").then(module => ({ default: module.WritingLibrary })));
+const TrashView = lazy(() => import("./components/TrashView").then(module => ({ default: module.TrashView })));
+const SettingsView = lazy(() => import("./components/SettingsView").then(module => ({ default: module.SettingsView })));
+const KnowledgeGraphInteractive = lazy(() => import("./components/KnowledgeGraphInteractive").then(module => ({ default: module.KnowledgeGraphInteractive })));
+const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module => ({ default: module.TaskCalendar })));
 
 function readSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -27,6 +29,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("library");
   const [search, setSearch] = useState("");
   const [searchHitPaperIds, setSearchHitPaperIds] = useState<string[]>([]);
+  const [searchError, setSearchError] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
   const [readerPaper, setReaderPaper] = useState<Paper>();
   const [creating, setCreating] = useState(false);
@@ -63,7 +66,7 @@ export default function App() {
     after?.();
   };
 
-  useEffect(() => { let active=true; const timer=window.setTimeout(() => { if(!search.trim()){setSearchHitPaperIds([]);return;} void backend.search(search).then(hits => { if(active)setSearchHitPaperIds([...new Set(hits.map(hit=>hit.paperId))]); }).catch(()=>{ if(active)setSearchHitPaperIds([]); }); },180); return()=>{active=false;window.clearTimeout(timer);}; },[search]);
+  useEffect(() => { let active=true; setSearchError(undefined); const timer=window.setTimeout(() => { if(!search.trim()){setSearchHitPaperIds([]);return;} void backend.search(search).then(hits => { if(active)setSearchHitPaperIds([...new Set(hits.map(hit=>hit.paperId))]); }).catch(error=>{ if(active){setSearchHitPaperIds([]);setSearchError(`全文搜索失败：${error instanceof Error ? error.message : String(error)}`);} }); },180); return()=>{active=false;window.clearTimeout(timer);}; },[search]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -88,6 +91,7 @@ export default function App() {
   if (error || !data) return <div className="splash error"><AlertTriangle /><strong>无法打开资料库</strong><p>{error}</p><button className="primary" onClick={refresh}>重试</button></div>;
   const openPdf = (paper: Paper, page?: number) => { setReaderPaper(page ? { ...paper, readingPage: page } : paper); setScreen("library"); };
   const theme = async () => saveProfile({ ...data.profile, theme: data.profile.theme === "dark" ? "light" : "dark" });
+  const pageFallback = <div className="splash"><LoaderCircle className="spin" /><strong>正在加载页面…</strong></div>;
   return <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
     <Sidebar
       screen={screen}
@@ -98,14 +102,14 @@ export default function App() {
       onToggleCollapsed={toggleSidebarCollapsed}
     />
     <div className="workspace">
-      {screen === "library" && <><Topbar search={search} onSearch={setSearch} onCreate={() => setCreating(true)} onRefresh={refresh} /><div className={`main-with-detail ${selected ? "has-detail" : ""}`}><LibraryView search={search} searchHitPaperIds={searchHitPaperIds} selectedId={selectedId} onSelect={p => setSelectedId(p.id)} onOpenPdf={openPdf} />{selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}</div></>}
+      {screen === "library" && <><Topbar search={search} searchError={searchError} onSearch={setSearch} onCreate={() => setCreating(true)} onRefresh={refresh} /><div className={`main-with-detail ${selected ? "has-detail" : ""}`}><LibraryView search={search} searchHitPaperIds={searchHitPaperIds} selectedId={selectedId} onSelect={p => setSelectedId(p.id)} onOpenPdf={openPdf} />{selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}</div></>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
-      {screen === "writing" && <WritingLibrary onOpenPaper={openPdf} />}
-      {screen === "knowledge" && <KnowledgeGraphInteractive onOpenPaper={paper => { setSelectedId(paper.id); setScreen("library"); }} /> }
-      {screen === "tasks" && <TaskCalendar />}
-      {screen === "trash" && <TrashView />}
-      {readerPaper && <PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} />}
-      {screen === "settings" && <SettingsView />}
+      {screen === "writing" && <LazyScreenBoundary><Suspense fallback={pageFallback}><WritingLibrary onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
+      {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => { setSelectedId(paper.id); setScreen("library"); }} /></Suspense></LazyScreenBoundary>}
+      {screen === "tasks" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TaskCalendar /></Suspense></LazyScreenBoundary>}
+      {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
+      {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}
+      {screen === "settings" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SettingsView /></Suspense></LazyScreenBoundary>}
     </div>
     {creating && <PaperEditor modalTitle="新建论文" categories={data.categories} tags={data.tags} onCancel={() => setCreating(false)} onSave={async paper => { await savePaper(paper); setCreating(false); setSelectedId(paper.id); }} />}
     {leavePrompt && <Modal title="离开阅读台" onClose={() => { leaveAfterRef.current = undefined; setLeavePrompt(false); }}>

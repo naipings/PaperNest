@@ -5,6 +5,7 @@
 | 约束 | 说明 |
 |------|------|
 | 平台 | Windows 单机、单用户、本地优先 |
+| 资料库位置 | 使用本地磁盘；云同步目录只保存完整备份包。SQLite 使用 `DELETE` journal，避免常驻 WAL/SHM 文件；只读或 I/O 错误时复制到本机应用数据目录 |
 | V1 范围 | 本地资料库、PDF 阅读批注、术语与写作素材、任务日历、备份恢复 |
 | 在线能力 | Crossref、LLM、翻译均由用户主动启用 |
 | PDF 边界 | 原件只读；批注独立存储；导出时生成副本 |
@@ -103,6 +104,7 @@ sequenceDiagram
 - 若无自定义路径：已存在的旧版 `%LocalAppData%/.../PaperNestLibrary`、「文档/PaperNestLibrary」或**安装目录旁**已有 `library.db` 的 `PaperNestLibrary` 继续沿用，并写入 `library-location.json`；否则默认使用软件安装目录下的 `PaperNestLibrary`。
 - 同一 `identifier` 的 NSIS setup 可检测旧版并覆盖安装；`PaperNestLibrary` 不在卸载清单内，升级后仍加载原资料库（卸载时勿勾选删除应用数据，否则会清掉配置指针）。
 - 浏览器预览模式（`npm run dev`）使用 `localStorage` 模拟后端，见 `backend.ts` 中 `isTauri()` 分支。
+- 按需加载页面由 `LazyScreenBoundary` 包裹；模块请求失败时显示重新加载入口。
 
 ### 3.2 PDF 导入
 
@@ -126,7 +128,11 @@ flowchart LR
 - 双栏首页按文本 x 的最大空隙分栏，摘要只取 Abstract 标题所在列，避免右栏正文/图坐标轴数字并进摘要；明显污染的候选会被丢弃并尝试 raw 回退。
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
 - 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本，避免带图请求拖垮整次分析）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
+- LLM「测试连接」先写入当前设置；写入失败时不发起连接请求，测试结束前保持按钮禁用。
 - 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
+- PDF、Bib/RIS 导入失败时刷新资料库快照，并在顶部显示错误；导入期间禁用两个导入按钮与新建论文按钮。
+- 顶部 Bib/RIS 导入入口在 1280px 宽度下保持可见。
+- 论文详情的框架图读取失败时在图片位置显示错误，便于定位丢失或不可访问的受管文件。
 - 扫描件或字段缺失时保留文件名，不编造；封面读取失败会出现在导入提示里。
 - 文件哈希由 `import_pdfs` 在 Rust 侧写入。导入后先按哈希/DOI 判重（Tauri `ask`，能力清单需含 `dialog:allow-ask`），取消则 purge；通过后再读封面，读完再判一次标题/arXiv。同一 arXiv 稿的不同版本写入 `relatedPaperIds`。
 - 论文库「打开原文」通过 Rust `open_external_url` 用系统默认浏览器打开；无 `sourceUrl` 时可用 DOI / arXiv 拼落地页（WebView 内 `window.open` 无效）。
@@ -208,6 +214,7 @@ flowchart LR
 
 - `rebuild_paper_search` 在论文、术语、佳句、批注变更后重建 FTS 文档。
 - PDF 页级索引由 `index_pdf` 写入，OCR 完成后同样入库。
+- `search_library` 失败时前端显示全文索引错误，标题、作者等本地匹配继续可用。
 
 ### 3.7 术语与写作佳句收录
 
@@ -228,7 +235,9 @@ flowchart LR
 ### 3.8 备份与恢复
 
 - `create_backup`：打包 `library.db`、受管 PDF、figures、avatars 为 ZIP，写入 `backups/`。
-- `restore_backup`：解压到临时目录，校验后替换当前资料库。
+- `restore_backup`：解压到相邻临时目录，校验后替换当前资料库内容；保留 `backups/`。
+- 资料库迁移、创建备份、恢复备份失败时，在设置页显示具体错误。
+- 个人资料保存失败时，在设置页显示具体错误。
 - API Key、LibreTranslate 虚拟环境路径 **不** 进入备份包。
 
 ---
@@ -346,6 +355,7 @@ flowchart TB
 ```
 
 - 阅读台以 **absolute overlay** 覆盖工作区卡片（`embedded` 模式），不占用独立路由。
+- `App.tsx` 仅同步加载论文库首页；阅读台和其余五个屏幕以 `React.lazy` 按需获取，并在切换期间显示页面加载态。PDF 解析器在用户选择 PDF 后由顶栏导入流程加载。
 - 左侧导航在阅读台打开时也会关闭 overlay；若本会话有批注或收录改动，先弹出保存确认。
 - `Escape` 关闭阅读台（`App.tsx` 全局快捷键），同样走保存确认。
 
@@ -417,11 +427,18 @@ cd src-tauri; cargo check
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
 | 备份恢复 | ZIP 可还原完整资料库 |
 | 术语 / 写作库 | 单条或批量删除后列表更新 |
+| 手动新增术语 | 保存失败时保留表单并显示错误；保存期间禁用提交与取消 |
 | 框架图 | 论文详情「框架」可单条删除；图片文件一并清除 |
+| 上传框架图 | 文件读取或保存失败时显示错误，并清空文件选择以便重试 |
+| 任务编辑 | 保存失败时保留表单并显示错误；保存期间禁用提交与取消 |
+| 阅读台收录 | 收为术语或加入写作库失败时在编辑侧栏显示错误 |
+| 写作资料库 | 修改用途、复制原文或删除素材失败时显示错误 |
 | 回收站 | 软删除可恢复，永久删除文件清除 |
 | 任务页 | 概览「今天待办 / 已逾期 / 已完成」；清单仅今日与未来未完成项；逾期与已完成经卡片弹窗查看；日历格仍显示当日全部任务；页底为近一年阅读打卡（新增 + 满 5 分钟阅读） |
 | 编辑论文未保存 | 修改后点关闭/取消/Esc：询问是否保存；确定则保存退出，取消则放弃并退出 |
+| 论文编辑保存 | 保存失败时保留表单并显示错误；保存期间禁用提交与取消 |
 | 论文库概览 | 顶部显示收录、在读、已读数量与中文智能研读提示；筛选和论文表格正常可用 |
+| 首屏与按需加载 | 首次进入停留论文库；切换知识树、写作资料库、任务日历、回收站和设置页后显示完整内容，控制台无错误 |
 
 ---
 
@@ -434,4 +451,3 @@ cd src-tauri; cargo check
 ## 12. 扩展方向
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。
-QQ_1786883620814.png

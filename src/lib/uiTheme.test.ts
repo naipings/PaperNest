@@ -176,7 +176,7 @@ describe("visual theme selection", () => {
     const interactive = readFileSync("src/components/KnowledgeGraphInteractive.tsx", "utf8");
     expect(base).toMatch(/--knowledge-edge:/);
     expect(base).toMatch(/\.knowledge-map line\s*\{[^}]*stroke:\s*var\(--knowledge-edge\)/);
-    expect(interactive).toMatch(/opacity:\s*\.42\s*\+\s*edge\.score\s*\*\s*\.42/);
+    expect(interactive).toMatch(/opacity:\s*dim\s*\?\s*0\.1\s*:\s*\(onPath\s*\?\s*0\.95\s*:\s*0\.42\s*\+\s*edge\.score\s*\*\s*0\.42/);
     expect(interactive).not.toMatch(/opacity:\s*\.1\s*\+\s*edge\.score/);
   });
 });

@@ -43,8 +43,17 @@ export function PaperEditor({
   const seed = useRef(initial ?? blankPaper());
   const [paper, setPaper] = useState<Paper>(seed.current);
   const baseline = useRef(editorSnapshot(seed.current));
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
   const set = <K extends keyof Paper>(key: K, value: Paper[K]) => setPaper(current => ({ ...current, [key]: value, updatedAt: now() }));
   const dirty = () => editorSnapshot(paper) !== baseline.current;
+
+  const save = async () => {
+    setBusy(true);
+    try { await onSave({ ...paper, updatedAt: now() }); }
+    catch (error) { setNotice(`保存论文失败：${error instanceof Error ? error.message : String(error)}`); }
+    finally { setBusy(false); }
+  };
 
   const requestClose = async () => {
     if (!dirty()) {
@@ -53,7 +62,7 @@ export function PaperEditor({
     }
     if (confirm("已编辑的内容尚未保存，是否保存？")) {
       if (!paper.titleEn.trim()) return;
-      await onSave({ ...paper, updatedAt: now() });
+      await save();
       return;
     }
     onCancel();
@@ -62,7 +71,7 @@ export function PaperEditor({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!paper.titleEn.trim()) return;
-    await onSave({ ...paper, updatedAt: now() });
+    await save();
   };
 
   const form = <form className="paper-editor" onSubmit={event => void submit(event)}>
@@ -75,7 +84,8 @@ export function PaperEditor({
     <label>原文链接<input type="url" value={paper.sourceUrl ?? ""} onChange={e => set("sourceUrl", e.target.value)} /></label>
     <label>英文摘要<textarea rows={5} value={paper.abstractEn ?? ""} onChange={e => set("abstractEn", e.target.value)} /></label>
     <label>中文摘要<textarea rows={5} value={paper.abstractZh ?? ""} onChange={e => set("abstractZh", e.target.value)} /></label>
-    <footer><button type="button" className="secondary" onClick={() => void requestClose()}>取消</button><button className="primary" type="submit">保存论文</button></footer>
+    {notice && <p className="inline-notice" role="alert">{notice}</p>}
+    <footer><button type="button" className="secondary" disabled={busy} onClick={() => void requestClose()}>取消</button><button className="primary" type="submit" disabled={busy}>{busy ? "正在保存…" : "保存论文"}</button></footer>
   </form>;
 
   if (modalTitle) {

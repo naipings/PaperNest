@@ -313,7 +313,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
                 y1={graph.nodes[edge.from].y}
                 x2={graph.nodes[edge.to].x}
                 y2={graph.nodes[edge.to].y}
-                style={{ strokeWidth: (onPath ? 2.2 : 0.7) + edge.score * 1.4, opacity: dim ? 0.1 : (onPath ? 0.95 : 0.28 + edge.score * 0.35) }}
+                style={{ strokeWidth: (onPath ? 2.2 : 0.7) + edge.score * 1.4, opacity: dim ? 0.1 : (onPath ? 0.95 : 0.42 + edge.score * 0.42) }}
               />;
             })}
             {graph.nodes.map(node => {

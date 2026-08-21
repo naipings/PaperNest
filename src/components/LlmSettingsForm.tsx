@@ -19,8 +19,9 @@ export function LlmSettingsForm() {
     setLtEndpoint(getTranslationEndpoint() ?? DEFAULT_LIBRETRANSLATE_ENDPOINT);
   }, []);
   if (!value) return null;
-  const save = async () => { setBusy(true); try { const saved = await backend.saveLlmSettings(value, apiKey || undefined); setValue(saved); setApiKey(""); await refresh(); setNotice("LLM 设置已保存；API Key 已写入 Windows Credential Manager。"); } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } };
-  const test = async () => { setBusy(true); try { await save(); await backend.testLlmConnection(); setNotice("连接成功，可以在导入 PDF 时自动整理。 "); } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } };
+  const persist = async () => { const saved = await backend.saveLlmSettings(value, apiKey || undefined); setValue(saved); setApiKey(""); await refresh(); };
+  const save = async () => { setBusy(true); try { await persist(); setNotice("LLM 设置已保存；API Key 已写入 Windows Credential Manager。"); } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } };
+  const test = async () => { setBusy(true); try { await persist(); await backend.testLlmConnection(); setNotice("连接成功，可以在导入 PDF 时自动整理。"); } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); } };
   const saveLt = () => {
     try {
       const saved = saveTranslationEndpoint(ltEndpoint);

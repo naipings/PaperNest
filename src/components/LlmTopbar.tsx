@@ -1,7 +1,6 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { FilePlus2, Import, LoaderCircle, Plus, Search } from "lucide-react";
 import { backend } from "../services/backend";
-import { applyCoverMeta, extractForImport } from "../lib/extractPdfCover";
 import { analysisNeedsBackfill, liteAnalysisSeed, mergeAnalyses } from "../lib/importLlmFill";
 import { arxivFromText } from "../lib/paperDuplicate";
 import { resolveImportedPaper } from "../lib/importDecisions";
@@ -11,11 +10,12 @@ import { useLibrary } from "../state/LibraryContext";
 import type { LlmAnalysis, LlmAnalysisInput, Paper } from "../types";
 import { now, uuid } from "../types";
 
-export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: string; onSearch(value: string): void; onCreate(): void; onRefresh(): Promise<void> }) {
+export function Topbar({ search, searchError, onSearch, onCreate, onRefresh }: { search: string; searchError?: string; onSearch(value: string): void; onCreate(): void; onRefresh(): Promise<void> }) {
   const { data, importBusy: busy, importNotice: notice, setImportBusy: setBusy, setImportNotice: setNotice } = useLibrary();
   const importPdfs = async () => {
     try {
       setNotice("");
+      setBusy("正在导入 PDF");
       const imported = await backend.chooseAndImportPdfs(); if (!imported.length) return;
       let catalog = (await backend.initialize()).papers.filter(paper => !paper.deletedAt);
       const acceptedSame = new Set<string>();
@@ -55,6 +55,9 @@ export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: stri
         catch (error) { notes.push(`${item.paper.titleEn}（分析失败：${error instanceof Error ? error.message : String(error)}）`); remaining.push(item.paper); }
       }
       await onRefresh(); setNotice(importNotice(remaining.length, notes));
+    } catch (error) {
+      await onRefresh();
+      setNotice(`导入失败：${error instanceof Error ? error.message : String(error)}`);
     } finally { setBusy(""); }
   };
   const analyzeAndFill = async (paper: Paper, analysisInput: LlmAnalysisInput | undefined, candidateImages: { page: number; dataUrl: string }[]) => {
@@ -72,9 +75,19 @@ export function Topbar({ search, onSearch, onCreate, onRefresh }: { search: stri
     if (image) await backend.saveFigure({ id: uuid(), paperId: paper.id, imagePath: "", title: analysis.frameworkTitle || "LLM 识别的方法框架", explanationEn: analysis.frameworkExplanationEn, explanationZh: analysis.frameworkExplanationZh, page, isPrimary: true }, dataUrlToBytes(image.dataUrl));
     return filled;
   };
-  const importCitations = async () => { const imported = await backend.chooseAndImportCitations(); if (imported.length) await onRefresh(); };
+  const importCitations = async () => {
+    try {
+      setNotice("");
+      setBusy("正在导入 Bib/RIS");
+      const imported = await backend.chooseAndImportCitations(); if (imported.length) await onRefresh();
+    } catch (error) {
+      await onRefresh();
+      setNotice(`导入失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally { setBusy(""); }
+  };
   return <header className="topbar">
     <label className="search-box"><Search size={17} /><input value={search} onChange={e => onSearch(e.target.value)} placeholder="搜索标题、作者、摘要、术语、批注或 PDF 正文…" /><kbd>Ctrl K</kbd></label>
+    {searchError && <span className="search-error" role="alert">{searchError}</span>}
     {busy && <span className="import-status"><LoaderCircle className="spin" size={15} />{busy}</span>}{notice && !busy && <span className="import-status">{notice}</span>}
     <div className="topbar-actions">
       <button className="secondary" disabled={Boolean(busy)} onClick={importCitations}><Import size={16} />导入 Bib/RIS</button>
@@ -144,6 +157,7 @@ async function fillFromPdf(paper: Paper, visionEnabled: boolean): Promise<{ pape
   const bytes = await backend.readPdf(paper.pdfPath);
   let next: Paper = { ...paper, arxivId: paper.arxivId || arxivFromText(paper.titleEn), updatedAt: now() };
   try {
+    const { applyCoverMeta, extractForImport } = await import("../lib/extractPdfCover");
     const extracted = await extractForImport(bytes, visionEnabled);
     next = applyCoverMeta(next, extracted.cover);
     if (next.abstractEn && !next.abstractZh && hasTranslationEndpoint()) {
