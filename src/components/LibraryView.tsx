@@ -38,6 +38,27 @@ export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, o
     button?.addEventListener("click", toggleDensity);
     return () => button?.removeEventListener("click", toggleDensity);
   }, []);
+  useEffect(() => {
+    if (!selectedId || !data) return;
+    const paper = data.papers.find(item => item.id === selectedId && !item.deletedAt);
+    if (!paper) return;
+    const allViews = [...builtinViews, ...data.views];
+    const baseView = allViews.find(view => view.id === viewId) ?? builtinViews[0];
+    const filter = { ...baseView.filter };
+    if (status) filter.status = status;
+    else delete filter.status;
+    if (category === "uncategorized") { filter.uncategorized = true; delete filter.categoryId; }
+    else if (category) { filter.categoryId = category; delete filter.uncategorized; }
+    else { delete filter.uncategorized; delete filter.categoryId; }
+    if (favoriteOnly) filter.favorite = true;
+    else delete filter.favorite;
+    const visible = filterPapers(data, search, { ...baseView, filter });
+    if (visible.some(item => item.id === selectedId)) return;
+    setViewId("all");
+    setStatus("");
+    setCategory("");
+    setFavoriteOnly(false);
+  }, [selectedId, data, viewId, status, category, favoriteOnly, search]);
   if (!data) return null;
   const allViews = [...builtinViews, ...data.views];
   const baseView = allViews.find(view => view.id === viewId) ?? builtinViews[0];

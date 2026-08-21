@@ -33,4 +33,17 @@ describe("data settings errors", () => {
 
     expect(await screen.findByText("恢复备份失败：备份包无效")).toBeInTheDocument();
   });
+
+  it("shows the recovered library path notice under the path box", async () => {
+    const snapshot = await backend.initialize();
+    vi.spyOn(backend, "initialize").mockResolvedValue({
+      ...snapshot,
+      libraryPath: "C:\\Users\\demo\\AppData\\Local\\PaperNest\\PaperNestLibrary-recovered-1",
+      libraryNotice: "原资料库无法写入，已复制到本机并切换路径：C:\\Users\\demo\\AppData\\Local\\PaperNest\\PaperNestLibrary-recovered-1",
+    });
+    await openDataSettings();
+
+    expect(await screen.findByRole("status")).toHaveTextContent("原资料库无法写入，已复制到本机并切换路径");
+    expect(screen.getByRole("status")).toHaveTextContent("PaperNestLibrary-recovered-1");
+  });
 });

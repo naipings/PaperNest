@@ -146,6 +146,7 @@ export interface LibrarySnapshot {
   tasks: Task[];
   readingDays: PaperDayRead[];
   libraryPath: string;
+  libraryNotice?: string;
   metadata: OnlineMetadataSettings;
 }
 

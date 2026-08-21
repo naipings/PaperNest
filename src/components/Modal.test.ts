@@ -9,4 +9,9 @@ describe("modal dialog", () => {
     expect(source).toMatch(/document\.body/);
     expect(source).toMatch(/role="dialog"/);
   });
+
+  it("closes from backdrop clicks, not nested dialog clicks", () => {
+    expect(source).toContain("event.target === event.currentTarget");
+    expect(source).toContain("event.stopPropagation()");
+  });
 });

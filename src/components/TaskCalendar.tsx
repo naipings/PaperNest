@@ -91,6 +91,7 @@ export function TaskCalendar() {
   const [editing, setEditing] = useState<Task>();
   const [newDate, setNewDate] = useState<string>();
   const [bucket, setBucket] = useState<"overdue" | "done">();
+  const [notice, setNotice] = useState("");
   const today = isoDate(new Date());
   const tasks = data?.tasks ?? [];
   const dates = useMemo(() => {
@@ -107,7 +108,18 @@ export function TaskCalendar() {
   const toggle = async (task: Task) => {
     const done = task.status !== "done";
     const timestamp = new Date().toISOString();
-    await saveTask({ ...task, status: done ? "done" : "todo", completedAt: done ? timestamp : undefined, updatedAt: timestamp });
+    try {
+      await saveTask({ ...task, status: done ? "done" : "todo", completedAt: done ? timestamp : undefined, updatedAt: timestamp });
+    } catch (error) {
+      setNotice(`更新任务状态失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const remove = async (id: string) => {
+    try {
+      await deleteTask(id);
+    } catch (error) {
+      setNotice(`删除任务失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   };
   const paperTitle = (paperId?: string) => {
     const paper = data?.papers.find(item => item.id === paperId);
@@ -139,6 +151,7 @@ export function TaskCalendar() {
       </div>
       <div className="page-heading-actions"><button className="primary" onClick={() => { setEditing(undefined); setNewDate(today); }}><Plus size={15} />新建任务</button></div>
     </header>
+    {notice && <p className="inline-notice" role="alert">{notice}</p>}
     <section className="task-summary" aria-label="任务概览">
       <article className="task-summary-card">
         <Clock3 size={18} />
@@ -169,7 +182,7 @@ export function TaskCalendar() {
                 meta={taskMeta(task)}
                 onToggle={() => void toggle(task)}
                 onEdit={() => openEdit(task)}
-                onDelete={() => void deleteTask(task.id)}
+                onDelete={() => void remove(task.id)}
                 onShowTip={showTip}
                 onHideTip={hideTip}
               />
@@ -207,7 +220,7 @@ export function TaskCalendar() {
               meta={taskMeta(task)}
               onToggle={() => void toggle(task)}
               onEdit={() => openEdit(task)}
-              onDelete={() => void deleteTask(task.id)}
+              onDelete={() => void remove(task.id)}
               onShowTip={showTip}
               onHideTip={hideTip}
             />

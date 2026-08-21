@@ -102,10 +102,11 @@ export default function App() {
       onToggleCollapsed={toggleSidebarCollapsed}
     />
     <div className="workspace">
+      {data.libraryNotice && <div className="library-recovery-banner" role="status">{data.libraryNotice}</div>}
       {screen === "library" && <><Topbar search={search} searchError={searchError} onSearch={setSearch} onCreate={() => setCreating(true)} onRefresh={refresh} /><div className={`main-with-detail ${selected ? "has-detail" : ""}`}><LibraryView search={search} searchHitPaperIds={searchHitPaperIds} selectedId={selectedId} onSelect={p => setSelectedId(p.id)} onOpenPdf={openPdf} />{selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}</div></>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
       {screen === "writing" && <LazyScreenBoundary><Suspense fallback={pageFallback}><WritingLibrary onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
-      {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => { setSelectedId(paper.id); setScreen("library"); }} /></Suspense></LazyScreenBoundary>}
+      {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => { setSearch(""); setSelectedId(paper.id); setScreen("library"); }} /></Suspense></LazyScreenBoundary>}
       {screen === "tasks" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TaskCalendar /></Suspense></LazyScreenBoundary>}
       {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
       {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}

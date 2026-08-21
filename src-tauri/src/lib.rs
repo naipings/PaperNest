@@ -14,7 +14,7 @@ use std::time::Duration;
 
 type Result<T> = std::result::Result<T, String>;
 
-struct AppState { library_dir: PathBuf, location_config: PathBuf, pool: RwLock<SqlitePool> }
+struct AppState { library_dir: PathBuf, location_config: PathBuf, pool: RwLock<SqlitePool>, library_notice: Option<String> }
 
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct Author { id: String, name: String }
@@ -46,7 +46,12 @@ struct Task { id: String, title: String, notes: Option<String>, due_date: Option
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct PaperDayRead { day: String, paper_id: String, seconds: i64 }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
-struct LibrarySnapshot { papers: Vec<Paper>, categories: Vec<Category>, tags: Vec<Tag>, annotations: Vec<Annotation>, vocabulary: Vec<VocabularyEntry>, figures: Vec<FrameworkFigure>, excerpts: Vec<WritingExcerpt>, tasks: Vec<Task>, reading_days: Vec<PaperDayRead>, views: Vec<SavedView>, profile: Profile, llm: LlmSettings, metadata: online_metadata::OnlineMetadataSettings, library_path: String }
+struct LibrarySnapshot {
+  papers: Vec<Paper>, categories: Vec<Category>, tags: Vec<Tag>, annotations: Vec<Annotation>, vocabulary: Vec<VocabularyEntry>,
+  figures: Vec<FrameworkFigure>, excerpts: Vec<WritingExcerpt>, tasks: Vec<Task>, reading_days: Vec<PaperDayRead>, views: Vec<SavedView>,
+  profile: Profile, llm: LlmSettings, metadata: online_metadata::OnlineMetadataSettings, library_path: String,
+  #[serde(skip_serializing_if = "Option::is_none")] library_notice: Option<String>,
+}
 #[derive(Deserialize, Serialize)] struct PageText { page: i64, text: String }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 struct SearchHit { kind: String, paper_id: String, title: String, snippet: String, page: Option<i64>, score: f64 }
@@ -168,6 +173,66 @@ mod library_path_tests {
   #[test]
   fn fts_phrase_escapes_double_quotes() {
     assert_eq!(fts_phrase("attention \"mechanism\""), "\"attention \"\"mechanism\"\"\"");
+  }
+
+  #[test]
+  fn should_recover_library_when_database_file_is_readonly() {
+    let root = env::temp_dir().join(format!("papernest-readonly-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let db = root.join("library.db");
+    fs::write(&db, b"sqlite").unwrap();
+    let mut perms = fs::metadata(&db).unwrap().permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&db, perms).unwrap();
+
+    assert!(should_recover_library(&root));
+
+    let mut perms = fs::metadata(&db).unwrap().permissions();
+    perms.set_readonly(false);
+    fs::set_permissions(&db, perms).unwrap();
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn should_recover_library_skips_writable_database() {
+    let root = env::temp_dir().join(format!("papernest-writable-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("library.db"), b"sqlite").unwrap();
+    assert!(!should_recover_library(&root));
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn should_recover_library_skips_missing_database() {
+    let root = env::temp_dir().join(format!("papernest-missing-db-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    assert!(!should_recover_library(&root));
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn purge_clinical_taxonomy_leftovers_removes_clinical_ids() {
+    tauri::async_runtime::block_on(async {
+      let root = env::temp_dir().join(format!("papernest-clinical-purge-{}", Uuid::new_v4()));
+      let pool = open_pool(&root).await.unwrap();
+      sqlx::query("INSERT INTO categories(id,name,color) VALUES('cat-im','内科学','#c45c6a')").execute(&pool).await.unwrap();
+      sqlx::query("INSERT INTO tags(id,name,color) VALUES('tag-rct','随机对照试验','#c45c6a')").execute(&pool).await.unwrap();
+      sqlx::query("INSERT INTO papers(id,title_en,authors_json,category_id,tag_ids_json,status,favorite,created_at,updated_at) VALUES('p1','Paper','[]','cat-im','[\"tag-rct\",\"tag-llm\"]','unread',0,'t','t')").execute(&pool).await.unwrap();
+
+      purge_clinical_taxonomy_leftovers(&pool).await.unwrap();
+
+      let clinical_cats: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id='cat-im'").fetch_one(&pool).await.unwrap();
+      let clinical_tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE id='tag-rct'").fetch_one(&pool).await.unwrap();
+      let category_id: Option<String> = sqlx::query_scalar("SELECT category_id FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      let tag_ids: String = sqlx::query_scalar("SELECT tag_ids_json FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      assert_eq!(clinical_cats, 0);
+      assert_eq!(clinical_tags, 0);
+      assert_eq!(category_id, None);
+      assert_eq!(tag_ids, "[\"tag-llm\"]");
+
+      pool.close().await;
+      let _ = fs::remove_dir_all(&root);
+    });
   }
 
   #[test]
@@ -294,8 +359,15 @@ fn resolve_library_dir(app: &tauri::App) -> Result<(PathBuf, PathBuf)> {
 fn copy_library(source:&Path,target:&Path)->Result<()> { for entry in WalkDir::new(source).into_iter().filter_map(|e|e.ok()) { let path=entry.path(); let relative=path.strip_prefix(source).map_err(err)?; let destination=target.join(relative); if entry.file_type().is_dir() { fs::create_dir_all(&destination).map_err(err)?; } else if entry.file_type().is_file() { if let Some(parent)=destination.parent(){fs::create_dir_all(parent).map_err(err)?;} fs::copy(path,&destination).map_err(err)?; } } Ok(()) }
 fn tesseract_executable()->PathBuf { if let Ok(program_files)=env::var("ProgramFiles") { let candidate=PathBuf::from(program_files).join("Tesseract-OCR").join("tesseract.exe"); if candidate.exists(){return candidate;} } PathBuf::from("tesseract") }
 
-fn can_recover_library_open(error:&str) -> bool {
-  error.contains("readonly database") || error.contains("disk I/O error")
+fn should_recover_library(dir: &Path) -> bool {
+  let db = dir.join("library.db");
+  if !db.is_file() { return false; }
+  if fs::OpenOptions::new().read(true).write(true).open(&db).is_err() { return true; }
+  let probe = dir.join(format!(".papernest-write-probe-{}", Uuid::new_v4()));
+  match fs::write(&probe, b"ok") {
+    Ok(()) => { let _ = fs::remove_file(&probe); false }
+    Err(_) => true,
+  }
 }
 
 fn fts_phrase(query: &str) -> String {
@@ -315,8 +387,42 @@ async fn open_pool(dir: &Path) -> Result<SqlitePool> {
 async fn initialize_pool(pool: &SqlitePool, dir: &Path) -> Result<()> {
   for statement in include_str!("schema.sql").split(';').map(str::trim).filter(|s| !s.is_empty()) { sqlx::query(statement).execute(pool).await.map_err(err)?; }
   let _ = sqlx::query("ALTER TABLE papers ADD COLUMN related_paper_ids_json TEXT NOT NULL DEFAULT '[]'").execute(pool).await;
+  purge_clinical_taxonomy_leftovers(pool).await?;
   let manifest = serde_json::json!({"application":"PaperNest","schemaVersion":1,"createdAt":Utc::now().to_rfc3339()});
   if !dir.join("manifest.json").exists() { fs::write(dir.join("manifest.json"), serde_json::to_vec_pretty(&manifest).map_err(err)?).map_err(err)?; }
+  Ok(())
+}
+
+/// 清除曾用临床医学临时包 INSERT OR IGNORE 写入的分类/标签；与 CS 共用的 tag-survey / tag-beginner 保留。
+async fn purge_clinical_taxonomy_leftovers(pool: &SqlitePool) -> Result<()> {
+  const CLINICAL_CATEGORIES: &[&str] = &[
+    "cat-im", "cat-surg", "cat-obgyn", "cat-ped", "cat-neuro", "cat-psych", "cat-derm", "cat-imaging",
+    "cat-lab", "cat-oph", "cat-ent", "cat-onco", "cat-anes", "cat-em", "cat-cc", "cat-rehab",
+  ];
+  const CLINICAL_TAGS: &[&str] = &[
+    "tag-rct", "tag-nonrct", "tag-cohort", "tag-casecontrol", "tag-crosssec", "tag-rwe", "tag-diagacc",
+    "tag-sr", "tag-meta", "tag-guideline", "tag-casereport", "tag-consensus", "tag-dx", "tag-tx", "tag-px",
+    "tag-prev", "tag-drugtrial", "tag-surgery", "tag-imgdx", "tag-biomarker", "tag-molpath", "tag-epi",
+    "tag-hecon", "tag-stats", "tag-consort", "tag-prisma", "tag-strobe", "tag-guideline-read", "tag-proposal",
+  ];
+  for id in CLINICAL_CATEGORIES {
+    sqlx::query("UPDATE papers SET category_id=NULL WHERE category_id=?").bind(id).execute(pool).await.map_err(err)?;
+    sqlx::query("DELETE FROM categories WHERE id=?").bind(id).execute(pool).await.map_err(err)?;
+  }
+  let clinical: std::collections::HashSet<&str> = CLINICAL_TAGS.iter().copied().collect();
+  let rows = sqlx::query("SELECT id,tag_ids_json FROM papers").fetch_all(pool).await.map_err(err)?;
+  for row in rows {
+    let paper_id: String = row.get(0);
+    let mut ids: Vec<String> = serde_json::from_str(&row.get::<String, _>(1)).map_err(err)?;
+    let before = ids.len();
+    ids.retain(|id| !clinical.contains(id.as_str()));
+    if ids.len() != before {
+      sqlx::query("UPDATE papers SET tag_ids_json=? WHERE id=?").bind(serde_json::to_string(&ids).map_err(err)?).bind(paper_id).execute(pool).await.map_err(err)?;
+    }
+  }
+  for id in CLINICAL_TAGS {
+    sqlx::query("DELETE FROM tags WHERE id=?").bind(id).execute(pool).await.map_err(err)?;
+  }
   Ok(())
 }
 
@@ -325,16 +431,17 @@ async fn open_recovery_copy(source: &Path, target: &Path) -> Result<SqlitePool> 
   open_pool(target).await
 }
 
-async fn open_library_with_recovery(source: PathBuf, location_config: &Path, recovery_root: &Path) -> Result<(PathBuf, SqlitePool)> {
+async fn open_library_with_recovery(source: PathBuf, location_config: &Path, recovery_root: &Path) -> Result<(PathBuf, SqlitePool, Option<String>)> {
   match open_pool(&source).await {
-    Ok(pool) => Ok((source, pool)),
-    Err(open_error) if can_recover_library_open(&open_error) => {
+    Ok(pool) => Ok((source, pool, None)),
+    Err(open_error) => {
+      if !should_recover_library(&source) { return Err(open_error); }
       let target = recovery_root.join(format!("PaperNestLibrary-recovered-{}", Uuid::new_v4()));
       let pool = open_recovery_copy(&source, &target).await.map_err(|recovery_error| format!("资料库无法写入：{open_error}；迁移副本无法打开：{recovery_error}"))?;
       write_library_location(location_config, &target)?;
-      Ok((target, pool))
+      let notice = format!("原资料库无法写入，已复制到本机并切换路径：{}", target.display());
+      Ok((target, pool, Some(notice)))
     }
-    Err(open_error) => Err(open_error),
   }
 }
 
@@ -350,7 +457,12 @@ fn clear_library_for_restore(dir: &Path) -> Result<()> {
 }
 
 #[tauri::command]
-async fn initialize_library(state: State<'_, AppState>) -> Result<LibrarySnapshot> { let pool = state.pool.read().await; load_snapshot(&pool, &state.library_dir).await }
+async fn initialize_library(state: State<'_, AppState>) -> Result<LibrarySnapshot> {
+  let pool = state.pool.read().await;
+  let mut snapshot = load_snapshot(&pool, &state.library_dir).await?;
+  snapshot.library_notice = state.library_notice.clone();
+  Ok(snapshot)
+}
 
 async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot> {
   let papers = sqlx::query("SELECT * FROM papers ORDER BY favorite DESC, updated_at DESC").fetch_all(pool).await.map_err(err)?.into_iter().map(row_paper).collect::<Result<Vec<_>>>()?;
@@ -365,7 +477,7 @@ async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot>
   let llm=load_llm_settings(pool).await?; let metadata=online_metadata::load(pool).await?;
   let tasks = sqlx::query("SELECT * FROM tasks ORDER BY CASE status WHEN 'done' THEN 1 ELSE 0 END, due_date IS NULL, due_date, created_at DESC").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Task { id:r.get("id"),title:r.get("title"),notes:r.get("notes"),due_date:r.get("due_date"),status:r.get("status"),priority:r.get("priority"),paper_id:r.get("paper_id"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),completed_at:r.get("completed_at") }).collect();
   let reading_days = sqlx::query("SELECT day, paper_id, seconds FROM paper_day_reads").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| PaperDayRead { day:r.get("day"), paper_id:r.get("paper_id"), seconds:r.get("seconds") }).collect();
-  Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,library_path:dir.to_string_lossy().into_owned() })
+  Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,library_path:dir.to_string_lossy().into_owned(), library_notice: None })
 }
 
 fn default_visual_theme() -> String { "workbench".into() }
@@ -711,7 +823,7 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool)});Ok(()) })
+  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
     .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

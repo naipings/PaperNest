@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
 import { ExternalLink, FileText, Heart, Trash2 } from "lucide-react";
 import { backend } from "../services/backend";
@@ -29,6 +29,11 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
     helper.display({ id: "links", header: "链接", size: 84, cell: info => { const source = resolvePaperSourceUrl(info.row.original); return <div className="row-actions">{source && <button title="打开原文" onClick={event => { event.stopPropagation(); void backend.openExternalUrl(source); }}><ExternalLink size={15} /></button>}<button title={info.row.original.pdfPath ? "打开 PDF" : "未关联 PDF"} disabled={!info.row.original.pdfPath} onClick={event => { event.stopPropagation(); onOpenPdf(info.row.original); }}><FileText size={16} /></button></div>; } })
   ], [categories, checkedIds, onOpenPdf, onToggleFavorite, papers.length, tags]);
   const table = useReactTable({ data: papers, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), columnResizeMode: "onChange" });
+  useEffect(() => {
+    if (!selectedId) return;
+    const row = document.querySelector<HTMLElement>(`tr[data-paper-id="${selectedId}"]`);
+    row?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [selectedId, papers]);
   const recycleSelected = () => { if (!selectedPapers.length || !confirm(`将 ${selectedPapers.length} 篇论文及其受管 PDF 移入回收站？`)) return; onBulkRecycle(selectedPapers); setCheckedIds(new Set()); };
   return <div className="table-scroll">
     {selectedPapers.length > 0 && <div className="table-bulk-actions"><strong>已选 {selectedPapers.length} 篇</strong><button className="secondary danger" onClick={recycleSelected}><Trash2 size={15} />移入回收站</button><button className="ghost" onClick={() => setCheckedIds(new Set())}>取消选择</button></div>}
@@ -38,7 +43,7 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
         const size = header.getSize();
         return <th key={header.id} className={header.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getIsSorted() && <small>{header.column.getIsSorted() === "asc" ? " ↑" : " ↓"}</small>}{header.column.id !== "select" && <span className="resize-handle" onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} />}</th>;
       })}</tr>)}</thead>
-      <tbody>{table.getRowModel().rows.map(row => <tr key={row.id} className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""}`} onClick={() => onSelect(row.original)} onDoubleClick={() => onOpenPdf(row.original)}>{row.getVisibleCells().map(cell => {
+      <tbody>{table.getRowModel().rows.map(row => <tr key={row.id} data-paper-id={row.original.id} className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""}`} onClick={() => onSelect(row.original)} onDoubleClick={() => onOpenPdf(row.original)}>{row.getVisibleCells().map(cell => {
         const size = cell.column.getSize();
         return <td key={cell.id} className={cell.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>;
       })}</tr>)}</tbody>

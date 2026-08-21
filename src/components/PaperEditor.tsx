@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
 import type { Category, Paper, Tag } from "../types";
 import { now, uuid } from "../types";
+import { isTauri } from "../services/backend";
 import { Modal } from "./Modal";
 
 function blankPaper(): Paper {
@@ -25,6 +27,18 @@ function editorSnapshot(paper: Paper) {
   });
 }
 
+async function confirmSaveEdits() {
+  if (isTauri()) {
+    return ask("编辑信息未保存，是否保存？", {
+      title: "编辑论文",
+      kind: "warning",
+      okLabel: "保存",
+      cancelLabel: "不保存",
+    });
+  }
+  return window.confirm("编辑信息未保存，是否保存？");
+}
+
 export function PaperEditor({
   initial,
   categories,
@@ -42,27 +56,32 @@ export function PaperEditor({
 }) {
   const seed = useRef(initial ?? blankPaper());
   const [paper, setPaper] = useState<Paper>(seed.current);
+  const paperRef = useRef(paper);
+  paperRef.current = paper;
   const baseline = useRef(editorSnapshot(seed.current));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const set = <K extends keyof Paper>(key: K, value: Paper[K]) => setPaper(current => ({ ...current, [key]: value, updatedAt: now() }));
-  const dirty = () => editorSnapshot(paper) !== baseline.current;
+  const dirty = () => editorSnapshot(paperRef.current) !== baseline.current;
 
-  const save = async () => {
+  const save = async (value = paperRef.current) => {
     setBusy(true);
-    try { await onSave({ ...paper, updatedAt: now() }); }
+    try { await onSave({ ...value, updatedAt: now() }); }
     catch (error) { setNotice(`保存论文失败：${error instanceof Error ? error.message : String(error)}`); }
     finally { setBusy(false); }
   };
 
+  const discardClose = () => onCancel();
+
   const requestClose = async () => {
+    await Promise.resolve();
     if (!dirty()) {
       onCancel();
       return;
     }
-    if (confirm("已编辑的内容尚未保存，是否保存？")) {
-      if (!paper.titleEn.trim()) return;
-      await save();
+    if (await confirmSaveEdits()) {
+      if (!paperRef.current.titleEn.trim()) return;
+      await save(paperRef.current);
       return;
     }
     onCancel();
@@ -71,7 +90,7 @@ export function PaperEditor({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!paper.titleEn.trim()) return;
-    await save();
+    await save(paper);
   };
 
   const form = <form className="paper-editor" onSubmit={event => void submit(event)}>
@@ -85,7 +104,7 @@ export function PaperEditor({
     <label>英文摘要<textarea rows={5} value={paper.abstractEn ?? ""} onChange={e => set("abstractEn", e.target.value)} /></label>
     <label>中文摘要<textarea rows={5} value={paper.abstractZh ?? ""} onChange={e => set("abstractZh", e.target.value)} /></label>
     {notice && <p className="inline-notice" role="alert">{notice}</p>}
-    <footer><button type="button" className="secondary" disabled={busy} onClick={() => void requestClose()}>取消</button><button className="primary" type="submit" disabled={busy}>{busy ? "正在保存…" : "保存论文"}</button></footer>
+    <footer><button type="button" className="secondary" disabled={busy} onClick={discardClose}>取消</button><button className="primary" type="submit" disabled={busy}>{busy ? "正在保存…" : "保存论文"}</button></footer>
   </form>;
 
   if (modalTitle) {
