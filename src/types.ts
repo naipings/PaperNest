@@ -116,7 +116,16 @@ export interface SavedView {
 export interface Profile { displayName: string; researchField: string; avatarPath?: string; theme: "light" | "dark" | "system"; visualTheme?: "workbench" | "lilac" | "mist" | "willow"; }
 
 /** The key itself is deliberately never returned to the webview or stored in SQLite. */
-export interface LlmSettings { baseUrl: string; model: string; autoAnalyzeOnImport: boolean; visionEnabled: boolean; apiKeySaved: boolean; }
+export type TaxonomyStrictness = "strict" | "standard" | "relaxed";
+export interface LlmSettings {
+  baseUrl: string;
+  model: string;
+  autoAnalyzeOnImport: boolean;
+  visionEnabled: boolean;
+  apiKeySaved: boolean;
+  autoClassifyOnImport: boolean;
+  taxonomyStrictness: TaxonomyStrictness;
+}
 export interface ImportedPaper { paper: Paper; isNew: boolean; }
 export interface OnlineMetadataSettings { enabled: boolean; provider: "crossref"; mailto?: string; }
 export interface OnlineMetadataCandidate { titleEn?: string; authors: string[]; abstractEn?: string; venue?: string; publicationDate?: string; doi?: string; sourceUrl?: string; score?: number; }
@@ -129,6 +138,19 @@ export interface LlmAnalysis {
   titleEn?: string; titleZh?: string; authors?: string[]; abstractEn?: string; abstractZh?: string; summary?: string;
   venue?: string; publicationDate?: string; doi?: string; sourceUrl?: string; frameworkPage?: number;
   frameworkTitle?: string; frameworkExplanationEn?: string; frameworkExplanationZh?: string; vocabulary?: LlmVocabularySuggestion[];
+}
+export interface LlmTaxonomyInput {
+  titleEn: string;
+  titleZh?: string;
+  abstractEn?: string;
+  abstractZh?: string;
+  summary?: string;
+}
+export interface LlmTaxonomyResult {
+  categoryId: string | null;
+  tagIds: string[];
+  abstain: boolean;
+  reason?: string;
 }
 export interface DuplicateCandidate { paperId: string; title: string; reason: string; }
 

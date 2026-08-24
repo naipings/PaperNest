@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { dayKey } from "../lib/readingActivity";
 
 const STORAGE_KEY = "papernest-preview-v1";
@@ -173,6 +173,12 @@ export const backend = {
     return invoke("translate_with_llm", { text, mode, context });
   },
   async analyzePaper(paperId: string, input: LlmAnalysisInput): Promise<LlmAnalysis> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 分析"); return invoke("analyze_paper_with_llm", { paperId, input }); },
+  async classifyPaperTaxonomy(input: LlmTaxonomyInput): Promise<LlmTaxonomyResult> {
+    if (!isTauri()) {
+      return { categoryId: null, tagIds: [], abstain: true, reason: "浏览器预览模式不支持自动分类" };
+    }
+    return invoke("classify_paper_taxonomy", { input });
+  },
   async openExternalUrl(url: string): Promise<void> {
     const trimmed = url.trim();
     if (!trimmed) return;

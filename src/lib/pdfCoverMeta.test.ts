@@ -192,4 +192,98 @@ describe("abstract extraction", () => {
     const meta = inferCoverMeta([], {}, "South KoreaABSTRACTIn this paper, we first define the item-ranking promotion problem for recommender systems.1 Introduction More text.");
     expect(meta.abstractEn).toMatch(/^In this paper, we first define/);
   });
+
+  it("keeps IEEE full-width Abstract across the column gutter", () => {
+    const meta = inferCoverMeta([
+      run("Towards Flexible and Adaptive Neural Process for Cold-Start Recommendation", 18, 720, 80, 420),
+      run("Xinyu Lin", 11, 680, 200, 60),
+      run("Abstract", 11, 640, 54, 50),
+      run("Recommender systems have been widely adopted in various online personal", 10, 620, 54, 250),
+      run("e-commerce applications for improving user experience. A long-standing", 10, 620, 318, 250),
+      run("challenge in recommender sys-", 10, 604, 54, 250),
+      run("tems is how to provide accurate recommendation to users in cold-start", 10, 604, 318, 250),
+      run("situations. Our model yields superior performance compared with multiple", 10, 588, 54, 250),
+      run("state-of-the-art meta-learning recommenders.", 10, 588, 318, 220),
+      run("Index Terms", 10, 560, 54),
+      run("Recommender systems, meta learning", 9, 544, 54),
+      run("Authorized licensed use limited to: www.ieee.org. DOI 10.1109/TKDE.2023.3304839", 8, 40, 54)
+    ]);
+    expect(meta.titleEn).toMatch(/Towards Flexible and Adaptive Neural Process/);
+    expect(meta.authors).toContain("Xinyu Lin");
+    expect(meta.abstractEn).toMatch(/challenge in recommender systems is how to provide/);
+    expect(meta.abstractEn).toMatch(/yields superior performance/);
+    expect(meta.abstractEn).not.toMatch(/sys-\s*yields/);
+    expect(meta.venue).toMatch(/TKDE/i);
+    expect(meta.venue).not.toMatch(/^www$/i);
+    expect(meta.doi).toBe("10.1109/TKDE.2023.3304839");
+  });
+
+  it("reads IEEE two-column Abstract left-then-right until Index Terms", () => {
+    const meta = inferCoverMeta([
+      run("Towards Flexible and Adaptive Neural Process for Cold-Start Recommendation", 18, 720, 80, 420),
+      run("Xixun Lin, Chuan Zhou", 11, 680, 200, 120),
+      run("Abstract", 9, 640, 48, 31),
+      run("—Recommender systems have been widely adopted in", 9, 640, 79, 210),
+      run("yields superior performance compared with multiple state-of-the-", 9, 639, 301, 251),
+      run("various online personal e-commerce applications for improving", 9, 620, 38, 251),
+      run("art meta-learning recommenders.", 9, 619, 301, 128),
+      run("user experience. A long-standing challenge in recommender sys-", 9, 600, 38, 251),
+      run("Index Terms—Cold-start recommendation", 9, 580, 311, 200),
+      run("tems is how to provide accurate recommendation to users.", 9, 580, 38, 251),
+      run("I. INTRODUCTION", 10, 540, 391, 72),
+      run("With the rapid increase of commodities, intro text stays out.", 10, 520, 301, 219),
+      run("Manuscript received 10 June 2022; revised 23 May 2023.", 8, 400, 38, 251),
+      run("DOI 10.1109/TKDE.2023.3304839 www.ieee.org", 8, 40, 38)
+    ]);
+    expect(meta.abstractEn).toMatch(/^Recommender systems have been widely adopted in various online/);
+    expect(meta.abstractEn).toMatch(/challenge in recommender systems is how to provide/);
+    expect(meta.abstractEn).toMatch(/yields superior performance compared with multiple state-of-the-?art meta-learning recommenders/);
+    expect(meta.abstractEn).not.toMatch(/adopted in yields/);
+    expect(meta.abstractEn).not.toMatch(/INTRODUCTION|commodities|Manuscript received/i);
+    expect(meta.venue).toMatch(/TKDE/i);
+  });
+
+  it("ignores IEEE abstract drop-caps when picking the title", () => {
+    const meta = inferCoverMeta([
+      run("Towards Flexible and Adaptive Neural Process for Cold-Start Recommendation", 18, 720, 80, 400),
+      run("Xinyu Lin", 11, 680, 200, 60),
+      run("Abstract", 11, 640, 54, 50),
+      run("W", 42, 600, 54, 28),
+      run("hile these meta-learning recommenders promote rapid adaptation, a paradigm that enables", 10, 600, 86, 320),
+      run("both flexible approximations of complex user interaction distri-", 10, 584, 54, 400),
+      run("butions remains open.", 10, 568, 54, 200),
+      run("Index Terms", 10, 540, 54)
+    ]);
+    expect(meta.titleEn).toMatch(/^Towards Flexible/);
+    expect(meta.titleEn).not.toMatch(/^W\b/);
+    expect(meta.abstractEn).toMatch(/^While these meta-learning/);
+  });
+
+  it("does not treat www.ieee.org as the WWW conference", () => {
+    const meta = inferCoverMeta([], {}, "Copyright notice www.ieee.org Downloaded on 2024. DOI 10.1109/TKDE.2023.3304839");
+    expect(meta.venue).toMatch(/TKDE/i);
+    expect(meta.venue).not.toMatch(/^www$/i);
+  });
+
+  it("still recognizes WWW with a year as a conference venue", () => {
+    const meta = inferCoverMeta([], {}, "Published at WWW 2024 in Singapore.");
+    expect(meta.venue).toMatch(/WWW\s+2024/i);
+  });
+
+  it("does not stop an abstract mid-sentence at the word keyword", () => {
+    const meta = inferCoverMeta([], {}, "AbstractSearchable symmetric encryption (SSE) supports keyword search over outsourced data. Index Terms—privacy, DSSE.");
+    expect(meta.abstractEn).toMatch(/supports keyword search over outsourced data/);
+    expect(meta.abstractEn).not.toMatch(/Index Terms/);
+  });
+
+  it("drops IEEE membership suffixes from author lists", () => {
+    const meta = inferCoverMeta([
+      run("Efficient Strong Privacy-Preserving Search", 18, 700),
+      run("Chang Xu, Member, IEEE, Ruijuan Wang", 11, 650),
+      run("Abstract", 11, 600),
+      run("We study searchable encryption with strong privacy guarantees for cloud data.", 10, 580),
+      run("Index Terms", 10, 540)
+    ]);
+    expect(meta.authors).toEqual(["Chang Xu", "Ruijuan Wang"]);
+  });
 });

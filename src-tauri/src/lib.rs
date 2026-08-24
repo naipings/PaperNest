@@ -59,10 +59,15 @@ struct LibrarySnapshot {
 #[derive(Deserialize, Serialize)] struct PageText { page: i64, text: String }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 struct SearchHit { kind: String, paper_id: String, title: String, snippet: String, page: Option<i64>, score: f64 }
+fn default_true() -> bool { true }
+fn default_taxonomy_strictness() -> String { "strict".into() }
+
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct LlmSettings {
   base_url: String, model: String, auto_analyze_on_import: bool, vision_enabled: bool,
-  #[serde(default)] api_key_saved: bool
+  #[serde(default)] api_key_saved: bool,
+  #[serde(default = "default_true")] auto_classify_on_import: bool,
+  #[serde(default = "default_taxonomy_strictness")] taxonomy_strictness: String,
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 struct LlmPageImage { page: i64, data_url: String }
@@ -74,6 +79,30 @@ struct LlmAnalysis {
 }
 #[derive(Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct LlmVocabularySuggestion { term_en: String, meaning_zh: String, sentence_en: Option<String>, sentence_zh: Option<String>, page: Option<i64> }
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+struct LlmTaxonomyInput {
+  title_en: String,
+  title_zh: Option<String>,
+  abstract_en: Option<String>,
+  abstract_zh: Option<String>,
+  summary: Option<String>,
+}
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+struct LlmTaxonomyTagRaw { id: String, relevance: String }
+#[derive(Deserialize)] #[serde(rename_all="camelCase")]
+struct LlmTaxonomyRaw {
+  category_id: Option<String>,
+  #[serde(default)] tags: Vec<LlmTaxonomyTagRaw>,
+  #[serde(default)] abstain: bool,
+  reason: Option<String>,
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)] #[serde(rename_all="camelCase")]
+struct LlmTaxonomyResult {
+  category_id: Option<String>,
+  tag_ids: Vec<String>,
+  abstain: bool,
+  reason: Option<String>,
+}
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 struct DuplicateCandidate { paper_id: String, title: String, reason: String }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
@@ -177,6 +206,88 @@ mod library_path_tests {
   #[test]
   fn fts_phrase_escapes_double_quotes() {
     assert_eq!(fts_phrase("attention \"mechanism\""), "\"attention \"\"mechanism\"\"\"");
+  }
+
+  #[test]
+  fn validate_taxonomy_drops_unknown_ids_and_keeps_central_under_strict() {
+    let categories = vec![Category { id: "cat-nlp".into(), name: "自然语言处理".into(), color: "#000".into() }];
+    let tags = vec![
+      Tag { id: "tag-llm".into(), name: "大语言模型".into(), color: "#000".into() },
+      Tag { id: "tag-survey".into(), name: "综述".into(), color: "#000".into() },
+      Tag { id: "tag-beginner".into(), name: "入门".into(), color: "#000".into() },
+    ];
+    let raw = LlmTaxonomyRaw {
+      category_id: Some("cat-fake".into()),
+      tags: vec![LlmTaxonomyTagRaw { id: "tag-llm".into(), relevance: "central".into() }],
+      abstain: false,
+      reason: Some("x".into()),
+    };
+    let bad = validate_taxonomy(raw, &categories, &tags, "strict");
+    assert!(bad.abstain);
+    assert_eq!(bad.category_id, None);
+    assert!(bad.tag_ids.is_empty());
+
+    let raw = LlmTaxonomyRaw {
+      category_id: Some("cat-nlp".into()),
+      tags: vec![
+        LlmTaxonomyTagRaw { id: "tag-survey".into(), relevance: "substantial".into() },
+        LlmTaxonomyTagRaw { id: "tag-llm".into(), relevance: "central".into() },
+        LlmTaxonomyTagRaw { id: "tag-beginner".into(), relevance: "peripheral".into() },
+        LlmTaxonomyTagRaw { id: "tag-missing".into(), relevance: "central".into() },
+      ],
+      abstain: false,
+      reason: Some("NLP survey".into()),
+    };
+    let ok = validate_taxonomy(raw, &categories, &tags, "strict");
+    assert!(!ok.abstain);
+    assert_eq!(ok.category_id.as_deref(), Some("cat-nlp"));
+    assert_eq!(ok.tag_ids, vec!["tag-llm".to_string()]);
+  }
+
+  #[test]
+  fn validate_taxonomy_standard_keeps_substantial_and_truncates() {
+    let categories = vec![Category { id: "cat-nlp".into(), name: "自然语言处理".into(), color: "#000".into() }];
+    let tags = vec![
+      Tag { id: "tag-1".into(), name: "1".into(), color: "#000".into() },
+      Tag { id: "tag-2".into(), name: "2".into(), color: "#000".into() },
+      Tag { id: "tag-3".into(), name: "3".into(), color: "#000".into() },
+      Tag { id: "tag-4".into(), name: "4".into(), color: "#000".into() },
+      Tag { id: "tag-5".into(), name: "5".into(), color: "#000".into() },
+    ];
+    let raw = LlmTaxonomyRaw {
+      category_id: Some("cat-nlp".into()),
+      tags: vec![
+        LlmTaxonomyTagRaw { id: "tag-5".into(), relevance: "substantial".into() },
+        LlmTaxonomyTagRaw { id: "tag-1".into(), relevance: "central".into() },
+        LlmTaxonomyTagRaw { id: "tag-2".into(), relevance: "central".into() },
+        LlmTaxonomyTagRaw { id: "tag-3".into(), relevance: "substantial".into() },
+        LlmTaxonomyTagRaw { id: "tag-4".into(), relevance: "substantial".into() },
+      ],
+      abstain: false,
+      reason: None,
+    };
+    let ok = validate_taxonomy(raw, &categories, &tags, "standard");
+    assert_eq!(ok.tag_ids, vec!["tag-1".to_string(), "tag-2".to_string(), "tag-5".to_string(), "tag-3".to_string()]);
+  }
+
+  #[test]
+  fn taxonomy_input_too_short_gate() {
+    let short = LlmTaxonomyInput {
+      title_en: "Yo".into(),
+      title_zh: None,
+      abstract_en: Some("short".into()),
+      abstract_zh: None,
+      summary: None,
+    };
+    assert!(taxonomy_input_too_short(&short));
+    let ok = LlmTaxonomyInput {
+      title_en: "Attention Is All You Need".into(),
+      title_zh: None,
+      abstract_en: None,
+      abstract_zh: None,
+      summary: None,
+    };
+    assert!(!taxonomy_input_too_short(&ok));
   }
 
   #[test]
@@ -487,7 +598,17 @@ async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot>
 }
 
 fn default_visual_theme() -> String { "workbench".into() }
-fn default_llm_settings() -> LlmSettings { LlmSettings { base_url:"https://api.openai.com/v1".into(), model:"gpt-4.1-mini".into(), auto_analyze_on_import:true, vision_enabled:true, api_key_saved:false } }
+fn default_llm_settings() -> LlmSettings {
+  LlmSettings {
+    base_url: "https://api.openai.com/v1".into(),
+    model: "gpt-4.1-mini".into(),
+    auto_analyze_on_import: true,
+    vision_enabled: true,
+    api_key_saved: false,
+    auto_classify_on_import: true,
+    taxonomy_strictness: "strict".into(),
+  }
+}
 fn llm_key_entry() -> Result<keyring::Entry> { keyring::Entry::new("PaperNest", "llm_api_key").map_err(err) }
 async fn load_llm_settings(pool:&SqlitePool)->Result<LlmSettings> {
   let raw:Option<String>=sqlx::query_scalar("SELECT value FROM settings WHERE key='llm_settings'").fetch_optional(pool).await.map_err(err)?;
@@ -706,6 +827,124 @@ async fn analyze_paper_with_llm(state:State<'_,AppState>,paper_id:String,input:L
   let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。只要文本中能读到 Abstract 或足够正文：summary 必须是非空的简体中文一句话；vocabulary 必须至少 5 项（每项含 termEn,meaningZh,sentenceEn,sentenceZh,page，page 用数字）。abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按计算机科学论文学术语体翻译或释义（术语准确、正式、不口语化；模型名与常用缩写可保留英文）。frameworkPage 仅在候选页面确有方法框架图时返回页码。其它找不到的字段返回 null。不要省略 summary 与 vocabulary。";
   let value=json_from_llm(&llm_completion(&settings,system,serde_json::Value::Array(content)).await?)?; let analysis=parse_llm_analysis(value)?; let _=paper_id; Ok(analysis)
 }
+
+fn taxonomy_system_prompt() -> &'static str {
+  "你是 PaperNest 的论文分类助手。任务：根据给定论文的标题与摘要（或一句话总结），从用户提供的「主领域」与「子领域标签」词表中选择分类结果。\n\n硬性规则：\n1. 你只能使用词表中列出的 id，禁止发明新 id、新名称或同义词替换。\n2. 主领域 categoryId：最多 1 个；若没有任何主领域能合理覆盖论文的核心研究方向，必须 abstain=true 且 categoryId=null。\n3. 子领域 tags：每个元素为 { \"id\": \"<tagId>\", \"relevance\": \"central\"|\"substantial\"|\"peripheral\" }。\n   - central：论文的核心贡献或主要研究对象直接属于该标签。\n   - substantial：论文方法/实验/问题设定 substantially 依赖该标签，但不是唯一主题。\n   - peripheral：仅在背景、相关工作或个别实验中提及；不要选。\n4. 若 abstain=true，则 tags 必须为空数组。\n5. 若 abstain=false，则 categoryId 必须非 null，且 tags 中的 id 应在语义上与该主领域一致。\n6. 不要根据参考文献列表、致谢或作者单位推断标签；仅依据标题与摘要/总结所描述的本文工作。\n7. 只返回一个 JSON 对象，字段为：categoryId, tags, abstain, reason。不要 markdown 代码块，不要额外说明。\n8. reason 用一句简体中文说明分类或弃权理由（≤80 字）。\n\n弃权（abstain=true）的典型情况：\n- 论文明显不属于计算机科学（如纯医学、法律、人文）。\n- 论文过于笼统或信息不足，无法可靠判断主领域。\n- 论文属于 CS 边缘方向，但现有主领域列表中没有任何一项算「合理覆盖」。"
+}
+
+fn taxonomy_strictness_hint(strictness: &str) -> (&'static str, &'static str, usize) {
+  match strictness {
+    "standard" => ("标准", "可输出 central 与 substantial，最多 4 个。", 4),
+    "relaxed" => ("宽松", "可输出 central 与 substantial，最多 6 个。", 6),
+    _ => ("严格", "只输出 relevance=central 的子领域标签，最多 3 个。", 3),
+  }
+}
+
+fn taxonomy_allowed_relevance(strictness: &str) -> &'static [&'static str] {
+  match strictness {
+    "standard" | "relaxed" => &["central", "substantial"],
+    _ => &["central"],
+  }
+}
+
+fn build_taxonomy_user_message(input: &LlmTaxonomyInput, categories: &[Category], tags: &[Tag], strictness: &str) -> String {
+  let (label, hint, _) = taxonomy_strictness_hint(strictness);
+  let mut out = String::from("请对下列论文分类。\n\n## 主领域（categoryId，最多选 1 个）\n");
+  for category in categories {
+    out.push_str(&format!("- id: {} | 名称: {}\n", category.id, category.name));
+  }
+  out.push_str("\n## 子领域标签（tags[].id，可多选）\n");
+  for tag in tags {
+    out.push_str(&format!("- id: {} | 名称: {}\n", tag.id, tag.name));
+  }
+  out.push_str(&format!("\n## 严格度\n当前严格度：{label}\n{hint}\n\n## 论文信息\n"));
+  out.push_str(&format!("标题（英）：{}\n", input.title_en));
+  out.push_str(&format!("标题（中）：{}\n", input.title_zh.as_deref().unwrap_or("")));
+  out.push_str(&format!("英文摘要：{}\n", input.abstract_en.as_deref().unwrap_or("")));
+  out.push_str(&format!("中文摘要：{}\n", input.abstract_zh.as_deref().unwrap_or("")));
+  out.push_str(&format!("一句话总结：{}\n", input.summary.as_deref().unwrap_or("")));
+  out
+}
+
+fn taxonomy_input_too_short(input: &LlmTaxonomyInput) -> bool {
+  let title_len = input.title_en.trim().chars().count();
+  let body_len = input.abstract_en.as_deref().unwrap_or("").trim().chars().count()
+    + input.summary.as_deref().unwrap_or("").trim().chars().count();
+  title_len < 8 && body_len < 40
+}
+
+fn relevance_rank(value: &str) -> u8 {
+  match value {
+    "central" => 0,
+    "substantial" => 1,
+    "peripheral" => 2,
+    _ => 9,
+  }
+}
+
+fn validate_taxonomy(raw: LlmTaxonomyRaw, categories: &[Category], tags: &[Tag], strictness: &str) -> LlmTaxonomyResult {
+  let category_ok = raw.category_id.as_ref().filter(|id| categories.iter().any(|c| &c.id == *id)).cloned();
+  if raw.abstain || category_ok.is_none() {
+    return LlmTaxonomyResult {
+      category_id: None,
+      tag_ids: vec![],
+      abstain: true,
+      reason: raw.reason.or_else(|| Some("未匹配现有主领域，保持未分类".into())),
+    };
+  }
+  let allowed = taxonomy_allowed_relevance(strictness);
+  let (_, _, max_tags) = taxonomy_strictness_hint(strictness);
+  let mut candidates: Vec<(u8, String)> = Vec::new();
+  for item in raw.tags {
+    if !tags.iter().any(|tag| tag.id == item.id) { continue; }
+    if !allowed.contains(&item.relevance.as_str()) { continue; }
+    if candidates.iter().any(|(_, id)| id == &item.id) { continue; }
+    candidates.push((relevance_rank(&item.relevance), item.id));
+  }
+  candidates.sort_by_key(|(rank, _)| *rank);
+  let tag_ids: Vec<String> = candidates.into_iter().take(max_tags).map(|(_, id)| id).collect();
+  LlmTaxonomyResult {
+    category_id: category_ok,
+    tag_ids,
+    abstain: false,
+    reason: raw.reason,
+  }
+}
+
+fn parse_taxonomy_raw(value: serde_json::Value) -> Result<LlmTaxonomyRaw> {
+  serde_json::from_value(value).map_err(err)
+}
+
+#[tauri::command]
+async fn classify_paper_taxonomy(state: State<'_, AppState>, input: LlmTaxonomyInput) -> Result<LlmTaxonomyResult> {
+  if taxonomy_input_too_short(&input) {
+    return Ok(LlmTaxonomyResult {
+      category_id: None,
+      tag_ids: vec![],
+      abstain: true,
+      reason: Some("元数据不足，跳过自动分类".into()),
+    });
+  }
+  let pool = state.pool.read().await;
+  let settings = load_llm_settings(&*pool).await?;
+  let categories: Vec<Category> = sqlx::query("SELECT id,name,color FROM categories ORDER BY name").fetch_all(&*pool).await.map_err(err)?.into_iter().map(|r| Category { id: r.get(0), name: r.get(1), color: r.get(2) }).collect();
+  let tags: Vec<Tag> = sqlx::query("SELECT id,name,color FROM tags ORDER BY name").fetch_all(&*pool).await.map_err(err)?.into_iter().map(|r| Tag { id: r.get(0), name: r.get(1), color: r.get(2) }).collect();
+  drop(pool);
+  if categories.is_empty() {
+    return Ok(LlmTaxonomyResult {
+      category_id: None,
+      tag_ids: vec![],
+      abstain: true,
+      reason: Some("未配置主领域".into()),
+    });
+  }
+  let strictness = settings.taxonomy_strictness.as_str();
+  let user = build_taxonomy_user_message(&input, &categories, &tags, strictness);
+  let value = json_from_llm(&llm_completion(&settings, taxonomy_system_prompt(), serde_json::Value::String(user)).await?)?;
+  let raw = parse_taxonomy_raw(value)?;
+  Ok(validate_taxonomy(raw, &categories, &tags, strictness))
+}
+
 fn normalized_title(value:&str)->String{value.to_lowercase().chars().filter(|c|c.is_alphanumeric()).collect()}
 #[tauri::command]
 async fn find_duplicate_candidates(state:State<'_,AppState>,paper_id:String)->Result<Vec<DuplicateCandidate>>{let p=state.pool.read().await;let current=row_paper(sqlx::query("SELECT * FROM papers WHERE id=?").bind(&paper_id).fetch_one(&*p).await.map_err(err)?)?;let mut out=Vec::new();if let Some(doi)=current.doi.as_deref().filter(|v|!v.trim().is_empty()){for row in sqlx::query("SELECT id,COALESCE(title_zh,title_en) title FROM papers WHERE id<>? AND lower(doi)=lower(?) AND deleted_at IS NULL").bind(&paper_id).bind(doi).fetch_all(&*p).await.map_err(err)?{out.push(DuplicateCandidate{paper_id:row.get(0),title:row.get(1),reason:"DOI 相同".into()});}}
@@ -833,6 +1072,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

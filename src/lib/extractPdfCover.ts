@@ -41,7 +41,7 @@ async function readCover(document: PDFDocumentProxy) {
       runs.push({ str: item.str, fontSize, x: item.transform[4], y: item.transform[5] - pageTop, width: item.width, hasEOL: "hasEOL" in item ? Boolean(item.hasEOL) : false });
     }
   }
-  return inferCoverMeta(runs, info, rawParts.join(""));
+  return { ...inferCoverMeta(runs, info, rawParts.join("")), pageCount: document.numPages };
 }
 
 async function readAnalysisText(document: PDFDocumentProxy, visionEnabled: boolean) {
@@ -91,6 +91,7 @@ export function applyCoverMeta(paper: Paper, meta: ReturnType<typeof inferCoverM
     arxivId: paper.arxivId || meta.arxivId || arxivFromText(paper.titleEn) || arxivFromText(titleEn),
     abstractEn: paper.abstractEn || meta.abstractEn,
     venue: paper.venue || meta.venue,
+    pageCount: paper.pageCount || meta.pageCount,
     updatedAt: now()
   };
 }

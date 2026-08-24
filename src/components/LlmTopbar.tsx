@@ -2,6 +2,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { FilePlus2, Import, LoaderCircle, Plus, Search } from "lucide-react";
 import { backend } from "../services/backend";
 import { analysisNeedsBackfill, liteAnalysisSeed, mergeAnalyses } from "../lib/importLlmFill";
+import { formatTaxonomyImportNote, mergeTaxonomyIntoPaper, taxonomyInputFromPaper } from "../lib/taxonomyClassify";
 import { arxivFromText } from "../lib/paperDuplicate";
 import { resolveImportedPaper } from "../lib/importDecisions";
 import { dataUrlToBytes } from "../services/llm";
@@ -47,7 +48,8 @@ export function Topbar({ search, searchError, onSearch, onCreate, onRefresh }: {
         const item = kept[index]; setBusy(`正在用 LLM 分析 ${index + 1}/${kept.length}：${item.paper.titleEn}`);
         try {
           const analyzed = await analyzeAndFill(item.paper, item.analysisInput, item.candidateImages);
-          const decided = await resolveImportedPaper(analyzed, catalog, importPorts, acceptedSame);
+          if (analyzed.taxonomyNote) notes.push(analyzed.taxonomyNote);
+          const decided = await resolveImportedPaper(analyzed.paper, catalog, importPorts, acceptedSame);
           catalog = decided.catalog;
           if (decided.note) notes.push(decided.note);
           if (decided.paper) remaining.push(decided.paper);
@@ -69,11 +71,21 @@ export function Topbar({ search, searchError, onSearch, onCreate, onRefresh }: {
       try { filled = { ...filled, abstractZh: await translateEnglishToChinese(filled.abstractEn), updatedAt: now() }; }
       catch { /* 翻译服务不可用时仍保留英文摘要 */ }
     }
+    let taxonomyNote = "";
+    if (data?.llm.autoClassifyOnImport) {
+      try {
+        const taxonomy = await backend.classifyPaperTaxonomy(taxonomyInputFromPaper(filled));
+        filled = mergeTaxonomyIntoPaper(filled, taxonomy);
+        taxonomyNote = formatTaxonomyImportNote(filled, taxonomy, data.categories, data.tags);
+      } catch (error) {
+        taxonomyNote = `《${filled.titleZh || filled.titleEn}》（自动分类失败：${error instanceof Error ? error.message : String(error)}）`;
+      }
+    }
     await backend.savePaper(filled);
     for (const item of analysis.vocabulary?.slice(0, 8) ?? []) await backend.saveVocabulary({ id: uuid(), paperId: paper.id, termEn: item.termEn, meaningZh: item.meaningZh, sentenceEn: item.sentenceEn, sentenceZh: item.sentenceZh, page: item.page });
     const page = analysis.frameworkPage; const image = page ? candidateImages.find(item => item.page === page) : undefined;
     if (image) await backend.saveFigure({ id: uuid(), paperId: paper.id, imagePath: "", title: analysis.frameworkTitle || "LLM 识别的方法框架", explanationEn: analysis.frameworkExplanationEn, explanationZh: analysis.frameworkExplanationZh, page, isPrimary: true }, dataUrlToBytes(image.dataUrl));
-    return filled;
+    return { paper: filled, taxonomyNote };
   };
   const importCitations = async () => {
     try {

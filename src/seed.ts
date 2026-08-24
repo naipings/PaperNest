@@ -95,7 +95,7 @@ export const seedSnapshot: LibrarySnapshot = {
   tasks: [],
   readingDays: [],
   profile: { displayName: "研究生同学", researchField: "计算机科学", theme: "system", visualTheme: "workbench" },
-  llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4.1-mini", autoAnalyzeOnImport: true, visionEnabled: true, apiKeySaved: false },
+  llm: { baseUrl: "https://api.openai.com/v1", model: "gpt-4.1-mini", autoAnalyzeOnImport: true, visionEnabled: true, apiKeySaved: false, autoClassifyOnImport: true, taxonomyStrictness: "strict" },
   metadata: { enabled: false, provider: "crossref" },
   customFieldDefinitions: [],
   customFieldValues: []

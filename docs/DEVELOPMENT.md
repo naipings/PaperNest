@@ -126,9 +126,13 @@ flowchart LR
 - 导入仅复制文件，不修改原件。
 - **同文件一好一坏的根因**：封面与 LLM 各开一次 PDF.js 时，`destroy` 后立刻再 `getDocument` 会与共享 worker 竞态。导入现走 `extractForImport`：一次打开同时得到封面与分析用正文；全局 `enqueuePdfWork` 保证打开串行，关闭用 `loadingTask.destroy()`。
 - 封面读取文档 Info 与首页/次页文本，填写标题、作者、日期、英文摘要；单字拆开的 Abstract 会拼回单词，折行会拼成段落。
-- 双栏首页按文本 x 的最大空隙分栏，摘要只取 Abstract 标题所在列，避免右栏正文/图坐标轴数字并进摘要；明显污染的候选会被丢弃并尝试 raw 回退。
+- 双栏首页按文本 x 的最大空隙分栏：优先在 Abstract 下方正文字号内测中缝（避免作者行铺满整页导致中缝失效）。Abstract 仅在一侧时只取该列；正文首行跨中缝且为连字符折行时保留全宽；右栏 Index Terms 上方出现小写短尾时按「左栏全文 + 右栏短尾」拼接（IEEE TKDE 常见）。
+- 摘要只用第 1 页 runs。同栏折行连字符与摘要区 drop-cap 在聚类时拼回；标题只在 Abstract 以上选取，忽略摘要超大号首字母。
+- 刊名：会议缩写匹配时 `WWW` 须带年份（避免 `www.ieee.org`）；IEEE DOI（如 `10.1109/TKDE…`）映射为 `IEEE TKDE` 等。
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
+- 封面提取同时写入 PDF 页数。
 - 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本，避免带图请求拖垮整次分析）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
+- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：仅从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。已有分类的论文不覆盖。
 - LLM「测试连接」先写入当前设置；写入失败时不发起连接请求，测试结束前保持按钮禁用。
 - 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
 - PDF、Bib/RIS 导入失败时刷新资料库快照，并在顶部显示错误；导入期间禁用两个导入按钮与新建论文按钮。
@@ -327,6 +331,7 @@ paperReader/
 | `save_vocabulary` / `delete_vocabulary` | 术语增删 |
 | `save_figure` / `delete_figure` | 方法框架图增删（删除时清除图片文件） |
 | `translate_text` / `translate_with_llm` | LibreTranslate；不可用时 LLM 英译中 |
+| `classify_paper_taxonomy` | 按现有词表为论文选主领域/子领域；弃权时返回空分类 |
 | `save_excerpt` / `delete_excerpt` | 写作素材增改删；写作库卡片可改正用途 |
 | `purge_paper` | 回收站论文永久删除（记录 + 受管文件） |
 | `create_backup` / `restore_backup` | 备份恢复 |
@@ -423,7 +428,7 @@ cd src-tauri; cargo check
 
 | 场景 | 预期 |
 |------|------|
-| 导入 PDF | 文件进入 `pdf/originals`，表格可见；英文摘要来自首页 Abstract 所在栏（双栏不串右栏/图轴），不含 Introduction / CCS LaTeX 残片；开启 LLM 时首次导入即有中文摘要/总结/术语；切换界面时导入进度不丢 |
+| 导入 PDF | 文件进入 `pdf/originals`，表格可见；英文摘要来自首页 Abstract（左栏摘要不串右栏；IEEE 全宽摘要跨栏完整）；不含 Introduction / CCS LaTeX 残片；期刊可由 IEEE DOI 识别；页数有值；开启 LLM 时首次导入即有中文摘要/总结/术语，并按词表自动分类（无法匹配则未分类）；切换界面时导入进度不丢 |
 | 重复导入 | 同一文件弹出「重复文献」确认；取消后库中仍只有一篇；不同 arXiv 版本可同时存在并互相引用 |
 | 论文库横向滚动 | 勾选框与各列表头、表体列宽一致，无叠影 |
 | 论文库横向滚动 | 窗口非全屏时滚到最右并向下滚，表头整行吸顶，逐列与表体对齐 |
