@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { backend } from "../services/backend";
-import type { Annotation, Category, FrameworkFigure, LibrarySnapshot, Paper, Profile, SavedView, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, FrameworkFigure, LibrarySnapshot, Paper, PaperCustomFieldValue, Profile, SavedView, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 
 interface LibraryContextValue {
   data?: LibrarySnapshot; loading: boolean; error?: string;
@@ -13,6 +13,9 @@ interface LibraryContextValue {
   addReadingSeconds(paperId: string, day: string, seconds: number): Promise<void>;
   saveFigure(figure: FrameworkFigure, bytes?: number[]): Promise<void>; deleteFigure(id: string): Promise<void>; saveCategory(category: Category): Promise<void>; saveTag(tag: Tag): Promise<void>;
   mergeTaxonomy(kind: "category" | "tag", sourceId: string, targetId?: string): Promise<void>; saveView(view: SavedView): Promise<void>; saveProfile(profile: Profile): Promise<void>;
+  saveCustomFieldDefinition(definition: CustomFieldDefinition): Promise<void>;
+  archiveCustomFieldDefinition(fieldId: string): Promise<void>;
+  savePaperCustomFieldValues(paperId: string, values: PaperCustomFieldValue[]): Promise<void>;
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -45,6 +48,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     saveCategory: wrap(backend.saveCategory), saveTag: wrap(backend.saveTag),
     mergeTaxonomy: async (kind, sourceId, targetId) => { await backend.mergeTaxonomy(kind, sourceId, targetId); await refresh(); },
     saveView: wrap(backend.saveView), saveProfile: wrap(backend.saveProfile),
+    saveCustomFieldDefinition: async definition => { await backend.saveCustomFieldDefinition(definition); await refresh(); },
+    archiveCustomFieldDefinition: async fieldId => { await backend.archiveCustomFieldDefinition(fieldId); await refresh(); },
+    savePaperCustomFieldValues: async (paperId, values) => { await backend.savePaperCustomFieldValues(paperId, values); await refresh(); },
     saveTask: wrap(backend.saveTask), deleteTask: async id => { await backend.deleteTask(id); await refresh(); },
   }), [data, loading, error, importBusy, importNotice, refresh, wrap, addReadingSeconds]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;

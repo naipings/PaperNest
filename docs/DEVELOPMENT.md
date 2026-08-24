@@ -330,7 +330,11 @@ paperReader/
 | `save_excerpt` / `delete_excerpt` | 写作素材增改删；写作库卡片可改正用途 |
 | `purge_paper` | 回收站论文永久删除（记录 + 受管文件） |
 | `create_backup` / `restore_backup` | 备份恢复 |
-| `lookup_online_metadata` | Crossref 元数据（可选） |
+| `lookup_online_metadata` | Crossref 元数据（设置开启 + 论文详情手动触发） |
+| `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
+| `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
+| `save_custom_field_definition` | 新增或更新字段定义 |
+| `archive_custom_field_definition` | 归档字段定义 |
 
 前端统一经 `src/services/backend.ts` 调用；类型定义与 Rust 结构体字段名一致（camelCase serde）。
 
@@ -453,6 +457,50 @@ cd src-tauri; cargo check
 
 ---
 
-## 12. 扩展方向
+## 12. Crossref 在线元数据补全
+
+默认关闭。用户在 **设置 → 在线元数据** 开启后，才在 **论文详情 → 概览** 看到「查找在线元数据」按钮。
+
+```text
+设置开启 + 保存
+  → 论文详情点击「查找在线元数据」
+  → Rust lookup_online_metadata
+  → 有 DOI：GET /v1/works/{doi}
+  → 无 DOI：GET /v1/works?query.bibliographic=…&rows=5
+  → 前端确认面板逐字段勾选
+  → save_paper
+```
+
+约束：
+
+- 导入 PDF（单篇或多篇）只走本地封面解析与可选 LLM，不调用 Crossref。
+- 关闭开关时，后端 `lookup_online_metadata` 直接返回错误，前端不显示按钮。
+- 已有字段默认保留；确认面板只对差异字段提供勾选。
+- 同一论文、同一 DOI/标题查询键的结果缓存在 `settings.online_metadata_cache`，避免重复联网。
+
+实现：`src-tauri/src/online_metadata.rs`、`OnlineMetadataSettingsForm.tsx`、`OnlineMetadataFillButton.tsx`、`src/lib/onlineMetadataPatch.ts`。
+
+---
+
+## 13. 自定义元数据字段
+
+用户在 **设置 → 自定义字段** 定义字段，在 **论文详情 → 概览** 填写每篇论文的值。
+
+支持类型：文本、数字、日期、链接、是/否、单选、多选。SQLite 表：
+
+```text
+custom_field_definitions(id, name, type, options_json, position, show_in_table, archived_at)
+paper_custom_field_values(paper_id, field_id, value_json, updated_at)
+```
+
+- 文本字段默认不在主表显示；其他类型默认显示，可在字段定义里关闭「表格列」。
+- 归档字段保留历史值，界面不再展示；归档前提示受影响论文数。
+- 导入、LLM、Crossref 只写固定核心字段。
+
+实现：`src-tauri/src/custom_fields.rs`、`CustomFieldsSettingsForm.tsx`、`PaperCustomFieldsSection.tsx`、`src/lib/customFields.ts`。
+
+---
+
+## 14. 扩展方向
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。

@@ -8,6 +8,7 @@ import { uuid } from "../types";
 import { Modal } from "./Modal";
 import { PaperEditor } from "./PaperEditor";
 import { OnlineMetadataFillButton } from "./OnlineMetadataFillButton";
+import { PaperCustomFieldsSection } from "./PaperCustomFieldsSection";
 
 type Tab = "overview" | "abstract" | "vocabulary" | "framework";
 
@@ -74,7 +75,8 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Pa
     <div className="detail-body">
       {tab === "overview" && <>
         <section className="summary-card"><label>一句话总结</label><p>{paper.summary || "尚未补充。用一句话记录这篇论文解决了什么问题、采用了什么方法。"}</p></section>
-        <dl className="metadata"><div><dt>主领域</dt><dd>{category ? <span className="category" style={{ "--tag-color": category.color } as React.CSSProperties}>{category.name}</span> : "未分类"}</dd></div><div><dt>子领域</dt><dd><span className="tags">{tags.map(t => <span key={t.id} style={{ "--tag-color": t.color } as React.CSSProperties}>{t.name}</span>)}</span></dd></div><div><dt>期刊 / 会议</dt><dd>{paper.venue || "—"}</dd></div><div><dt>发布日期</dt><dd>{paper.publicationDate || "—"}</dd></div><div><dt>DOI</dt><dd>{paper.doi || "—"}</dd></div>{paper.arxivId && <div><dt>arXiv</dt><dd>{paper.arxivId}</dd></div>}<div><dt>文件状态</dt><dd>{paper.pdfPath ? `已管理 · ${paper.pageCount ?? "?"} 页` : "未关联 PDF"}</dd></div>{related.length > 0 && <div><dt>历史版本</dt><dd className="version-links">{related.map(item => <button type="button" key={item.id} onClick={() => onSelect(item)}>{item.titleZh || item.titleEn}{item.arxivId ? ` · ${item.arxivId}` : ""}</button>)}</dd></div>}</dl>
+        <dl className="metadata"><div><dt>主领域</dt><dd>{category ? <span className="category" style={{ "--tag-color": category.color } as React.CSSProperties}>{category.name}</span> : "未分类"}</dd></div><div><dt>子领域</dt><dd><span className="tags">{tags.map(t => <span key={t.id} style={{ "--tag-color": t.color } as React.CSSProperties}>{t.name}</span>)}</span></dd></div><div><dt>期刊 / 会议</dt><dd>{paper.venue || "—"}</dd></div><div><dt>发布日期</dt><dd>{paper.publicationDate || "—"}</dd></div><div><dt>DOI</dt><dd>{paper.doi || "—"}</dd></div>{paper.arxivId && <div><dt>arXiv</dt><dd>{paper.arxivId}</dd></div>}<div><dt>文件状态</dt><dd>{paper.pdfPath ? `已管理 · ${paper.pageCount ?? "?"} 页` : "未关联 PDF"}</dd></div>{related.length > 0 && <div><dt>历史版本</dt><dd className="version-links">{related.map(item => <button type="button" key={item.id} onClick={() => onSelect(item)}>{item.titleZh || item.titleEn}{item.arxivId ? ` · ${item.arxivId}` : ""}</button>)}</dd></div>}        </dl>
+        <PaperCustomFieldsSection paper={paper} />
         <div className="detail-actions">{data.metadata.enabled && <OnlineMetadataFillButton paper={paper} onSave={savePaper} />}<button className="primary" disabled={!paper.pdfPath} onClick={() => onOpenPdf(paper)}><FileText size={16} />进入阅读台</button>{resolvePaperSourceUrl(paper) && <button className="secondary" onClick={() => void backend.openExternalUrl(resolvePaperSourceUrl(paper)!)}><ExternalLink size={16} />打开原文</button>}</div>
       </>}
       {tab === "abstract" && <div className="abstract-columns"><article><h3><Languages size={16} />中文摘要</h3><p>{paper.abstractZh || "待补充中文摘要"}</p></article><article><h3>EN</h3><p>{paper.abstractEn || "English abstract is not available."}</p></article></div>}

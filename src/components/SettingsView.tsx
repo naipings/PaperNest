@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Database, Download, HardDrive, Laptop, LockKeyhole, Palette, RotateCcw, Save, Settings, ShieldCheck, Sparkles, Tags as TagsIcon, UserRound } from "lucide-react";
+import { Archive, Database, Download, HardDrive, Laptop, LockKeyhole, Palette, RotateCcw, Save, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Tags as TagsIcon, UserRound } from "lucide-react";
 import { APPEARANCE_OPTIONS, appearanceFromProfile, applyAppearance, type AppearanceId } from "../lib/appearance";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
@@ -7,10 +7,11 @@ import type { Category, Profile, Tag } from "../types";
 import { uuid } from "../types";
 
 import { LlmSettingsForm } from "./LlmSettingsForm";
+import { CustomFieldsSettingsForm } from "./CustomFieldsSettingsForm";
 import { OnlineMetadataSettingsForm } from "./OnlineMetadataSettingsForm";
 export function SettingsView() {
   const { data, saveProfile, saveCategory, saveTag, mergeTaxonomy, refresh } = useLibrary(); const [section, setSection] = useState("profile"); const [notice, setNotice] = useState("");
-  if (!data) return null; const sections = [{ id: "profile", label: "个人资料", icon: UserRound }, { id: "llm", label: "LLM 自动整理", icon: Sparkles }, { id: "metadata", label: "在线元数据", icon: Database }, { id: "taxonomy", label: "分类与标签", icon: TagsIcon }, { id: "data", label: "本地数据", icon: HardDrive }, { id: "privacy", label: "隐私与安全", icon: ShieldCheck }];
+  if (!data) return null; const sections = [{ id: "profile", label: "个人资料", icon: UserRound }, { id: "llm", label: "LLM 自动整理", icon: Sparkles }, { id: "metadata", label: "在线元数据", icon: Database }, { id: "customFields", label: "自定义字段", icon: SlidersHorizontal }, { id: "taxonomy", label: "分类与标签", icon: TagsIcon }, { id: "data", label: "本地数据", icon: HardDrive }, { id: "privacy", label: "隐私与安全", icon: ShieldCheck }];
   return <main className="settings-page"><header className="page-heading">
     <div className="page-title-block">
       <div className="page-title-row"><span className="page-title-icon"><Settings size={18} /></span><h1>设置</h1><span className="page-kicker">系统偏好</span></div>
@@ -20,9 +21,10 @@ export function SettingsView() {
     {section === "profile" && <ProfileForm key={appearanceFromProfile(data.profile)} profile={data.profile} onSave={async profile => { try { await saveProfile(profile); setNotice("个人资料已保存"); } catch (error) { setNotice(`保存个人资料失败：${error instanceof Error ? error.message : String(error)}`); } }} />}
     {section === "llm" && <LlmSettingsForm />}
     {section === "metadata" && <OnlineMetadataSettingsForm />}
+    {section === "customFields" && <CustomFieldsSettingsForm />}
     {section === "taxonomy" && <TaxonomyManager categories={data.categories} tags={data.tags} saveCategory={saveCategory} saveTag={saveTag} mergeTaxonomy={mergeTaxonomy} />}
     {section === "data" && <><h2><Database size={19} />本地资料库</h2><p className="settings-description">数据库、PDF、框架图和批注均保存在以下目录。首次启动默认放在软件安装目录下的 PaperNestLibrary；若你已迁移过位置，则使用最新设定。</p><div className="path-box"><HardDrive size={18} /><code>{data.libraryPath}</code></div>{data.libraryNotice && <p className="inline-notice" role="status">{data.libraryNotice}</p>}<div className="relocation-note"><strong>资料库位置</strong><p>选择一个目标文件夹后，应用会完整复制资料库并在下次启动切换；旧副本会保留。</p><button className="secondary" onClick={async () => { if (!isTauri()) { setNotice("浏览器预览模式不能迁移资料库"); return; } if (!confirm("将复制当前资料库到所选文件夹，并在下次启动切换。旧副本不会删除，继续吗？")) return; try { const next = await backend.chooseLibraryLocation(); if (next) setNotice("资料库已复制到：" + next + "。请关闭并重新打开应用以切换。"); } catch (error) { setNotice(`迁移资料库失败：${error instanceof Error ? error.message : String(error)}`); } }}>选择新的资料库位置</button></div><div className="settings-actions"><button className="primary" onClick={async () => { try { const path = await backend.backup(); setNotice(path ? `备份已创建：${path}` : "浏览器预览模式不创建 ZIP 备份"); } catch (error) { setNotice(`创建备份失败：${error instanceof Error ? error.message : String(error)}`); } }}><Archive size={16} />创建完整备份</button><button className="secondary" onClick={async () => { try { if (await backend.restore()) { await refresh(); setNotice("备份恢复完成"); } } catch (error) { setNotice(`恢复备份失败：${error instanceof Error ? error.message : String(error)}`); } }}><RotateCcw size={16} />从备份恢复</button></div><div className="info-card"><Save size={18} /><div><strong>自动保存已开启</strong><p>论文字段和批注会立即写入 SQLite；原始 PDF 永不被覆写。</p></div></div></>}
-    {section === "privacy" && <><h2><ShieldCheck size={19} />隐私与安全</h2><div className="privacy-grid"><article><Laptop /><strong>单机单用户</strong><p>不需要账号，不连接云同步服务。</p></article><article><LockKeyhole /><strong>最小文件权限</strong><p>桌面端只访问受管资料目录和你明确选择的文件。</p></article><article><Download /><strong>无后台联网</strong><p>不含遥测、广告或自动元数据请求。</p></article></div><p className="warning-note">V1 不提供数据库或备份加密。Windows 用户账户权限是默认访问边界。</p></>}
+    {section === "privacy" && <><h2><ShieldCheck size={19} />隐私与安全</h2><div className="privacy-grid"><article><Laptop /><strong>单机单用户</strong><p>不需要账号，不连接云同步服务。</p></article><article><LockKeyhole /><strong>最小文件权限</strong><p>桌面端只访问受管资料目录和你明确选择的文件。</p></article><article><Download /><strong>默认离线</strong><p>关闭在线元数据补全时，应用不会向 Crossref 发起请求；导入 PDF 也不会自动联网查元数据。</p></article></div><p className="warning-note">V1 不提供数据库或备份加密。Windows 用户账户权限是默认访问边界。</p></>}
     {notice && <div className="settings-notice">{notice}</div>}
   </section></div></main>;
 }

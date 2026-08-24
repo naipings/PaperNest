@@ -2,19 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
 import { ExternalLink, FileText, Heart, Trash2 } from "lucide-react";
 import { backend } from "../services/backend";
+import { formatCustomFieldValue, tableCustomFields, valuesForPaper } from "../lib/customFields";
 import { resolvePaperSourceUrl } from "../lib/paperSourceUrl";
-import type { Category, Paper, Tag } from "../types";
+import type { CustomFieldDefinition, Paper, PaperCustomFieldValue, Tag } from "../types";
+import type { Category } from "../types";
 
 const statusLabel = { unread: "未读", reading: "在读", read: "已读", archived: "已归档" };
 const helper = createColumnHelper<Paper>();
 
-export function PaperTable({ papers, categories, tags, selectedId, onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle }: { papers: Paper[]; categories: Category[]; tags: Tag[]; selectedId?: string; onSelect(paper: Paper): void; onOpenPdf(paper: Paper): void; onToggleFavorite(paper: Paper): void; onBulkRecycle(papers: Paper[]): void }) {
+export function PaperTable({ papers, categories, tags, customFieldDefinitions, customFieldValues, selectedId, onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle }: { papers: Paper[]; categories: Category[]; tags: Tag[]; customFieldDefinitions: CustomFieldDefinition[]; customFieldValues: PaperCustomFieldValue[]; selectedId?: string; onSelect(paper: Paper): void; onOpenPdf(paper: Paper): void; onToggleFavorite(paper: Paper): void; onBulkRecycle(papers: Paper[]): void }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const selectedPapers = papers.filter(paper => checkedIds.has(paper.id));
   const toggle = (id: string) => setCheckedIds(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const toggleAll = () => setCheckedIds(current => current.size === papers.length ? new Set() : new Set(papers.map(paper => paper.id)));
-  const columns = useMemo(() => [
+  const tableFields = useMemo(() => tableCustomFields(customFieldDefinitions), [customFieldDefinitions]);
+  const columns = useMemo(() => {
+    const base = [
     helper.display({ id: "select", header: () => <input className="row-check" type="checkbox" aria-label="全选论文" checked={papers.length > 0 && checkedIds.size === papers.length} ref={element => { if (element) element.indeterminate = checkedIds.size > 0 && checkedIds.size < papers.length; }} onClick={event => event.stopPropagation()} onChange={toggleAll} />, size: 48, enableSorting: false, enableResizing: false, cell: info => <input className="row-check" type="checkbox" aria-label="选择论文" checked={checkedIds.has(info.row.original.id)} onClick={event => event.stopPropagation()} onChange={() => toggle(info.row.original.id)} /> }),
     helper.accessor("favorite", { id: "favorite", header: "", size: 38, enableSorting: true, cell: info => <button className={`favorite ${info.getValue() ? "on" : ""}`} onClick={event => { event.stopPropagation(); onToggleFavorite(info.row.original); }} aria-label="收藏"><Heart size={15} fill={info.getValue() ? "currentColor" : "none"} /></button> }),
     helper.accessor("titleEn", { id: "title", header: "论文题目", size: 330, cell: info => <div className="title-cell"><strong>{info.row.original.titleZh || info.getValue()}</strong>{info.row.original.titleZh && <small>{info.getValue()}</small>}</div> }),
@@ -27,7 +31,25 @@ export function PaperTable({ papers, categories, tags, selectedId, onSelect, onO
     helper.accessor("publicationDate", { header: "发布日期", size: 110, cell: info => info.getValue()?.slice(0, 10) || "—" }),
     helper.accessor("updatedAt", { header: "最近更新", size: 115, cell: info => new Date(info.getValue()).toLocaleDateString("zh-CN") }),
     helper.display({ id: "links", header: "链接", size: 84, cell: info => { const source = resolvePaperSourceUrl(info.row.original); return <div className="row-actions">{source && <button title="打开原文" onClick={event => { event.stopPropagation(); void backend.openExternalUrl(source); }}><ExternalLink size={15} /></button>}<button title={info.row.original.pdfPath ? "打开 PDF" : "未关联 PDF"} disabled={!info.row.original.pdfPath} onClick={event => { event.stopPropagation(); onOpenPdf(info.row.original); }}><FileText size={16} /></button></div>; } })
-  ], [categories, checkedIds, onOpenPdf, onToggleFavorite, papers.length, tags]);
+    ];
+    const custom = tableFields.map(field => helper.display({
+      id: `custom:${field.id}`,
+      header: field.name,
+      size: field.type === "text" ? 180 : 120,
+      cell: info => {
+        const value = valuesForPaper(customFieldValues, info.row.original.id).get(field.id);
+        const label = formatCustomFieldValue(field, value);
+        if (field.type === "select" || field.type === "multiselect") {
+          const option = field.type === "select" && typeof value === "string" ? field.options.find(item => item.id === value) : undefined;
+          return option
+            ? <span className="category" style={{ "--tag-color": option.color } as React.CSSProperties}>{option.label}</span>
+            : <span className="ellipsis">{label}</span>;
+        }
+        return <span className="ellipsis" title={label}>{label}</span>;
+      },
+    }));
+    return [...base.slice(0, 10), ...custom, base[10]];
+  }, [categories, checkedIds, customFieldValues, onOpenPdf, onToggleFavorite, papers.length, tableFields, tags, toggleAll]);
   const table = useReactTable({ data: papers, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), columnResizeMode: "onChange" });
   useEffect(() => {
     if (!selectedId) return;

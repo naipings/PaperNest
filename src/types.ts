@@ -120,7 +120,7 @@ export interface LlmSettings { baseUrl: string; model: string; autoAnalyzeOnImpo
 export interface ImportedPaper { paper: Paper; isNew: boolean; }
 export interface OnlineMetadataSettings { enabled: boolean; provider: "crossref"; mailto?: string; }
 export interface OnlineMetadataCandidate { titleEn?: string; authors: string[]; abstractEn?: string; venue?: string; publicationDate?: string; doi?: string; sourceUrl?: string; score?: number; }
-export interface OnlineMetadataLookup { provider: "crossref"; candidates: OnlineMetadataCandidate[]; }
+export interface OnlineMetadataLookup { provider: "crossref"; candidates: OnlineMetadataCandidate[]; cached?: boolean; }
 
 export interface LlmPageImage { page: number; dataUrl: string; }
 export interface LlmAnalysisInput { text: string; candidateImages: LlmPageImage[]; }
@@ -131,6 +131,20 @@ export interface LlmAnalysis {
   frameworkTitle?: string; frameworkExplanationEn?: string; frameworkExplanationZh?: string; vocabulary?: LlmVocabularySuggestion[];
 }
 export interface DuplicateCandidate { paperId: string; title: string; reason: string; }
+
+export type CustomFieldType = "text" | "number" | "date" | "url" | "boolean" | "select" | "multiselect";
+export interface CustomFieldOption { id: Id; label: string; color: string; }
+export interface CustomFieldDefinition {
+  id: Id;
+  name: string;
+  type: CustomFieldType;
+  options: CustomFieldOption[];
+  position: number;
+  showInTable: boolean;
+  archivedAt?: string;
+}
+export type CustomFieldValue = string | number | boolean | string[] | null;
+export interface PaperCustomFieldValue { paperId: Id; fieldId: Id; value: CustomFieldValue; updatedAt: string; }
 
 export interface LibrarySnapshot {
   papers: Paper[];
@@ -148,6 +162,8 @@ export interface LibrarySnapshot {
   libraryPath: string;
   libraryNotice?: string;
   metadata: OnlineMetadataSettings;
+  customFieldDefinitions: CustomFieldDefinition[];
+  customFieldValues: PaperCustomFieldValue[];
 }
 
 export interface SearchHit { kind: "paper" | "pdf" | "vocabulary" | "annotation" | "excerpt"; paperId: Id; title: string; snippet: string; page?: number; score: number; }

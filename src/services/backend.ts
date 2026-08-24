@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, OnlineMetadataLookup, OnlineMetadataSettings, Paper, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { dayKey } from "../lib/readingActivity";
 
 const STORAGE_KEY = "papernest-preview-v1";
@@ -14,7 +14,9 @@ function loadPreview(): LibrarySnapshot {
       ...structuredClone(seedSnapshot),
       ...saved,
       llm: saved.llm ?? structuredClone(seedSnapshot.llm),
-      readingDays: saved.readingDays ?? structuredClone(seedSnapshot.readingDays)
+      readingDays: saved.readingDays ?? structuredClone(seedSnapshot.readingDays),
+      customFieldDefinitions: saved.customFieldDefinitions ?? structuredClone(seedSnapshot.customFieldDefinitions),
+      customFieldValues: saved.customFieldValues ?? structuredClone(seedSnapshot.customFieldValues),
     };
   }
   catch { return structuredClone(seedSnapshot); }
@@ -79,6 +81,7 @@ export const backend = {
     data.excerpts = data.excerpts.filter(item => item.paperId !== id);
     data.figures = data.figures.filter(item => item.paperId !== id);
     data.readingDays = data.readingDays.filter(item => item.paperId !== id);
+    data.customFieldValues = data.customFieldValues.filter(item => item.paperId !== id);
     persistPreview(data);
   },
   async saveTask(task: Task): Promise<void> {
@@ -127,6 +130,32 @@ export const backend = {
   },
   async saveOnlineMetadataSettings(settings: OnlineMetadataSettings): Promise<OnlineMetadataSettings> { if (isTauri()) return invoke("save_online_metadata_settings", { settings }); const data = loadPreview(); data.metadata = settings; persistPreview(data); return settings; },
   async lookupOnlineMetadata(paperId: string): Promise<OnlineMetadataLookup> { if (!isTauri()) throw new Error("浏览器预览模式不支持在线元数据查询"); return invoke("lookup_online_metadata", { paperId }); },
+  async saveCustomFieldDefinition(definition: CustomFieldDefinition): Promise<CustomFieldDefinition> {
+    if (isTauri()) return invoke("save_custom_field_definition", { definition });
+    const data = loadPreview();
+    const index = data.customFieldDefinitions.findIndex(item => item.id === definition.id);
+    index >= 0 ? data.customFieldDefinitions[index] = definition : data.customFieldDefinitions.push(definition);
+    persistPreview(data);
+    return definition;
+  },
+  async archiveCustomFieldDefinition(fieldId: string): Promise<number> {
+    if (isTauri()) return invoke("archive_custom_field_definition", { fieldId });
+    const data = loadPreview();
+    const field = data.customFieldDefinitions.find(item => item.id === fieldId);
+    if (field) field.archivedAt = new Date().toISOString();
+    persistPreview(data);
+    return data.customFieldValues.filter(item => item.fieldId === fieldId).length;
+  },
+  async savePaperCustomFieldValues(paperId: string, values: PaperCustomFieldValue[]): Promise<void> {
+    if (isTauri()) return invoke("save_paper_custom_field_values", { paperId, values });
+    const data = loadPreview();
+    for (const value of values) {
+      data.customFieldValues = data.customFieldValues.filter(item => !(item.paperId === paperId && item.fieldId === value.fieldId));
+      if (value.value == null || value.value === "" || (Array.isArray(value.value) && !value.value.length)) continue;
+      data.customFieldValues.push(value);
+    }
+    persistPreview(data);
+  },
   async saveLlmSettings(settings: LlmSettings, apiKey?: string): Promise<LlmSettings> {
     if (isTauri()) return invoke("save_llm_settings", { settings, apiKey });
     const data = loadPreview(); data.llm = { ...settings, apiKeySaved: Boolean(apiKey) || settings.apiKeySaved }; persistPreview(data); return data.llm;

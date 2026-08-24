@@ -118,6 +118,6 @@ export function LibraryView({ search, searchHitPaperIds, selectedId, onSelect, o
         <button className="icon-button" title="切换表格密度"><Rows3 size={17} /></button>
       </div>
     </div>
-    <PaperTable papers={papers} categories={data.categories} tags={data.tags} selectedId={selectedId} onSelect={onSelect} onOpenPdf={onOpenPdf} onToggleFavorite={paper => savePaper({ ...paper, favorite: !paper.favorite, updatedAt: new Date().toISOString() })} onBulkRecycle={recyclePapers} />
+    <PaperTable papers={papers} categories={data.categories} tags={data.tags} customFieldDefinitions={data.customFieldDefinitions} customFieldValues={data.customFieldValues} selectedId={selectedId} onSelect={onSelect} onOpenPdf={onOpenPdf} onToggleFavorite={paper => savePaper({ ...paper, favorite: !paper.favorite, updatedAt: new Date().toISOString() })} onBulkRecycle={recyclePapers} />
   </main>;
 }

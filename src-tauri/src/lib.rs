@@ -1,4 +1,5 @@
 mod online_metadata;
+mod custom_fields;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -49,7 +50,10 @@ struct PaperDayRead { day: String, paper_id: String, seconds: i64 }
 struct LibrarySnapshot {
   papers: Vec<Paper>, categories: Vec<Category>, tags: Vec<Tag>, annotations: Vec<Annotation>, vocabulary: Vec<VocabularyEntry>,
   figures: Vec<FrameworkFigure>, excerpts: Vec<WritingExcerpt>, tasks: Vec<Task>, reading_days: Vec<PaperDayRead>, views: Vec<SavedView>,
-  profile: Profile, llm: LlmSettings, metadata: online_metadata::OnlineMetadataSettings, library_path: String,
+  profile: Profile, llm: LlmSettings, metadata: online_metadata::OnlineMetadataSettings,
+  custom_field_definitions: Vec<custom_fields::CustomFieldDefinition>,
+  custom_field_values: Vec<custom_fields::PaperCustomFieldValue>,
+  library_path: String,
   #[serde(skip_serializing_if = "Option::is_none")] library_notice: Option<String>,
 }
 #[derive(Deserialize, Serialize)] struct PageText { page: i64, text: String }
@@ -475,9 +479,11 @@ async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot>
   let views = sqlx::query("SELECT json FROM saved_views").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| serde_json::from_str(&r.get::<String,_>(0)).map_err(err)).collect::<Result<Vec<_>>>()?;
   let profile_json:String = sqlx::query_scalar("SELECT value FROM settings WHERE key='profile'").fetch_one(pool).await.map_err(err)?; let profile=serde_json::from_str(&profile_json).map_err(err)?;
   let llm=load_llm_settings(pool).await?; let metadata=online_metadata::load(pool).await?;
+  let custom_field_definitions = custom_fields::load_definitions(pool).await?;
+  let custom_field_values = custom_fields::load_values(pool).await?;
   let tasks = sqlx::query("SELECT * FROM tasks ORDER BY CASE status WHEN 'done' THEN 1 ELSE 0 END, due_date IS NULL, due_date, created_at DESC").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Task { id:r.get("id"),title:r.get("title"),notes:r.get("notes"),due_date:r.get("due_date"),status:r.get("status"),priority:r.get("priority"),paper_id:r.get("paper_id"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),completed_at:r.get("completed_at") }).collect();
   let reading_days = sqlx::query("SELECT day, paper_id, seconds FROM paper_day_reads").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| PaperDayRead { day:r.get("day"), paper_id:r.get("paper_id"), seconds:r.get("seconds") }).collect();
-  Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,library_path:dir.to_string_lossy().into_owned(), library_notice: None })
+  Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,custom_field_definitions,custom_field_values,library_path:dir.to_string_lossy().into_owned(), library_notice: None })
 }
 
 fn default_visual_theme() -> String { "workbench".into() }
@@ -557,6 +563,9 @@ async fn rebuild_paper_search(pool:&SqlitePool,id:&str)->Result<()> { let row=sq
 
 #[tauri::command] async fn save_online_metadata_settings(state:State<'_,AppState>,settings:online_metadata::OnlineMetadataSettings)->Result<online_metadata::OnlineMetadataSettings>{ online_metadata::save(&*state.pool.read().await,settings).await }
 #[tauri::command] async fn lookup_online_metadata(state:State<'_,AppState>,paper_id:String)->Result<online_metadata::OnlineMetadataLookup>{ online_metadata::lookup(&*state.pool.read().await,&paper_id).await }
+#[tauri::command] async fn save_custom_field_definition(state:State<'_,AppState>,definition:custom_fields::CustomFieldDefinition)->Result<custom_fields::CustomFieldDefinition>{ custom_fields::save_definition(&*state.pool.read().await,definition).await }
+#[tauri::command] async fn archive_custom_field_definition(state:State<'_,AppState>,field_id:String)->Result<i64>{ custom_fields::archive_definition(&*state.pool.read().await,&field_id).await }
+#[tauri::command] async fn save_paper_custom_field_values(state:State<'_,AppState>,paper_id:String,values:Vec<custom_fields::PaperCustomFieldValue>)->Result<()>{ custom_fields::save_paper_values(&*state.pool.read().await,&paper_id,values).await }
 #[tauri::command]
 async fn save_llm_settings(state:State<'_,AppState>,mut settings:LlmSettings,api_key:Option<String>)->Result<LlmSettings>{
   validate_llm_settings(&settings)?; settings.api_key_saved=false; let payload=serde_json::to_string(&settings).map_err(err)?;
@@ -824,6 +833,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }
