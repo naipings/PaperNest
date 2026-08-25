@@ -73,4 +73,34 @@ describe("FolderTree", () => {
     fireEvent.click(document.querySelector(".folder-tree-body")!);
     expect(onSelect).toHaveBeenCalledWith({ kind: "all" });
   });
+
+  it("drops dragged papers onto a folder", () => {
+    const folder: Folder = { id: "f1", name: "CS", position: 0, createdAt: "t", updatedAt: "t" };
+    const onDropPapers = vi.fn();
+    render(
+      <FolderTree
+        folders={[folder]}
+        papers={papers}
+        selection={{ kind: "all" }}
+        onSelect={() => undefined}
+        onCreateRoot={() => undefined}
+        onCreateChild={() => undefined}
+        onCreateSibling={() => undefined}
+        onRename={() => undefined}
+        onDelete={() => undefined}
+        onDropPapers={onDropPapers}
+      />
+    );
+    const target = screen.getByRole("treeitem", { name: /CS/ });
+    const dataTransfer = {
+      types: ["application/x-papernest-papers", "text/plain"],
+      dropEffect: "none",
+      getData: (type: string) => type === "application/x-papernest-papers" || type === "text/plain" ? JSON.stringify(["p1", "p2"]) : "",
+      setData: () => undefined,
+    };
+    fireEvent.dragOver(target, { dataTransfer });
+    expect(target.className).toContain("drop-target");
+    fireEvent.drop(target, { dataTransfer });
+    expect(onDropPapers).toHaveBeenCalledWith("f1", ["p1", "p2"]);
+  });
 });

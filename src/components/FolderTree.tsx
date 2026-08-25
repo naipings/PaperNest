@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { endPaperDrag, isPaperDragActive, readPaperDragIds, subscribeDropTarget } from "../lib/paperDrag";
 import type { Folder as FolderRecord, FolderSelection, Paper } from "../types";
 
 const FOLDER_WIDTH_KEY = "papernest.library.folderWidth";
@@ -10,6 +11,7 @@ const FOLDER_WIDTH_MAX = 420;
 const LIBRARY_MAIN_MIN = 320;
 
 type FolderMenu = { x: number; y: number; folder?: FolderRecord };
+type DropTarget = { kind: "folder"; id: string } | { kind: "unfiled" };
 
 function readFolderWidth() {
   const saved = Number(localStorage.getItem(FOLDER_WIDTH_KEY));
@@ -30,8 +32,18 @@ function countUnfiled(papers: Paper[]) {
   return papers.filter(paper => !paper.deletedAt && !paper.folderId).length;
 }
 
+function acceptPaperDrag(event: ReactDragEvent) {
+  const types = [...event.dataTransfer.types];
+  if (!isPaperDragActive() && !types.includes("application/x-papernest-papers")) {
+    return false;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  return true;
+}
+
 function FolderNode({
-  folder, folders, papers, selection, depth, expanded, onToggle, onSelect, onCreateChild, onRename, onDelete, onDropPapers, onOpenMenu,
+  folder, folders, papers, selection, depth, expanded, dropTarget, onToggle, onSelect, onCreateChild, onRename, onDelete, onDropPapers, onOpenMenu, onSetDropTarget,
 }: {
   folder: FolderRecord;
   folders: FolderRecord[];
@@ -39,6 +51,7 @@ function FolderNode({
   selection: FolderSelection;
   depth: number;
   expanded: Set<string>;
+  dropTarget?: DropTarget;
   onToggle(id: string): void;
   onSelect(selection: FolderSelection): void;
   onCreateChild(parentId: string): void;
@@ -46,10 +59,12 @@ function FolderNode({
   onDelete(folder: FolderRecord): void;
   onDropPapers(folderId: string | null, paperIds: string[]): void;
   onOpenMenu(event: ReactMouseEvent, folder: FolderRecord): void;
+  onSetDropTarget(target?: DropTarget): void;
 }) {
   const kids = childrenOf(folders, folder.id);
   const open = expanded.has(folder.id);
   const active = selection.kind === "folder" && selection.id === folder.id;
+  const dropActive = dropTarget?.kind === "folder" && dropTarget.id === folder.id;
   const count = countInFolder(papers, folder.id);
   return <div className="folder-node">
     <div
@@ -57,16 +72,23 @@ function FolderNode({
       aria-selected={active}
       aria-expanded={kids.length ? open : undefined}
       aria-label={`${folder.name}，${count} 篇`}
-      className={`folder-row ${depth === 0 ? "virtual" : ""} ${active ? "active" : ""}`}
+      className={`folder-row droppable ${depth === 0 ? "virtual" : ""} ${active ? "active" : ""} ${dropActive ? "drop-target" : ""}`}
       style={{ paddingLeft: depth === 0 ? undefined : 8 + depth * 14 }}
+      data-folder-drop={folder.id}
       onClick={() => onSelect({ kind: "folder", id: folder.id })}
       onContextMenu={event => onOpenMenu(event, folder)}
-      onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+      onDragEnter={event => { if (acceptPaperDrag(event)) onSetDropTarget({ kind: "folder", id: folder.id }); }}
+      onDragOver={event => { if (acceptPaperDrag(event)) onSetDropTarget({ kind: "folder", id: folder.id }); }}
+      onDragLeave={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onSetDropTarget(undefined);
+      }}
       onDrop={event => {
         event.preventDefault();
-        const raw = event.dataTransfer.getData("application/x-papernest-papers");
-        if (!raw) return;
-        onDropPapers(folder.id, JSON.parse(raw) as string[]);
+        event.stopPropagation();
+        const ids = readPaperDragIds(event.dataTransfer);
+        onSetDropTarget(undefined);
+        endPaperDrag();
+        if (ids.length) onDropPapers(folder.id, ids);
       }}
     >
       <button type="button" className="folder-twist" onClick={event => { event.stopPropagation(); onToggle(folder.id); }} aria-label={open ? "折叠" : "展开"}>
@@ -83,7 +105,7 @@ function FolderNode({
     </div>
     {open && kids.map(child => (
       <FolderNode key={child.id} folder={child} folders={folders} papers={papers} selection={selection} depth={depth + 1}
-        expanded={expanded} onToggle={onToggle} onSelect={onSelect} onCreateChild={onCreateChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={onOpenMenu} />
+        expanded={expanded} dropTarget={dropTarget} onToggle={onToggle} onSelect={onSelect} onCreateChild={onCreateChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={onOpenMenu} onSetDropTarget={onSetDropTarget} />
     ))}
   </div>;
 }
@@ -107,6 +129,7 @@ export function FolderTree({
   const [width, setWidth] = useState(readFolderWidth);
   const [resizing, setResizing] = useState(false);
   const [menu, setMenu] = useState<FolderMenu>();
+  const [dropTarget, setDropTarget] = useState<DropTarget>();
   const treeRef = useRef<HTMLElement>(null);
   useEffect(() => {
     setExpanded(current => {
@@ -130,6 +153,14 @@ export function FolderTree({
       window.removeEventListener("scroll", close, true);
     };
   }, [menu]);
+  useEffect(() => () => {
+    document.body.classList.remove("is-paper-dragging");
+  }, []);
+  useEffect(() => subscribeDropTarget(key => {
+    if (key === undefined) setDropTarget(undefined);
+    else if (key === "unfiled") setDropTarget({ kind: "unfiled" });
+    else setDropTarget({ kind: "folder", id: key });
+  }), []);
   const toggle = (id: string) => setExpanded(current => {
     const next = new Set(current);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -197,29 +228,49 @@ export function FolderTree({
     <div
       className="folder-tree-body"
       onClick={event => { if (event.target === event.currentTarget) clearSelection(); }}
+      onDragLeave={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(undefined);
+      }}
     >
-      <button type="button" className={`folder-row virtual ${selection.kind === "all" ? "active" : ""}`} onClick={() => onSelect({ kind: "all" })} onContextMenu={openRootMenu}>
-        <Folder size={15} /><span className="folder-name">全部论文</span><small className="folder-count">{total}</small>
-      </button>
-      <button
-        type="button"
-        className={`folder-row virtual ${selection.kind === "unfiled" ? "active" : ""}`}
-        onClick={() => onSelect({ kind: "unfiled" })}
+      <div
+        role="button"
+        tabIndex={0}
+        className={`folder-row virtual ${selection.kind === "all" ? "active" : ""}`}
+        onClick={() => onSelect({ kind: "all" })}
+        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect({ kind: "all" }); } }}
         onContextMenu={openRootMenu}
-        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "none"; }}
+      >
+        <Folder size={15} /><span className="folder-name">全部论文</span><small className="folder-count">{total}</small>
+      </div>
+      <div
+        role="button"
+        tabIndex={0}
+        className={`folder-row virtual droppable ${selection.kind === "unfiled" ? "active" : ""} ${dropTarget?.kind === "unfiled" ? "drop-target" : ""}`}
+        data-folder-drop="unfiled"
+        onClick={() => onSelect({ kind: "unfiled" })}
+        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect({ kind: "unfiled" }); } }}
+        onContextMenu={openRootMenu}
+        onDragEnter={event => { if (acceptPaperDrag(event)) setDropTarget({ kind: "unfiled" }); }}
+        onDragOver={event => { if (acceptPaperDrag(event)) setDropTarget({ kind: "unfiled" }); }}
+        onDragLeave={event => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(undefined);
+        }}
         onDrop={event => {
           event.preventDefault();
-          const raw = event.dataTransfer.getData("application/x-papernest-papers");
-          if (!raw) return;
-          onDropPapers(null, JSON.parse(raw) as string[]);
+          event.stopPropagation();
+          const ids = readPaperDragIds(event.dataTransfer);
+          setDropTarget(undefined);
+          endPaperDrag();
+          if (ids.length) onDropPapers(null, ids);
         }}
       >
         <Folder size={15} /><span className="folder-name">未归档</span><small className="folder-count">{countUnfiled(papers)}</small>
-      </button>
+      </div>
       {roots.length > 0 && <div className="folder-tree-divider" aria-hidden="true" />}
       {roots.map(folder => (
         <FolderNode key={folder.id} folder={folder} folders={folders} papers={papers} selection={selection} depth={0}
-          expanded={expanded} onToggle={toggle} onSelect={onSelect} onCreateChild={createChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={openFolderMenu} />
+          expanded={expanded} dropTarget={dropTarget} onToggle={toggle} onSelect={onSelect} onCreateChild={createChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={openFolderMenu} onSetDropTarget={setDropTarget} />
       ))}
     </div>
     {menu && createPortal(

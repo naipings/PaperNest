@@ -1,17 +1,36 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
 import { ExternalLink, FileText, FolderInput, Heart, Scissors, Trash2 } from "lucide-react";
 import { backend } from "../services/backend";
 import { formatCustomFieldValue, tableCustomFields, valuesForPaper } from "../lib/customFields";
+import { beginPaperDrag, endPaperDrag, publishDropTarget, resolveDraggedPaperIds } from "../lib/paperDrag";
 import { resolvePaperSourceUrl } from "../lib/paperSourceUrl";
 import type { Category, CustomFieldDefinition, Folder, Paper, PaperCustomFieldValue, Tag } from "../types";
 
 const statusLabel = { unread: "未读", reading: "在读", read: "已读", archived: "已归档" };
 const helper = createColumnHelper<Paper>();
+const DRAG_THRESHOLD = 6;
+
+type RowPointerDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  ids: string[];
+  label: string;
+  active: boolean;
+  ghost?: HTMLDivElement;
+};
+
+function folderDropAt(clientX: number, clientY: number) {
+  const el = document.elementFromPoint(clientX, clientY)?.closest("[data-folder-drop]") as HTMLElement | null;
+  const key = el?.dataset.folderDrop;
+  publishDropTarget(key);
+  return key;
+}
 
 export function PaperTable({
   papers, categories, tags, folders, customFieldDefinitions, customFieldValues, selectedId, cutPaperIds,
-  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder,
+  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder, clearChecksToken,
 }: {
   papers: Paper[];
   categories: Category[];
@@ -21,6 +40,7 @@ export function PaperTable({
   customFieldValues: PaperCustomFieldValue[];
   selectedId?: string;
   cutPaperIds: string[];
+  clearChecksToken?: number;
   onSelect(paper: Paper): void;
   onOpenPdf(paper: Paper): void;
   onToggleFavorite(paper: Paper): void;
@@ -30,6 +50,9 @@ export function PaperTable({
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [draggingIds, setDraggingIds] = useState<string[]>([]);
+  const skipClickRef = useRef(false);
+  const pointerDragRef = useRef<RowPointerDrag | null>(null);
   const selectedPapers = papers.filter(paper => checkedIds.has(paper.id));
   const toggle = (id: string) => setCheckedIds(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const toggleAll = () => setCheckedIds(current => current.size === papers.length ? new Set() : new Set(papers.map(paper => paper.id)));
@@ -45,6 +68,62 @@ export function PaperTable({
       return changed ? next : current;
     });
   }, [papers]);
+  useEffect(() => {
+    if (!clearChecksToken) return;
+    setCheckedIds(new Set());
+  }, [clearChecksToken]);
+  useEffect(() => {
+    const finishGhost = (drag: RowPointerDrag) => {
+      drag.ghost?.remove();
+      drag.ghost = undefined;
+    };
+    const onMove = (event: PointerEvent) => {
+      const drag = pointerDragRef.current;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.active) {
+        if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD) return;
+        drag.active = true;
+        beginPaperDrag(drag.ids);
+        setDraggingIds(drag.ids);
+        document.body.classList.add("is-paper-dragging");
+        const ghost = document.createElement("div");
+        ghost.className = "paper-drag-ghost floating";
+        ghost.textContent = drag.label;
+        document.body.appendChild(ghost);
+        drag.ghost = ghost;
+      }
+      if (drag.ghost) {
+        drag.ghost.style.transform = `translate(${event.clientX + 14}px, ${event.clientY + 12}px)`;
+      }
+      folderDropAt(event.clientX, event.clientY);
+    };
+    const onUp = (event: PointerEvent) => {
+      const drag = pointerDragRef.current;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      pointerDragRef.current = null;
+      finishGhost(drag);
+      const dropKey = drag.active ? folderDropAt(event.clientX, event.clientY) : undefined;
+      publishDropTarget(undefined);
+      setDraggingIds([]);
+      endPaperDrag();
+      document.body.classList.remove("is-paper-dragging");
+      if (!drag.active) return;
+      skipClickRef.current = true;
+      if (dropKey === undefined) return;
+      onMoveToFolder(drag.ids, dropKey === "unfiled" ? null : dropKey);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.classList.remove("is-paper-dragging");
+      publishDropTarget(undefined);
+      endPaperDrag();
+    };
+  }, [onMoveToFolder]);
   const tableFields = useMemo(() => tableCustomFields(customFieldDefinitions), [customFieldDefinitions]);
   const folderName = (id?: string) => id ? folders.find(item => item.id === id)?.name ?? "—" : "未归档";
   const columns = useMemo(() => {
@@ -144,22 +223,39 @@ export function PaperTable({
         const size = header.getSize();
         return <th key={header.id} className={header.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getIsSorted() && <small>{header.column.getIsSorted() === "asc" ? " ↑" : " ↓"}</small>}{header.column.id !== "select" && <span className="resize-handle" onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} />}</th>;
       })}</tr>)}</thead>
-      <tbody>{table.getRowModel().rows.map(row => <tr
+      <tbody>{table.getRowModel().rows.map(row => {
+        const dragging = draggingIds.includes(row.original.id);
+        return <tr
         key={row.id}
         data-paper-id={row.original.id}
-        draggable
-        className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""} ${cutPaperIds.includes(row.original.id) ? "cut" : ""}`}
-        onClick={() => onSelect(row.original)}
+        className={`${selectedId === row.original.id ? "selected" : ""} ${checkedIds.has(row.original.id) ? "checked" : ""} ${cutPaperIds.includes(row.original.id) ? "cut" : ""} ${dragging ? "is-dragging" : ""}`}
+        onClick={() => {
+          if (skipClickRef.current) {
+            skipClickRef.current = false;
+            return;
+          }
+          onSelect(row.original);
+        }}
         onDoubleClick={() => onOpenPdf(row.original)}
-        onDragStart={event => {
-          const ids = checkedIds.has(row.original.id) && checkedIds.size ? [...checkedIds] : [row.original.id];
-          event.dataTransfer.setData("application/x-papernest-papers", JSON.stringify(ids));
-          event.dataTransfer.effectAllowed = "move";
+        onPointerDown={event => {
+          if (event.button !== 0) return;
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, button, a, label, .resize-handle")) return;
+          const ids = resolveDraggedPaperIds(row.original.id, checkedIds);
+          pointerDragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            ids,
+            label: ids.length > 1 ? `${ids.length} 篇论文` : (row.original.titleZh || row.original.titleEn || "1 篇论文"),
+            active: false,
+          };
         }}
       >{row.getVisibleCells().map(cell => {
         const size = cell.column.getSize();
         return <td key={cell.id} className={cell.column.id === "select" ? "col-select" : undefined} style={{ width: size, minWidth: size, maxWidth: size }}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>;
-      })}</tr>)}</tbody>
+      })}</tr>;
+      })}</tbody>
     </table>
     {papers.length === 0 && <div className="table-empty">当前视图没有论文</div>}
   </div>;

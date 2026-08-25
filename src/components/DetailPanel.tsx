@@ -22,8 +22,8 @@ function readDetailWidth() {
   return Number.isFinite(saved) && saved >= DETAIL_WIDTH_MIN ? saved : DETAIL_WIDTH_DEFAULT;
 }
 
-export function DetailPanel({ paper, onClose, onOpenPdf, onSelect, onLocateFolder }: { paper: Paper; onClose(): void; onOpenPdf(paper: Paper): void; onSelect(paper: Paper): void; onLocateFolder?(folderId?: string): void }) {
-  const { data, savePaper, saveVocabulary, deleteVocabulary, saveFigure, deleteFigure, movePapersToFolder } = useLibrary();
+export function DetailPanel({ paper, onClose, onOpenPdf, onSelect }: { paper: Paper; onClose(): void; onOpenPdf(paper: Paper): void; onSelect(paper: Paper): void }) {
+  const { data, savePaper, saveVocabulary, deleteVocabulary, saveFigure, deleteFigure } = useLibrary();
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState(false);
   const [newTerm, setNewTerm] = useState(false);
@@ -34,17 +34,6 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect, onLocateFolde
   const panelRef = useRef<HTMLElement>(null);
   if (!data) return null;
   const category = data.categories.find(c => c.id === paper.categoryId);
-  const folder = paper.folderId ? data.folders.find(item => item.id === paper.folderId) : undefined;
-  const folderPath = (() => {
-    if (!paper.folderId) return "未归档";
-    const parts: string[] = [];
-    let current = folder;
-    while (current) {
-      parts.unshift(current.name);
-      current = current.parentId ? data.folders.find(item => item.id === current!.parentId) : undefined;
-    }
-    return parts.join(" / ") || "未知文件夹";
-  })();
   const tags = data.tags.filter(t => paper.tagIds.includes(t.id));
   const vocab = data.vocabulary.filter(v => v.paperId === paper.id);
   const figures = data.figures.filter(v => v.paperId === paper.id);
@@ -86,15 +75,7 @@ export function DetailPanel({ paper, onClose, onOpenPdf, onSelect, onLocateFolde
     <div className="detail-body">
       {tab === "overview" && <>
         <section className="summary-card"><label>一句话总结</label><p>{paper.summary || "尚未补充。用一句话记录这篇论文解决了什么问题、采用了什么方法。"}</p></section>
-        <dl className="metadata"><div><dt>所在位置</dt><dd className="folder-location"><button type="button" className="ghost linkish" onClick={() => onLocateFolder?.(paper.folderId)}>{folderPath}</button><button type="button" className="ghost" onClick={() => {
-          const options = ["未归档", ...data.folders.map(item => item.name)];
-          const choice = window.prompt(`移动到文件夹\n可选：${options.join("、")}`, folder?.name ?? "未归档");
-          if (choice === null) return;
-          if (choice.trim() === "未归档" || choice.trim() === "") { void movePapersToFolder([paper.id], null); return; }
-          const target = data.folders.find(item => item.name === choice.trim());
-          if (!target) { window.alert("未找到该文件夹"); return; }
-          void movePapersToFolder([paper.id], target.id);
-        }}>移动到…</button></dd></div><div><dt>主领域</dt><dd>{category ? <span className="category" style={{ "--tag-color": category.color } as React.CSSProperties}>{category.name}</span> : "未分类"}</dd></div><div><dt>子领域</dt><dd><span className="tags">{tags.map(t => <span key={t.id} style={{ "--tag-color": t.color } as React.CSSProperties}>{t.name}</span>)}</span></dd></div><div><dt>期刊 / 会议</dt><dd>{paper.venue || "—"}</dd></div><div><dt>发布日期</dt><dd>{paper.publicationDate || "—"}</dd></div><div><dt>DOI</dt><dd>{paper.doi || "—"}</dd></div>{paper.arxivId && <div><dt>arXiv</dt><dd>{paper.arxivId}</dd></div>}<div><dt>文件状态</dt><dd>{paper.pdfPath ? `已管理 · ${paper.pageCount ?? "?"} 页` : "未关联 PDF"}</dd></div>{related.length > 0 && <div><dt>历史版本</dt><dd className="version-links">{related.map(item => <button type="button" key={item.id} onClick={() => onSelect(item)}>{item.titleZh || item.titleEn}{item.arxivId ? ` · ${item.arxivId}` : ""}</button>)}</dd></div>}        </dl>
+        <dl className="metadata"><div><dt>主领域</dt><dd>{category ? <span className="category" style={{ "--tag-color": category.color } as React.CSSProperties}>{category.name}</span> : "未分类"}</dd></div><div><dt>子领域</dt><dd><span className="tags">{tags.map(t => <span key={t.id} style={{ "--tag-color": t.color } as React.CSSProperties}>{t.name}</span>)}</span></dd></div><div><dt>期刊 / 会议</dt><dd>{paper.venue || "—"}</dd></div><div><dt>发布日期</dt><dd>{paper.publicationDate || "—"}</dd></div><div><dt>DOI</dt><dd>{paper.doi || "—"}</dd></div>{paper.arxivId && <div><dt>arXiv</dt><dd>{paper.arxivId}</dd></div>}<div><dt>文件状态</dt><dd>{paper.pdfPath ? `已管理 · ${paper.pageCount ?? "?"} 页` : "未关联 PDF"}</dd></div>{related.length > 0 && <div><dt>历史版本</dt><dd className="version-links">{related.map(item => <button type="button" key={item.id} onClick={() => onSelect(item)}>{item.titleZh || item.titleEn}{item.arxivId ? ` · ${item.arxivId}` : ""}</button>)}</dd></div>}        </dl>
         <PaperCustomFieldsSection paper={paper} />
         <div className="detail-actions">{data.metadata.enabled && <OnlineMetadataFillButton paper={paper} onSave={savePaper} />}<button className="primary" disabled={!paper.pdfPath} onClick={() => onOpenPdf(paper)}><FileText size={16} />进入阅读台</button>{resolvePaperSourceUrl(paper) && <button className="secondary" onClick={() => void backend.openExternalUrl(resolvePaperSourceUrl(paper)!)}><ExternalLink size={16} />打开原文</button>}</div>
       </>}

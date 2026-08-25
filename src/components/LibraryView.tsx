@@ -58,6 +58,7 @@ export function LibraryView({
   const [category, setCategory] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [clearChecksToken, setClearChecksToken] = useState(0);
   useEffect(() => {
     const toggleDensity = () => { document.documentElement.dataset.tableDensity = document.documentElement.dataset.tableDensity !== "compact" ? "compact" : "comfortable"; };
     const button = document.querySelector<HTMLButtonElement>(".view-tools .icon-button");
@@ -180,6 +181,7 @@ export function LibraryView({
     try {
       await movePapersToFolder(paperIds, folderId);
       onClearCut();
+      setClearChecksToken(token => token + 1);
       onLibraryNotice(`已移动 ${paperIds.length} 篇论文`);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
@@ -247,6 +249,7 @@ export function LibraryView({
           onBulkRecycle={recyclePapers}
           onCut={onCutPapers}
           onMoveToFolder={(paperIds, folderId) => void dropPapers(folderId, paperIds)}
+          clearChecksToken={clearChecksToken}
         />
       </div>
     </div>

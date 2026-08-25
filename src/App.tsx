@@ -189,7 +189,7 @@ export default function App() {
             onLibraryNotice={showLibraryNotice}
             onClearLibraryNotice={clearLibraryNotice}
           />
-          {selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} onLocateFolder={id => setFolderSelection(id ? { kind: "folder", id } : { kind: "unfiled" })} />}
+          {selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}
         </div>
       </>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
