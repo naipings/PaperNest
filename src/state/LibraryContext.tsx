@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { backend } from "../services/backend";
-import type { Annotation, Category, CustomFieldDefinition, FrameworkFigure, LibrarySnapshot, Paper, PaperCustomFieldValue, Profile, SavedView, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, Folder, FrameworkFigure, LibrarySnapshot, Paper, PaperCustomFieldValue, Profile, SavedView, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 
 interface LibraryContextValue {
   data?: LibrarySnapshot; loading: boolean; error?: string;
@@ -12,6 +12,8 @@ interface LibraryContextValue {
   saveTask(task: Task): Promise<void>; deleteTask(id: string): Promise<void>;
   addReadingSeconds(paperId: string, day: string, seconds: number): Promise<void>;
   saveFigure(figure: FrameworkFigure, bytes?: number[]): Promise<void>; deleteFigure(id: string): Promise<void>; saveCategory(category: Category): Promise<void>; saveTag(tag: Tag): Promise<void>;
+  saveFolder(folder: Folder): Promise<void>; deleteFolder(id: string): Promise<void>;
+  movePapersToFolder(paperIds: string[], folderId?: string | null): Promise<void>;
   mergeTaxonomy(kind: "category" | "tag", sourceId: string, targetId?: string): Promise<void>; saveView(view: SavedView): Promise<void>; saveProfile(profile: Profile): Promise<void>;
   saveCustomFieldDefinition(definition: CustomFieldDefinition): Promise<void>;
   archiveCustomFieldDefinition(fieldId: string): Promise<void>;
@@ -46,6 +48,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     saveFigure: async (figure, bytes) => { await backend.saveFigure(figure, bytes); await refresh(); },
     deleteFigure: async id => { await backend.deleteFigure(id); await refresh(); },
     saveCategory: wrap(backend.saveCategory), saveTag: wrap(backend.saveTag),
+    saveFolder: wrap(backend.saveFolder),
+    deleteFolder: async id => { await backend.deleteFolder(id); await refresh(); },
+    movePapersToFolder: async (paperIds, folderId) => { await backend.movePapersToFolder(paperIds, folderId); await refresh(); },
     mergeTaxonomy: async (kind, sourceId, targetId) => { await backend.mergeTaxonomy(kind, sourceId, targetId); await refresh(); },
     saveView: wrap(backend.saveView), saveProfile: wrap(backend.saveProfile),
     saveCustomFieldDefinition: async definition => { await backend.saveCustomFieldDefinition(definition); await refresh(); },

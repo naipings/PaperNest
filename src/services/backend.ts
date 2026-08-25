@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
 const STORAGE_KEY = "papernest-preview-v1";
@@ -13,6 +14,7 @@ function loadPreview(): LibrarySnapshot {
     return {
       ...structuredClone(seedSnapshot),
       ...saved,
+      folders: saved.folders ?? structuredClone(seedSnapshot.folders),
       llm: saved.llm ?? structuredClone(seedSnapshot.llm),
       readingDays: saved.readingDays ?? structuredClone(seedSnapshot.readingDays),
       customFieldDefinitions: saved.customFieldDefinitions ?? structuredClone(seedSnapshot.customFieldDefinitions),
@@ -112,6 +114,65 @@ export const backend = {
     const data = loadPreview(); const index = data.tags.findIndex(v => v.id === tag.id);
     index >= 0 ? data.tags[index] = tag : data.tags.push(tag); persistPreview(data);
   },
+  async saveFolder(folder: Folder): Promise<void> {
+    if (isTauri()) return invoke("save_folder", { folder });
+    const data = loadPreview();
+    const index = data.folders.findIndex(item => item.id === folder.id);
+    if (folder.parentId) {
+      if (folder.parentId === folder.id) throw new Error("不能将文件夹设为自己的子文件夹");
+      if (!data.folders.some(item => item.id === folder.parentId)) throw new Error("父文件夹不存在");
+      const descendantIds = new Set<string>([folder.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const item of data.folders) {
+          if (item.parentId && descendantIds.has(item.parentId) && !descendantIds.has(item.id)) {
+            descendantIds.add(item.id);
+            grew = true;
+          }
+        }
+      }
+      if (descendantIds.has(folder.parentId)) throw new Error("不能将文件夹移动到自己的子文件夹下");
+    }
+    if (folderSiblingNameTaken(data.folders, folder.name, folder.parentId, folder.id)) {
+      throw new Error("同一层级已存在同名文件夹");
+    }
+    index >= 0 ? data.folders[index] = folder : data.folders.push(folder);
+    persistPreview(data);
+  },
+  async deleteFolder(id: string): Promise<void> {
+    if (isTauri()) return invoke("delete_folder", { id });
+    const data = loadPreview();
+    const subtree = new Set<string>([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const item of data.folders) {
+        if (item.parentId && subtree.has(item.parentId) && !subtree.has(item.id)) {
+          subtree.add(item.id);
+          grew = true;
+        }
+      }
+    }
+    if (data.papers.some(paper => !paper.deletedAt && paper.folderId && subtree.has(paper.folderId))) {
+      throw new Error("不能删除非空文件夹。请先移出或删除其中的论文。");
+    }
+    data.papers.forEach(paper => { if (paper.folderId && subtree.has(paper.folderId)) paper.folderId = undefined; });
+    data.folders = data.folders.filter(item => !subtree.has(item.id));
+    persistPreview(data);
+  },
+  async movePapersToFolder(paperIds: string[], folderId?: string | null): Promise<void> {
+    if (isTauri()) return invoke("move_papers_to_folder", { paperIds, folderId: folderId ?? null });
+    const data = loadPreview();
+    if (folderId && !data.folders.some(item => item.id === folderId)) throw new Error("目标文件夹不存在");
+    const stamp = new Date().toISOString();
+    data.papers.forEach(paper => {
+      if (!paperIds.includes(paper.id)) return;
+      paper.folderId = folderId || undefined;
+      paper.updatedAt = stamp;
+    });
+    persistPreview(data);
+  },
   async mergeTaxonomy(kind: "category" | "tag", sourceId: string, targetId?: string): Promise<void> {
     if (isTauri()) return invoke("merge_taxonomy", { kind, sourceId, targetId });
     const data = loadPreview();
@@ -188,10 +249,10 @@ export const backend = {
   },
   async findDuplicateCandidates(paperId: string): Promise<DuplicateCandidate[]> { return isTauri() ? invoke("find_duplicate_candidates", { paperId }) : []; },
 
-  async chooseAndImportPdfs(): Promise<ImportedPaper[]> {
+  async chooseAndImportPdfs(folderId?: string | null): Promise<ImportedPaper[]> {
     if (!isTauri()) return [];
     const paths = await open({ multiple: true, filters: [{ name: "PDF", extensions: ["pdf"] }] });
-    return paths ? invoke<ImportedPaper[]>("import_pdfs", { paths: Array.isArray(paths) ? paths : [paths] }) : [];
+    return paths ? invoke<ImportedPaper[]>("import_pdfs", { paths: Array.isArray(paths) ? paths : [paths], folderId: folderId ?? null }) : [];
   },
   async chooseAndImportCitations(): Promise<Paper[]> {
     if (!isTauri()) return [];

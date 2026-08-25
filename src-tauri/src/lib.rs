@@ -24,8 +24,14 @@ struct Category { id: String, name: String, color: String }
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct Tag { id: String, name: String, color: String }
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
+struct Folder {
+  id: String, name: String, parent_id: Option<String>, position: i64, created_at: String, updated_at: String,
+}
+#[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct Paper {
-  id: String, title_en: String, title_zh: Option<String>, authors: Vec<Author>, category_id: Option<String>, tag_ids: Vec<String>, status: String,
+  id: String, title_en: String, title_zh: Option<String>, authors: Vec<Author>, category_id: Option<String>,
+  #[serde(default)] folder_id: Option<String>,
+  tag_ids: Vec<String>, status: String,
   summary: Option<String>, abstract_en: Option<String>, abstract_zh: Option<String>, venue: Option<String>, publication_date: Option<String>, doi: Option<String>, arxiv_id: Option<String>, source_url: Option<String>,
   pdf_path: Option<String>, pdf_sha256: Option<String>, page_count: Option<i64>, has_text_layer: Option<bool>, favorite: bool, reading_page: Option<i64>,
   created_at: String, updated_at: String, deleted_at: Option<String>, #[serde(default)] related_paper_ids: Vec<String>
@@ -48,7 +54,7 @@ struct Task { id: String, title: String, notes: Option<String>, due_date: Option
 struct PaperDayRead { day: String, paper_id: String, seconds: i64 }
 #[derive(Serialize)] #[serde(rename_all="camelCase")]
 struct LibrarySnapshot {
-  papers: Vec<Paper>, categories: Vec<Category>, tags: Vec<Tag>, annotations: Vec<Annotation>, vocabulary: Vec<VocabularyEntry>,
+  papers: Vec<Paper>, folders: Vec<Folder>, categories: Vec<Category>, tags: Vec<Tag>, annotations: Vec<Annotation>, vocabulary: Vec<VocabularyEntry>,
   figures: Vec<FrameworkFigure>, excerpts: Vec<WritingExcerpt>, tasks: Vec<Task>, reading_days: Vec<PaperDayRead>, views: Vec<SavedView>,
   profile: Profile, llm: LlmSettings, metadata: online_metadata::OnlineMetadataSettings,
   custom_field_definitions: Vec<custom_fields::CustomFieldDefinition>,
@@ -502,6 +508,13 @@ async fn open_pool(dir: &Path) -> Result<SqlitePool> {
 async fn initialize_pool(pool: &SqlitePool, dir: &Path) -> Result<()> {
   for statement in include_str!("schema.sql").split(';').map(str::trim).filter(|s| !s.is_empty()) { sqlx::query(statement).execute(pool).await.map_err(err)?; }
   let _ = sqlx::query("ALTER TABLE papers ADD COLUMN related_paper_ids_json TEXT NOT NULL DEFAULT '[]'").execute(pool).await;
+  let has_folder: bool = sqlx::query("PRAGMA table_info(papers)").fetch_all(pool).await.map_err(err)?
+    .iter().any(|row| row.get::<String, _>("name") == "folder_id");
+  if !has_folder {
+    sqlx::query("ALTER TABLE papers ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL").execute(pool).await.map_err(err)?;
+  }
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_papers_folder ON papers(folder_id)").execute(pool).await.map_err(err)?;
+  sqlx::query("INSERT INTO settings(key,value) VALUES('schema_version','5') ON CONFLICT(key) DO UPDATE SET value='5'").execute(pool).await.map_err(err)?;
   purge_clinical_taxonomy_leftovers(pool).await?;
   let manifest = serde_json::json!({"application":"PaperNest","schemaVersion":1,"createdAt":Utc::now().to_rfc3339()});
   if !dir.join("manifest.json").exists() { fs::write(dir.join("manifest.json"), serde_json::to_vec_pretty(&manifest).map_err(err)?).map_err(err)?; }
@@ -581,6 +594,7 @@ async fn initialize_library(state: State<'_, AppState>) -> Result<LibrarySnapsho
 
 async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot> {
   let papers = sqlx::query("SELECT * FROM papers ORDER BY favorite DESC, updated_at DESC").fetch_all(pool).await.map_err(err)?.into_iter().map(row_paper).collect::<Result<Vec<_>>>()?;
+  let folders = sqlx::query("SELECT id,name,parent_id,position,created_at,updated_at FROM folders ORDER BY parent_id IS NOT NULL, position, name").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Folder { id:r.get(0),name:r.get(1),parent_id:r.get(2),position:r.get(3),created_at:r.get(4),updated_at:r.get(5) }).collect();
   let categories = sqlx::query("SELECT id,name,color FROM categories ORDER BY name").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Category { id:r.get(0),name:r.get(1),color:r.get(2) }).collect();
   let tags = sqlx::query("SELECT id,name,color FROM tags ORDER BY name").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Tag { id:r.get(0),name:r.get(1),color:r.get(2) }).collect();
   let annotations = sqlx::query("SELECT * FROM annotations ORDER BY page,created_at").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Ok(Annotation { id:r.get("id"), paper_id:r.get("paper_id"), page:r.get("page"), r#type:r.get("type"), geometry:serde_json::from_str(r.get::<String,_>("geometry_json").as_str()).map_err(err)?, quote:r.get("quote"), comment:r.get("comment"), color:r.get("color"), created_at:r.get("created_at"), updated_at:r.get("updated_at") })).collect::<Result<Vec<_>>>()?;
@@ -594,7 +608,7 @@ async fn load_snapshot(pool: &SqlitePool, dir: &Path) -> Result<LibrarySnapshot>
   let custom_field_values = custom_fields::load_values(pool).await?;
   let tasks = sqlx::query("SELECT * FROM tasks ORDER BY CASE status WHEN 'done' THEN 1 ELSE 0 END, due_date IS NULL, due_date, created_at DESC").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| Task { id:r.get("id"),title:r.get("title"),notes:r.get("notes"),due_date:r.get("due_date"),status:r.get("status"),priority:r.get("priority"),paper_id:r.get("paper_id"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),completed_at:r.get("completed_at") }).collect();
   let reading_days = sqlx::query("SELECT day, paper_id, seconds FROM paper_day_reads").fetch_all(pool).await.map_err(err)?.into_iter().map(|r| PaperDayRead { day:r.get("day"), paper_id:r.get("paper_id"), seconds:r.get("seconds") }).collect();
-  Ok(LibrarySnapshot { papers,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,custom_field_definitions,custom_field_values,library_path:dir.to_string_lossy().into_owned(), library_notice: None })
+  Ok(LibrarySnapshot { papers,folders,categories,tags,annotations,vocabulary,figures,excerpts,tasks,reading_days,views,profile,llm,metadata,custom_field_definitions,custom_field_values,library_path:dir.to_string_lossy().into_owned(), library_notice: None })
 }
 
 fn default_visual_theme() -> String { "workbench".into() }
@@ -618,14 +632,108 @@ async fn load_llm_settings(pool:&SqlitePool)->Result<LlmSettings> {
   Ok(settings)
 }
 
-fn row_paper(r: sqlx::sqlite::SqliteRow) -> Result<Paper> { Ok(Paper { id:r.get("id"),title_en:r.get("title_en"),title_zh:r.get("title_zh"),authors:serde_json::from_str(&r.get::<String,_>("authors_json")).map_err(err)?,category_id:r.get("category_id"),tag_ids:serde_json::from_str(&r.get::<String,_>("tag_ids_json")).map_err(err)?,status:r.get("status"),summary:r.get("summary"),abstract_en:r.get("abstract_en"),abstract_zh:r.get("abstract_zh"),venue:r.get("venue"),publication_date:r.get("publication_date"),doi:r.get("doi"),arxiv_id:r.get("arxiv_id"),source_url:r.get("source_url"),pdf_path:r.get("pdf_path"),pdf_sha256:r.get("pdf_sha256"),page_count:r.get("page_count"),has_text_layer:r.get::<Option<i64>,_>("has_text_layer").map(|v|v!=0),favorite:r.get::<i64,_>("favorite")!=0,reading_page:r.get("reading_page"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),deleted_at:r.get("deleted_at"),related_paper_ids:serde_json::from_str(&r.get::<String,_>("related_paper_ids_json")).map_err(err)? }) }
+fn row_paper(r: sqlx::sqlite::SqliteRow) -> Result<Paper> { Ok(Paper { id:r.get("id"),title_en:r.get("title_en"),title_zh:r.get("title_zh"),authors:serde_json::from_str(&r.get::<String,_>("authors_json")).map_err(err)?,category_id:r.get("category_id"),folder_id:r.get("folder_id"),tag_ids:serde_json::from_str(&r.get::<String,_>("tag_ids_json")).map_err(err)?,status:r.get("status"),summary:r.get("summary"),abstract_en:r.get("abstract_en"),abstract_zh:r.get("abstract_zh"),venue:r.get("venue"),publication_date:r.get("publication_date"),doi:r.get("doi"),arxiv_id:r.get("arxiv_id"),source_url:r.get("source_url"),pdf_path:r.get("pdf_path"),pdf_sha256:r.get("pdf_sha256"),page_count:r.get("page_count"),has_text_layer:r.get::<Option<i64>,_>("has_text_layer").map(|v|v!=0),favorite:r.get::<i64,_>("favorite")!=0,reading_page:r.get("reading_page"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),deleted_at:r.get("deleted_at"),related_paper_ids:serde_json::from_str(&r.get::<String,_>("related_paper_ids_json")).map_err(err)? }) }
 
-async fn put_paper(pool:&SqlitePool,p:&Paper)->Result<()> { sqlx::query("INSERT INTO papers VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title_en=excluded.title_en,title_zh=excluded.title_zh,authors_json=excluded.authors_json,category_id=excluded.category_id,tag_ids_json=excluded.tag_ids_json,status=excluded.status,summary=excluded.summary,abstract_en=excluded.abstract_en,abstract_zh=excluded.abstract_zh,venue=excluded.venue,publication_date=excluded.publication_date,doi=excluded.doi,arxiv_id=excluded.arxiv_id,source_url=excluded.source_url,pdf_path=excluded.pdf_path,pdf_sha256=excluded.pdf_sha256,page_count=excluded.page_count,has_text_layer=excluded.has_text_layer,favorite=excluded.favorite,reading_page=excluded.reading_page,updated_at=excluded.updated_at,deleted_at=excluded.deleted_at,related_paper_ids_json=excluded.related_paper_ids_json")
-    .bind(&p.id).bind(&p.title_en).bind(&p.title_zh).bind(serde_json::to_string(&p.authors).map_err(err)?).bind(&p.category_id).bind(serde_json::to_string(&p.tag_ids).map_err(err)?).bind(&p.status).bind(&p.summary).bind(&p.abstract_en).bind(&p.abstract_zh).bind(&p.venue).bind(&p.publication_date).bind(&p.doi).bind(&p.arxiv_id).bind(&p.source_url).bind(&p.pdf_path).bind(&p.pdf_sha256).bind(p.page_count).bind(p.has_text_layer.map(i64::from)).bind(i64::from(p.favorite)).bind(p.reading_page).bind(&p.created_at).bind(&p.updated_at).bind(&p.deleted_at).bind(serde_json::to_string(&p.related_paper_ids).map_err(err)?).execute(pool).await.map_err(err)?; rebuild_paper_search(pool,&p.id).await }
+async fn put_paper(pool:&SqlitePool,p:&Paper)->Result<()> {
+  if let Some(folder_id)=p.folder_id.as_deref() {
+    let exists:Option<String>=sqlx::query_scalar("SELECT id FROM folders WHERE id=?").bind(folder_id).fetch_optional(pool).await.map_err(err)?;
+    if exists.is_none() { return Err("目标文件夹不存在".into()); }
+  }
+  sqlx::query("INSERT INTO papers(id,title_en,title_zh,authors_json,category_id,tag_ids_json,status,summary,abstract_en,abstract_zh,venue,publication_date,doi,arxiv_id,source_url,pdf_path,pdf_sha256,page_count,has_text_layer,favorite,reading_page,created_at,updated_at,deleted_at,related_paper_ids_json,folder_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title_en=excluded.title_en,title_zh=excluded.title_zh,authors_json=excluded.authors_json,category_id=excluded.category_id,tag_ids_json=excluded.tag_ids_json,status=excluded.status,summary=excluded.summary,abstract_en=excluded.abstract_en,abstract_zh=excluded.abstract_zh,venue=excluded.venue,publication_date=excluded.publication_date,doi=excluded.doi,arxiv_id=excluded.arxiv_id,source_url=excluded.source_url,pdf_path=excluded.pdf_path,pdf_sha256=excluded.pdf_sha256,page_count=excluded.page_count,has_text_layer=excluded.has_text_layer,favorite=excluded.favorite,reading_page=excluded.reading_page,updated_at=excluded.updated_at,deleted_at=excluded.deleted_at,related_paper_ids_json=excluded.related_paper_ids_json,folder_id=excluded.folder_id")
+    .bind(&p.id).bind(&p.title_en).bind(&p.title_zh).bind(serde_json::to_string(&p.authors).map_err(err)?).bind(&p.category_id).bind(serde_json::to_string(&p.tag_ids).map_err(err)?).bind(&p.status).bind(&p.summary).bind(&p.abstract_en).bind(&p.abstract_zh).bind(&p.venue).bind(&p.publication_date).bind(&p.doi).bind(&p.arxiv_id).bind(&p.source_url).bind(&p.pdf_path).bind(&p.pdf_sha256).bind(p.page_count).bind(p.has_text_layer.map(i64::from)).bind(i64::from(p.favorite)).bind(p.reading_page).bind(&p.created_at).bind(&p.updated_at).bind(&p.deleted_at).bind(serde_json::to_string(&p.related_paper_ids).map_err(err)?).bind(&p.folder_id).execute(pool).await.map_err(err)?; rebuild_paper_search(pool,&p.id).await
+}
 
 async fn rebuild_paper_search(pool:&SqlitePool,id:&str)->Result<()> { let row=sqlx::query("SELECT p.*,COALESCE(c.name,'') category,(SELECT group_concat(t.name,' ') FROM tags t WHERE instr(p.tag_ids_json,t.id)>0) tags,(SELECT group_concat(term_en||' '||meaning_zh||' '||COALESCE(sentence_en,'')||' '||COALESCE(sentence_zh,''),' ') FROM vocabulary WHERE paper_id=p.id) vocab,(SELECT group_concat(source_text||' '||COALESCE(translation_zh,'')||' '||COALESCE(personal_rewrite,''),' ') FROM excerpts WHERE paper_id=p.id) excerpts,(SELECT group_concat(COALESCE(quote,'')||' '||COALESCE(comment,''),' ') FROM annotations WHERE paper_id=p.id) annotations FROM papers p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?").bind(id).fetch_one(pool).await.map_err(err)?; let content=format!("{} {} {} {} {} {} {} {} {} {} {} {}",row.get::<String,_>("title_en"),row.get::<Option<String>,_>("title_zh").unwrap_or_default(),row.get::<String,_>("authors_json"),row.get::<Option<String>,_>("summary").unwrap_or_default(),row.get::<Option<String>,_>("abstract_en").unwrap_or_default(),row.get::<Option<String>,_>("abstract_zh").unwrap_or_default(),row.get::<Option<String>,_>("venue").unwrap_or_default(),row.get::<String,_>("category"),row.get::<Option<String>,_>("tags").unwrap_or_default(),row.get::<Option<String>,_>("vocab").unwrap_or_default(),row.get::<Option<String>,_>("excerpts").unwrap_or_default(),row.get::<Option<String>,_>("annotations").unwrap_or_default()); sqlx::query("DELETE FROM paper_search WHERE paper_id=?").bind(id).execute(pool).await.map_err(err)?; sqlx::query("INSERT INTO paper_search(paper_id,content) VALUES(?,?)").bind(id).bind(content).execute(pool).await.map_err(err)?; Ok(()) }
 
 #[tauri::command] async fn save_paper(state:State<'_,AppState>,paper:Paper)->Result<()> { let pool=state.pool.read().await; put_paper(&pool,&paper).await }
+
+async fn folder_subtree_ids(pool:&SqlitePool, root_id:&str)->Result<Vec<String>> {
+  let all:Vec<(String,Option<String>)>=sqlx::query("SELECT id,parent_id FROM folders").fetch_all(pool).await.map_err(err)?
+    .into_iter().map(|r|(r.get(0),r.get(1))).collect();
+  let mut out=vec![root_id.to_string()];
+  let mut changed=true;
+  while changed {
+    changed=false;
+    for (id,parent) in &all {
+      if let Some(parent)=parent {
+        if out.iter().any(|x|x==parent) && !out.iter().any(|x|x==id) {
+          out.push(id.clone());
+          changed=true;
+        }
+      }
+    }
+  }
+  Ok(out)
+}
+
+async fn folder_is_descendant(pool:&SqlitePool, ancestor_id:&str, candidate_id:&str)->Result<bool> {
+  let subtree=folder_subtree_ids(pool, ancestor_id).await?;
+  Ok(subtree.iter().any(|id| id==candidate_id))
+}
+
+#[tauri::command]
+async fn save_folder(state:State<'_,AppState>,folder:Folder)->Result<()> {
+  let pool=state.pool.read().await;
+  let name=folder.name.trim();
+  if name.is_empty() { return Err("文件夹名称不能为空".into()); }
+  if let Some(parent_id)=folder.parent_id.as_deref() {
+    if parent_id==folder.id { return Err("不能将文件夹设为自己的子文件夹".into()); }
+    let parent:Option<String>=sqlx::query_scalar("SELECT id FROM folders WHERE id=?").bind(parent_id).fetch_optional(&*pool).await.map_err(err)?;
+    if parent.is_none() { return Err("父文件夹不存在".into()); }
+    if folder_is_descendant(&pool, &folder.id, parent_id).await? {
+      return Err("不能将文件夹移动到自己的子文件夹下".into());
+    }
+  }
+  let duplicate: Option<String> = if let Some(parent_id) = folder.parent_id.as_deref() {
+    sqlx::query_scalar("SELECT id FROM folders WHERE id<>? AND parent_id=? AND lower(trim(name))=lower(trim(?))")
+      .bind(&folder.id).bind(parent_id).bind(name).fetch_optional(&*pool).await.map_err(err)?
+  } else {
+    sqlx::query_scalar("SELECT id FROM folders WHERE id<>? AND parent_id IS NULL AND lower(trim(name))=lower(trim(?))")
+      .bind(&folder.id).bind(name).fetch_optional(&*pool).await.map_err(err)?
+  };
+  if duplicate.is_some() { return Err("同一层级已存在同名文件夹".into()); }
+  sqlx::query("INSERT INTO folders(id,name,parent_id,position,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,parent_id=excluded.parent_id,position=excluded.position,updated_at=excluded.updated_at")
+    .bind(&folder.id).bind(name).bind(&folder.parent_id).bind(folder.position).bind(&folder.created_at).bind(&folder.updated_at)
+    .execute(&*pool).await.map_err(err)?;
+  Ok(())
+}
+
+#[tauri::command]
+async fn delete_folder(state:State<'_,AppState>,id:String)->Result<()> {
+  let pool=state.pool.read().await;
+  let exists:Option<String>=sqlx::query_scalar("SELECT id FROM folders WHERE id=?").bind(&id).fetch_optional(&*pool).await.map_err(err)?;
+  if exists.is_none() { return Err("文件夹不存在".into()); }
+  let subtree=folder_subtree_ids(&pool,&id).await?;
+  let placeholders=subtree.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+  let sql=format!("SELECT COUNT(*) FROM papers WHERE deleted_at IS NULL AND folder_id IN ({placeholders})");
+  let mut query=sqlx::query_scalar::<_,i64>(&sql);
+  for folder_id in &subtree { query=query.bind(folder_id); }
+  let active:i64=query.fetch_one(&*pool).await.map_err(err)?;
+  if active>0 {
+    return Err("不能删除非空文件夹。请先移出或删除其中的论文。".into());
+  }
+  let clear_sql=format!("UPDATE papers SET folder_id=NULL WHERE folder_id IN ({placeholders})");
+  let mut clear=sqlx::query(&clear_sql);
+  for folder_id in &subtree { clear=clear.bind(folder_id); }
+  clear.execute(&*pool).await.map_err(err)?;
+  sqlx::query("DELETE FROM folders WHERE id=?").bind(&id).execute(&*pool).await.map_err(err)?;
+  Ok(())
+}
+
+#[tauri::command]
+async fn move_papers_to_folder(state:State<'_,AppState>,paper_ids:Vec<String>,folder_id:Option<String>)->Result<()> {
+  let pool=state.pool.read().await;
+  if let Some(ref id)=folder_id {
+    let exists:Option<String>=sqlx::query_scalar("SELECT id FROM folders WHERE id=?").bind(id).fetch_optional(&*pool).await.map_err(err)?;
+    if exists.is_none() { return Err("目标文件夹不存在".into()); }
+  }
+  let now=Utc::now().to_rfc3339();
+  for paper_id in paper_ids {
+    sqlx::query("UPDATE papers SET folder_id=?, updated_at=? WHERE id=?")
+      .bind(&folder_id).bind(&now).bind(&paper_id).execute(&*pool).await.map_err(err)?;
+  }
+  Ok(())
+}
 #[tauri::command] async fn add_reading_seconds(state:State<'_,AppState>,paper_id:String,day:String,seconds:i64)->Result<i64> {
   if seconds <= 0 { return Ok(0); }
   let pool = state.pool.read().await;
@@ -951,15 +1059,19 @@ async fn find_duplicate_candidates(state:State<'_,AppState>,paper_id:String)->Re
 let title=normalized_title(&current.title_en);if title.len()>12{for row in sqlx::query("SELECT id,title_en,title_zh FROM papers WHERE id<>? AND deleted_at IS NULL").bind(&paper_id).fetch_all(&*p).await.map_err(err)?{let other: String=row.get("title_en");if normalized_title(&other)==title{out.push(DuplicateCandidate{paper_id:row.get("id"),title:row.get::<Option<String>,_>("title_zh").unwrap_or(other),reason:"规范化英文标题相同".into()});}}}out.sort_by(|a,b|a.paper_id.cmp(&b.paper_id));out.dedup_by(|a,b|a.paper_id==b.paper_id);Ok(out)}
 
 #[tauri::command]
-async fn import_pdfs(state:State<'_,AppState>,paths:Vec<String>)->Result<Vec<ImportedPaper>> {
+async fn import_pdfs(state:State<'_,AppState>,paths:Vec<String>,folder_id:Option<String>)->Result<Vec<ImportedPaper>> {
   let p=state.pool.read().await; let mut result=Vec::new();
+  if let Some(ref id)=folder_id {
+    let exists:Option<String>=sqlx::query_scalar("SELECT id FROM folders WHERE id=?").bind(id).fetch_optional(&*p).await.map_err(err)?;
+    if exists.is_none() { return Err("目标文件夹不存在".into()); }
+  }
   for source in paths {
     let source=PathBuf::from(source); if source.extension().and_then(|v|v.to_str()).map(|v|v.eq_ignore_ascii_case("pdf"))!=Some(true){continue;}
     let id=Uuid::new_v4().to_string(); let rel=format!("pdf/originals/{id}.pdf");
     let bytes=fs::read(&source).map_err(err)?; fs::write(state.library_dir.join(&rel),&bytes).map_err(err)?;
     let digest=format!("{:x}",Sha256::digest(&bytes));
     let title=source.file_stem().and_then(|v|v.to_str()).unwrap_or("Untitled paper").replace('_'," "); let now=Utc::now().to_rfc3339();
-    let paper=Paper{id,title_en:title,title_zh:None,authors:vec![],category_id:None,tag_ids:vec![],status:"unread".into(),summary:None,abstract_en:None,abstract_zh:None,venue:None,publication_date:None,doi:None,arxiv_id:None,source_url:None,pdf_path:Some(rel),pdf_sha256:Some(digest),page_count:None,has_text_layer:None,favorite:false,reading_page:Some(1),created_at:now.clone(),updated_at:now,deleted_at:None,related_paper_ids:vec![]};
+    let paper=Paper{id,title_en:title,title_zh:None,authors:vec![],category_id:None,folder_id:folder_id.clone(),tag_ids:vec![],status:"unread".into(),summary:None,abstract_en:None,abstract_zh:None,venue:None,publication_date:None,doi:None,arxiv_id:None,source_url:None,pdf_path:Some(rel),pdf_sha256:Some(digest),page_count:None,has_text_layer:None,favorite:false,reading_page:Some(1),created_at:now.clone(),updated_at:now,deleted_at:None,related_paper_ids:vec![]};
     put_paper(&p,&paper).await?; result.push(ImportedPaper{paper,is_new:true});
   }
   Ok(result)
@@ -968,7 +1080,7 @@ async fn import_pdfs(state:State<'_,AppState>,paths:Vec<String>)->Result<Vec<Imp
 #[tauri::command]
 async fn import_citation_files(state:State<'_,AppState>,paths:Vec<String>)->Result<Vec<Paper>> { let p=state.pool.read().await; let mut out=Vec::new(); for path in paths { let text=fs::read_to_string(&path).map_err(err)?; let ext=Path::new(&path).extension().and_then(|e|e.to_str()).unwrap_or("").to_lowercase(); let items=if ext=="ris"{parse_ris(&text)}else{parse_bibtex(&text)}; for mut paper in items { if paper.id.is_empty(){paper.id=Uuid::new_v4().to_string();} put_paper(&p,&paper).await?;out.push(paper); } } Ok(out) }
 
-fn blank_paper(title:String)->Paper { let now=Utc::now().to_rfc3339(); Paper{id:Uuid::new_v4().to_string(),title_en:title,title_zh:None,authors:vec![],category_id:None,tag_ids:vec![],status:"unread".into(),summary:None,abstract_en:None,abstract_zh:None,venue:None,publication_date:None,doi:None,arxiv_id:None,source_url:None,pdf_path:None,pdf_sha256:None,page_count:None,has_text_layer:None,favorite:false,reading_page:None,created_at:now.clone(),updated_at:now,deleted_at:None,related_paper_ids:vec![]} }
+fn blank_paper(title:String)->Paper { let now=Utc::now().to_rfc3339(); Paper{id:Uuid::new_v4().to_string(),title_en:title,title_zh:None,authors:vec![],category_id:None,folder_id:None,tag_ids:vec![],status:"unread".into(),summary:None,abstract_en:None,abstract_zh:None,venue:None,publication_date:None,doi:None,arxiv_id:None,source_url:None,pdf_path:None,pdf_sha256:None,page_count:None,has_text_layer:None,favorite:false,reading_page:None,created_at:now.clone(),updated_at:now,deleted_at:None,related_paper_ids:vec![]} }
 fn parse_ris(text:&str)->Vec<Paper>{ let mut out=vec![];let mut current=blank_paper("Untitled".into());for line in text.lines(){let (key,value)=line.split_once("  - ").unwrap_or(("", ""));match key.trim(){"TY"=>current=blank_paper("Untitled".into()),"TI"|"T1"=>current.title_en=value.trim().into(),"AU"=>current.authors.push(Author{id:Uuid::new_v4().to_string(),name:value.trim().into()}),"JO"|"JF"|"T2"=>current.venue=Some(value.trim().into()),"PY"|"Y1"=>current.publication_date=Some(value.trim().chars().take(10).collect()),"DO"=>current.doi=Some(value.trim().into()),"UR"=>current.source_url=Some(value.trim().into()),"AB"=>current.abstract_en=Some(value.trim().into()),"ER"=>out.push(current.clone()),_=>{}}} out }
 fn parse_bibtex(text:&str)->Vec<Paper>{ let mut out=vec![];for entry in text.split('@').skip(1){let mut paper=blank_paper(field(entry,"title").unwrap_or_else(||"Untitled".into()));if let Some(authors)=field(entry,"author"){paper.authors=authors.split(" and ").map(|name|Author{id:Uuid::new_v4().to_string(),name:name.trim().trim_matches('{').trim_matches('}').into()}).collect();}paper.venue=field(entry,"booktitle").or_else(||field(entry,"journal"));paper.publication_date=field(entry,"year");paper.doi=field(entry,"doi");paper.source_url=field(entry,"url");paper.abstract_en=field(entry,"abstract");out.push(paper);}out }
 fn field(entry:&str,name:&str)->Option<String>{ let lower=entry.to_lowercase();let start=lower.find(name)?;let rest=&entry[start+name.len()..];let eq=rest.find('=')?;let value=rest[eq+1..].trim_start();let open=value.chars().next()?;let close=if open=='{'{'}'}else if open=='\"'{'\"'}else{','};let body=&value[1..];let end=body.find(close).or_else(||body.find(','))?;Some(body[..end].trim().replace(['\n','\r']," "))}
@@ -1072,6 +1184,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

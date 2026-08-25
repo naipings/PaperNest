@@ -1,13 +1,24 @@
 PRAGMA journal_mode = DELETE;
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS folders (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id, position);
+
 CREATE TABLE IF NOT EXISTS papers (
   id TEXT PRIMARY KEY, title_en TEXT NOT NULL, title_zh TEXT, authors_json TEXT NOT NULL DEFAULT '[]',
   category_id TEXT, tag_ids_json TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'unread', summary TEXT,
   abstract_en TEXT, abstract_zh TEXT, venue TEXT, publication_date TEXT, doi TEXT, arxiv_id TEXT, source_url TEXT,
   pdf_path TEXT, pdf_sha256 TEXT, page_count INTEGER, has_text_layer INTEGER, favorite INTEGER NOT NULL DEFAULT 0,
   reading_page INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT,
-  related_paper_ids_json TEXT NOT NULL DEFAULT '[]'
+  related_paper_ids_json TEXT NOT NULL DEFAULT '[]',
+  folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL
 );
 DROP INDEX IF EXISTS idx_papers_sha;
 CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status, deleted_at);
@@ -112,4 +123,4 @@ INSERT OR IGNORE INTO tags(id,name,color) VALUES
 INSERT OR IGNORE INTO settings(key,value) VALUES
  ('profile','{"displayName":"研究生同学","researchField":"计算机科学","theme":"system","visualTheme":"workbench"}'),
  ('llm_settings','{"baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini","autoAnalyzeOnImport":true,"visionEnabled":true}'),
- ('schema_version','4');
+ ('schema_version','5');

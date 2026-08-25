@@ -57,6 +57,7 @@ export const defaultTags: Tag[] = [
 
 export const seedSnapshot: LibrarySnapshot = {
   libraryPath: "浏览器预览模式 · 数据保存在本地浏览器",
+  folders: [],
   categories: defaultCategories,
   tags: defaultTags,
   papers: [

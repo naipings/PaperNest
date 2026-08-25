@@ -11,13 +11,13 @@ import { useLibrary } from "../state/LibraryContext";
 import type { LlmAnalysis, LlmAnalysisInput, Paper } from "../types";
 import { now, uuid } from "../types";
 
-export function Topbar({ search, searchError, onSearch, onCreate, onRefresh }: { search: string; searchError?: string; onSearch(value: string): void; onCreate(): void; onRefresh(): Promise<void> }) {
+export function Topbar({ search, searchError, onSearch, onCreate, onRefresh, importFolderId, libraryNotice }: { search: string; searchError?: string; onSearch(value: string): void; onCreate(): void; onRefresh(): Promise<void>; importFolderId?: string | null; libraryNotice?: string }) {
   const { data, importBusy: busy, importNotice: notice, setImportBusy: setBusy, setImportNotice: setNotice } = useLibrary();
   const importPdfs = async () => {
     try {
       setNotice("");
       setBusy("正在导入 PDF");
-      const imported = await backend.chooseAndImportPdfs(); if (!imported.length) return;
+      const imported = await backend.chooseAndImportPdfs(importFolderId); if (!imported.length) return;
       let catalog = (await backend.initialize()).papers.filter(paper => !paper.deletedAt);
       const acceptedSame = new Set<string>();
       const kept: { paper: Paper; analysisInput?: LlmAnalysisInput; candidateImages: { page: number; dataUrl: string }[] }[] = [];
@@ -105,6 +105,7 @@ export function Topbar({ search, searchError, onSearch, onCreate, onRefresh }: {
       <button className="secondary" disabled={Boolean(busy)} onClick={importCitations}><Import size={16} />导入 Bib/RIS</button>
       <button className="secondary" disabled={Boolean(busy)} onClick={importPdfs}>{busy ? <LoaderCircle className="spin" size={16} /> : <FilePlus2 size={16} />}导入 PDF</button>
       <button className="primary" disabled={Boolean(busy)} onClick={onCreate}><Plus size={16} />新建论文</button>
+      {libraryNotice && <span className="topbar-flash" role="status">{libraryNotice}</span>}
     </div>
   </header>;
 }

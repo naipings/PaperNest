@@ -16,7 +16,20 @@ describe("library locate selection", () => {
     const paper = seedSnapshot.papers[0];
     render(
       <LibraryProvider>
-        <LibraryView search="" searchHitPaperIds={[]} selectedId={paper.id} onSelect={() => undefined} onOpenPdf={() => undefined} />
+        <LibraryView
+          search=""
+          searchHitPaperIds={[]}
+          selectedId={paper.id}
+          folderSelection={{ kind: "all" }}
+          cutPaperIds={[]}
+          onFolderSelection={() => undefined}
+          onSelect={() => undefined}
+          onOpenPdf={() => undefined}
+          onCutPapers={() => undefined}
+          onClearCut={() => undefined}
+          onLibraryNotice={() => undefined}
+          onClearLibraryNotice={() => undefined}
+        />
       </LibraryProvider>
     );
 

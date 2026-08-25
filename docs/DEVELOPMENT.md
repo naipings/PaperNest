@@ -123,7 +123,7 @@ flowchart LR
   H -->|通过| I[可选 LLM 用已提取文本]
 ```
 
-- 导入仅复制文件，不修改原件。
+- 导入仅复制文件，不修改原件。当前选中真实文件夹时写入 `folder_id`；在「全部」或「未归档」下导入则 `folder_id` 为空。
 - **同文件一好一坏的根因**：封面与 LLM 各开一次 PDF.js 时，`destroy` 后立刻再 `getDocument` 会与共享 worker 竞态。导入现走 `extractForImport`：一次打开同时得到封面与分析用正文；全局 `enqueuePdfWork` 保证打开串行，关闭用 `loadingTask.destroy()`。
 - 封面读取文档 Info 与首页/次页文本，填写标题、作者、日期、英文摘要；单字拆开的 Abstract 会拼回单词，折行会拼成段落。
 - 双栏首页按文本 x 的最大空隙分栏：优先在 Abstract 下方正文字号内测中缝（避免作者行铺满整页导致中缝失效）。Abstract 仅在一侧时只取该列；正文首行跨中缝且为连字符折行时保留全宽；右栏 Index Terms 上方出现小写短尾时按「左栏全文 + 右栏短尾」拼接（IEEE TKDE 常见）。
@@ -173,7 +173,7 @@ sequenceDiagram
 ### 3.4 本地知识树
 
 知识树对齐 [Connected Papers](https://www.connectedpapers.com/about/) 的**交互与视觉模型**；当前底层为 **L1 本地语义**（未接引文 API）。
-「在论文表格中定位」与双击节点：切换到论文库、清空搜索、必要时复位筛选，表格选中行高亮并滚入可视区。
+「在论文表格中定位」与双击节点：切换到论文库、清空搜索、选中论文所在文件夹（或未归档），表格选中行高亮并滚入可视区。
 
 | Connected Papers | PaperNest（L1） |
 |------------------|-----------------|
@@ -302,6 +302,8 @@ paperReader/
 | `WritingExcerpt` | `excerpts` | 原句、译文、用途、标签 |
 | `FrameworkFigure` | `figures` | 图片路径、页码、可选 geometry |
 | `Task` | `tasks` | 截止日期、状态、关联论文 |
+| `Folder` | `folders` | 名称、`parent_id`、排序；可嵌套 |
+| `Paper.folderId` | `papers.folder_id` | 每篇至多一个文件夹；`NULL` 为未归档 |
 
 ### 5.2 主领域与子领域预设
 
@@ -309,7 +311,14 @@ paperReader/
 - **子领域**（`tags`）：31 个可多选标签（方法、任务、阅读用途）。设置页可继续增删改。
 - 启动时 `schema.sql` 对预设执行 `INSERT OR IGNORE`，已有资料库会自动补全缺失项，不覆盖用户自建名称。
 
-### 5.3 软删除与回收站
+### 5.3 文件夹
+
+- 逻辑分组：移动论文只改 `folder_id`，不搬 `pdf/originals` 下的文件。
+- 删除：子树内存在未软删论文时拒绝；空子文件夹不挡删除，随父级 CASCADE 删除。
+- 软删论文保留 `folder_id`；删文件夹时对仍挂在子树的软删论文置空 `folder_id`。
+- schema_version = 5；旧库启动时 `ALTER TABLE papers ADD COLUMN folder_id` 后再建索引。
+
+### 5.4 软删除与回收站
 
 - 删除论文设置 `papers.deletedAt`，不立即删文件。
 - 回收站永久删除才移除 PDF 与关联记录。
@@ -323,7 +332,9 @@ paperReader/
 |------|------|
 | `initialize_library` | 打开资料库，返回全量快照 |
 | `save_paper` / `save_annotation` / … | 实体 CRUD |
-| `import_pdfs` | 复制 PDF 并创建论文记录 |
+| `save_folder` / `delete_folder` | 文件夹增改删（非空拒绝） |
+| `move_papers_to_folder` | 批量设置论文 `folder_id` |
+| `import_pdfs` | 复制 PDF 并创建论文记录；可选 `folder_id` |
 | `read_pdf` | 读取受管 PDF 字节 |
 | `index_pdf` / `indexed_pdf_pages` | 页级全文索引 |
 | `ocr_page` | Tesseract OCR 单页 |

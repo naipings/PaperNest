@@ -7,6 +7,20 @@ export type TaskPriority = "low" | "medium" | "high";
 export interface Author { id: Id; name: string; }
 export interface Category { id: Id; name: string; color: string; }
 export interface Tag { id: Id; name: string; color: string; }
+export interface Folder {
+  id: Id;
+  name: string;
+  parentId?: Id;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 论文库左侧位置：全部 / 未归档 / 用户文件夹 */
+export type FolderSelection =
+  | { kind: "all" }
+  | { kind: "unfiled" }
+  | { kind: "folder"; id: Id };
 
 export interface Paper {
   id: Id;
@@ -14,6 +28,7 @@ export interface Paper {
   titleZh?: string;
   authors: Author[];
   categoryId?: Id;
+  folderId?: Id;
   tagIds: Id[];
   status: PaperStatus;
   summary?: string;
@@ -107,7 +122,7 @@ export interface SavedView {
   id: Id;
   name: string;
   builtin?: boolean;
-  filter: { status?: PaperStatus; categoryId?: Id; missingInfo?: boolean; uncategorized?: boolean; favorite?: boolean };
+  filter: { status?: PaperStatus; categoryId?: Id; missingInfo?: boolean; uncategorized?: boolean; favorite?: boolean; folderId?: Id; unfiledOnly?: boolean };
   sorting: { id: string; desc: boolean }[];
   columnVisibility: Record<string, boolean>;
   density: "compact" | "comfortable";
@@ -170,6 +185,7 @@ export interface PaperCustomFieldValue { paperId: Id; fieldId: Id; value: Custom
 
 export interface LibrarySnapshot {
   papers: Paper[];
+  folders: Folder[];
   categories: Category[];
   tags: Tag[];
   annotations: Annotation[];
