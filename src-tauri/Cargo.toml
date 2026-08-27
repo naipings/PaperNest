@@ -18,7 +18,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
@@ -29,3 +29,5 @@ base64 = "0.22"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "charset"] }
 keyring = { version = "3", features = ["windows-native"] }
 open = "5"
+fastembed = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls", "ort-load-dynamic"] }
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "half", "load-dynamic", "ndarray", "tls-rustls"] }

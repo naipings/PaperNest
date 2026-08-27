@@ -1,5 +1,7 @@
 mod online_metadata;
 mod custom_fields;
+mod radar;
+mod local_embed;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,7 +17,7 @@ use std::time::Duration;
 
 type Result<T> = std::result::Result<T, String>;
 
-struct AppState { library_dir: PathBuf, location_config: PathBuf, pool: RwLock<SqlitePool>, library_notice: Option<String> }
+pub(crate) struct AppState { pub(crate) library_dir: PathBuf, location_config: PathBuf, pub(crate) pool: RwLock<SqlitePool>, library_notice: Option<String> }
 
 #[derive(Clone, Serialize, Deserialize)] #[serde(rename_all="camelCase")]
 struct Author { id: String, name: String }
@@ -74,6 +76,8 @@ struct LlmSettings {
   #[serde(default)] api_key_saved: bool,
   #[serde(default = "default_true")] auto_classify_on_import: bool,
   #[serde(default = "default_taxonomy_strictness")] taxonomy_strictness: String,
+  /// OpenAI-compatible embeddings model; empty = radar 推荐不做语义 rerank
+  #[serde(default)] embedding_model: Option<String>,
 }
 #[derive(Deserialize)] #[serde(rename_all="camelCase")]
 struct LlmPageImage { page: i64, data_url: String }
@@ -621,6 +625,7 @@ fn default_llm_settings() -> LlmSettings {
     api_key_saved: false,
     auto_classify_on_import: true,
     taxonomy_strictness: "strict".into(),
+    embedding_model: None,
   }
 }
 fn llm_key_entry() -> Result<keyring::Entry> { keyring::Entry::new("PaperNest", "llm_api_key").map_err(err) }
@@ -632,7 +637,7 @@ async fn load_llm_settings(pool:&SqlitePool)->Result<LlmSettings> {
   Ok(settings)
 }
 
-fn row_paper(r: sqlx::sqlite::SqliteRow) -> Result<Paper> { Ok(Paper { id:r.get("id"),title_en:r.get("title_en"),title_zh:r.get("title_zh"),authors:serde_json::from_str(&r.get::<String,_>("authors_json")).map_err(err)?,category_id:r.get("category_id"),folder_id:r.get("folder_id"),tag_ids:serde_json::from_str(&r.get::<String,_>("tag_ids_json")).map_err(err)?,status:r.get("status"),summary:r.get("summary"),abstract_en:r.get("abstract_en"),abstract_zh:r.get("abstract_zh"),venue:r.get("venue"),publication_date:r.get("publication_date"),doi:r.get("doi"),arxiv_id:r.get("arxiv_id"),source_url:r.get("source_url"),pdf_path:r.get("pdf_path"),pdf_sha256:r.get("pdf_sha256"),page_count:r.get("page_count"),has_text_layer:r.get::<Option<i64>,_>("has_text_layer").map(|v|v!=0),favorite:r.get::<i64,_>("favorite")!=0,reading_page:r.get("reading_page"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),deleted_at:r.get("deleted_at"),related_paper_ids:serde_json::from_str(&r.get::<String,_>("related_paper_ids_json")).map_err(err)? }) }
+pub(crate) fn row_paper(r: sqlx::sqlite::SqliteRow) -> Result<Paper> { Ok(Paper { id:r.get("id"),title_en:r.get("title_en"),title_zh:r.get("title_zh"),authors:serde_json::from_str(&r.get::<String,_>("authors_json")).map_err(err)?,category_id:r.get("category_id"),folder_id:r.get("folder_id"),tag_ids:serde_json::from_str(&r.get::<String,_>("tag_ids_json")).map_err(err)?,status:r.get("status"),summary:r.get("summary"),abstract_en:r.get("abstract_en"),abstract_zh:r.get("abstract_zh"),venue:r.get("venue"),publication_date:r.get("publication_date"),doi:r.get("doi"),arxiv_id:r.get("arxiv_id"),source_url:r.get("source_url"),pdf_path:r.get("pdf_path"),pdf_sha256:r.get("pdf_sha256"),page_count:r.get("page_count"),has_text_layer:r.get::<Option<i64>,_>("has_text_layer").map(|v|v!=0),favorite:r.get::<i64,_>("favorite")!=0,reading_page:r.get("reading_page"),created_at:r.get("created_at"),updated_at:r.get("updated_at"),deleted_at:r.get("deleted_at"),related_paper_ids:serde_json::from_str(&r.get::<String,_>("related_paper_ids_json")).map_err(err)? }) }
 
 async fn put_paper(pool:&SqlitePool,p:&Paper)->Result<()> {
   if let Some(folder_id)=p.folder_id.as_deref() {
@@ -797,7 +802,12 @@ async fn move_papers_to_folder(state:State<'_,AppState>,paper_ids:Vec<String>,fo
 #[tauri::command] async fn save_paper_custom_field_values(state:State<'_,AppState>,paper_id:String,values:Vec<custom_fields::PaperCustomFieldValue>)->Result<()>{ custom_fields::save_paper_values(&*state.pool.read().await,&paper_id,values).await }
 #[tauri::command]
 async fn save_llm_settings(state:State<'_,AppState>,mut settings:LlmSettings,api_key:Option<String>)->Result<LlmSettings>{
-  validate_llm_settings(&settings)?; settings.api_key_saved=false; let payload=serde_json::to_string(&settings).map_err(err)?;
+  validate_llm_settings(&settings)?;
+  settings.embedding_model = settings.embedding_model.and_then(|value| {
+    let value = value.trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+  });
+  settings.api_key_saved=false; let payload=serde_json::to_string(&settings).map_err(err)?;
   sqlx::query("INSERT INTO settings(key,value) VALUES('llm_settings',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(payload).execute(&*state.pool.read().await).await.map_err(err)?;
   if let Some(key)=api_key.filter(|value|!value.trim().is_empty()){llm_key_entry()?.set_password(key.trim()).map_err(err)?;}
   load_llm_settings(&*state.pool.read().await).await
@@ -809,6 +819,43 @@ fn validate_llm_settings(settings:&LlmSettings)->Result<()> {
   if !(base.starts_with("https://")||base.starts_with("http://127.0.0.1")||base.starts_with("http://localhost")){return Err("API 地址只允许 HTTPS 或本机 HTTP 地址".into())}
   if settings.model.trim().is_empty(){return Err("请填写模型名称".into())}
   Ok(())
+}
+fn embeddings_endpoint(base:&str)->String {
+  let base=base.trim().trim_end_matches('/');
+  if base.ends_with("/embeddings"){base.into()}
+  else if base.ends_with("/chat/completions"){format!("{}/embeddings",base.trim_end_matches("/chat/completions"))}
+  else{format!("{base}/embeddings")}
+}
+async fn llm_embeddings(settings:&LlmSettings,inputs:Vec<String>)->Result<Vec<Vec<f32>>>{
+  let model=settings.embedding_model.as_deref().map(str::trim).filter(|v|!v.is_empty()).ok_or_else(||"未配置 embedding 模型".to_string())?;
+  if inputs.is_empty(){return Ok(vec![]);}
+  if local_embed::is_local_embed_model(model) {
+    return tokio::task::spawn_blocking(move || local_embed::embed_texts_blocking(inputs))
+      .await
+      .map_err(|e| e.to_string())?;
+  }
+  validate_llm_settings(settings)?;
+  let key=llm_key_entry()?.get_password().map_err(|_|"尚未保存 API Key，请先在设置中配置".to_string())?;
+  if key.trim().is_empty(){return Err("尚未保存 API Key，请先在设置中配置".into());}
+  let request=serde_json::json!({"model":model,"input":inputs});
+  let client=Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
+  let response=client.post(embeddings_endpoint(&settings.base_url)).bearer_auth(key).json(&request).send().await.map_err(err)?;
+  let status=response.status();
+  let value:serde_json::Value=response.json().await.map_err(err)?;
+  if !status.is_success(){
+    return Err(format!("Embeddings 请求失败（{}）：{}",status,value.get("error").and_then(|v|v.get("message")).and_then(|v|v.as_str()).unwrap_or("请检查 embedding 模型名与 API Key")));
+  }
+  let data=value.get("data").and_then(|v|v.as_array()).ok_or_else(||"Embeddings 响应缺少 data".to_string())?;
+  let mut indexed:Vec<(usize,Vec<f32>)>=Vec::with_capacity(data.len());
+  for item in data {
+    let index=item.get("index").and_then(|v|v.as_u64()).unwrap_or(indexed.len() as u64) as usize;
+    let embedding=item.get("embedding").and_then(|v|v.as_array()).ok_or_else(||"Embeddings 项缺少 embedding".to_string())?
+      .iter().filter_map(|n|n.as_f64().map(|v|v as f32)).collect::<Vec<_>>();
+    if embedding.is_empty(){return Err("Embeddings 向量为空".into());}
+    indexed.push((index,embedding));
+  }
+  indexed.sort_by_key(|(i,_)|*i);
+  Ok(indexed.into_iter().map(|(_,v)|v).collect())
 }
 #[tauri::command]
 async fn translate_text(endpoint:String,text:String,api_key:Option<String>)->Result<String>{
@@ -857,11 +904,41 @@ async fn translate_with_llm(state:State<'_,AppState>,text:String,mode:Option<Str
 }
 fn llm_endpoint(base:&str)->String { let base=base.trim().trim_end_matches('/'); if base.ends_with("/chat/completions"){base.into()}else{format!("{base}/chat/completions")} }
 async fn llm_completion(settings:&LlmSettings,system:&str,content:serde_json::Value)->Result<String>{
+  llm_completion_opts(settings, system, content, None, 120).await
+}
+async fn llm_completion_opts(settings:&LlmSettings,system:&str,content:serde_json::Value,max_tokens:Option<u32>,timeout_secs:u64)->Result<String>{
   validate_llm_settings(settings)?; let key=llm_key_entry()?.get_password().map_err(|_|"尚未保存 API Key，请先在设置中配置".to_string())?; if key.trim().is_empty(){return Err("尚未保存 API Key，请先在设置中配置".into())}
-  let request=serde_json::json!({"model":settings.model,"temperature":0.1,"messages":[{"role":"system","content":system},{"role":"user","content":content}]});
-  let client=Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?; let response=client.post(llm_endpoint(&settings.base_url)).bearer_auth(key).json(&request).send().await.map_err(err)?;
-  let status=response.status(); let value:serde_json::Value=response.json().await.map_err(err)?; if !status.is_success(){return Err(format!("LLM 请求失败（{}）：{}",status,value.get("error").and_then(|v|v.get("message")).and_then(|v|v.as_str()).unwrap_or("请检查地址、模型和 API Key")))}
-  let content=value.pointer("/choices/0/message/content").and_then(|v|v.as_str()).map(str::to_owned).or_else(||value.pointer("/choices/0/message/content/0/text").and_then(|v|v.as_str()).map(str::to_owned)).ok_or_else(||"LLM 响应不包含 choices[0].message.content".to_string())?; Ok(content)
+  let mut request=serde_json::json!({"model":settings.model,"temperature":0.1,"stream":false,"messages":[{"role":"system","content":system},{"role":"user","content":content}]});
+  if let Some(limit)=max_tokens { request["max_tokens"]=serde_json::json!(limit); }
+  let endpoint=llm_endpoint(&settings.base_url);
+  let mut last_error=String::new();
+  for attempt in 0..3u8 {
+    if attempt > 0 {
+      tokio::time::sleep(Duration::from_millis(1600)).await;
+    }
+    let client=Client::builder()
+      .connect_timeout(Duration::from_secs(30))
+      .timeout(Duration::from_secs(timeout_secs.max(30)))
+      .pool_max_idle_per_host(0)
+      .build()
+      .map_err(err)?;
+    match client.post(&endpoint).bearer_auth(&key).header("Accept", "application/json").json(&request).send().await {
+      Ok(response) => {
+        let status=response.status();
+        let value:serde_json::Value=match response.json().await {
+          Ok(v) => v,
+          Err(error) => { last_error=error.to_string(); continue; }
+        };
+        if !status.is_success(){
+          return Err(format!("LLM 请求失败（{}）：{}",status,value.get("error").and_then(|v|v.get("message")).and_then(|v|v.as_str()).unwrap_or("请检查地址、模型和 API Key")));
+        }
+        let content=value.pointer("/choices/0/message/content").and_then(|v|v.as_str()).map(str::to_owned).or_else(||value.pointer("/choices/0/message/content/0/text").and_then(|v|v.as_str()).map(str::to_owned)).ok_or_else(||"LLM 响应不包含 choices[0].message.content".to_string())?;
+        return Ok(content);
+      }
+      Err(error) => { last_error=error.to_string(); }
+    }
+  }
+  Err(format!("无法连接 LLM（已重试）：{last_error}。请检查网络/代理，以及设置中的 Base URL 与 API Key"))
 }
 fn json_from_llm(text:&str)->Result<serde_json::Value>{let trimmed=text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();let start=trimmed.find('{').ok_or_else(||"LLM 未返回 JSON 对象".to_string())?;let end=trimmed.rfind('}').ok_or_else(||"LLM 未返回完整 JSON 对象".to_string())?;serde_json::from_str(&trimmed[start..=end]).map_err(err)}
 
@@ -1184,6 +1261,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

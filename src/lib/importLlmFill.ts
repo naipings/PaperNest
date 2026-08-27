@@ -1,4 +1,5 @@
 import type { LlmAnalysis, Paper } from "../types";
+import { now, uuid } from "../types";
 
 export function analysisNeedsBackfill(analysis: LlmAnalysis | undefined, paper: Paper) {
   const summary = analysis?.summary?.trim() || paper.summary?.trim();
@@ -49,5 +50,33 @@ export function mergeFrameworkFields(textAnalysis: LlmAnalysis, visionAnalysis: 
     frameworkTitle: visionAnalysis.frameworkTitle?.trim() ? visionAnalysis.frameworkTitle : textAnalysis.frameworkTitle,
     frameworkExplanationEn: visionAnalysis.frameworkExplanationEn?.trim() ? visionAnalysis.frameworkExplanationEn : textAnalysis.frameworkExplanationEn,
     frameworkExplanationZh: visionAnalysis.frameworkExplanationZh?.trim() ? visionAnalysis.frameworkExplanationZh : textAnalysis.frameworkExplanationZh
+  };
+}
+
+/** 仅填补空字段；已有解读缓存 / arXiv 元数据不被 LLM 覆盖。 */
+export function applyAnalysisFillEmpty(paper: Paper, analysis: LlmAnalysis): Paper {
+  const blank = (value?: string | null) => !value?.trim();
+  const fill = (current: string | undefined, next?: string) =>
+    blank(current) && next?.trim() ? next.trim() : current;
+  const llmAuthors = analysis.authors
+    ?.map(name => name.trim())
+    .filter(name => name && !/^[\d\s.+*†‡§¶,-]+$/.test(name))
+    .map(name => ({ id: uuid(), name }));
+  const authors = paper.authors.length
+    ? paper.authors
+    : (llmAuthors?.length ? llmAuthors : paper.authors);
+  return {
+    ...paper,
+    titleEn: (!blank(paper.titleEn) ? paper.titleEn : (analysis.titleEn?.trim() || paper.titleEn)),
+    titleZh: fill(paper.titleZh, analysis.titleZh),
+    authors,
+    abstractEn: fill(paper.abstractEn, analysis.abstractEn),
+    abstractZh: fill(paper.abstractZh, analysis.abstractZh),
+    summary: fill(paper.summary, analysis.summary),
+    venue: fill(paper.venue, analysis.venue),
+    publicationDate: fill(paper.publicationDate, analysis.publicationDate),
+    doi: fill(paper.doi, analysis.doi),
+    sourceUrl: fill(paper.sourceUrl, analysis.sourceUrl),
+    updatedAt: now(),
   };
 }

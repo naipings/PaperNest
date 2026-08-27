@@ -7,8 +7,8 @@
 | 平台 | Windows 单机、单用户、本地优先 |
 | 资料库位置 | 默认本地磁盘。SQLite 使用 `DELETE` journal。数据库文件或目录不可写导致打开失败时，复制到本机应用数据目录、更新路径配置，并在界面提示新路径 |
 | V1 范围 | 本地资料库、PDF 阅读批注、术语与写作素材、任务日历、备份恢复 |
-| 在线能力 | Crossref、LLM、翻译均由用户主动启用 |
-| PDF 边界 | 原件只读；批注独立存储；导出时生成副本 |
+| 在线能力 | Crossref、论文雷达、LLM、翻译均由用户主动启用 |
+| PDF 边界 | 原件只读；批注独立存储；导出时生成副本；雷达发现期不下 PDF |
 | 阅读内核 | pdfjs-dist `PDFPageView` 连续阅读；PaperNest 负责批注 overlay、持久化与学习侧栏 |
 
 ---
@@ -255,7 +255,7 @@ flowchart LR
 ```text
 paperReader/
 ├── src/
-│   ├── App.tsx                 # 屏幕路由：library / writing / knowledge / tasks / trash / settings
+│   ├── App.tsx                 # 屏幕路由：library / radar / writing / knowledge / tasks / trash / settings
 │   ├── components/
 │   │   ├── PdfReader.tsx                  # 阅读台壳层
 │   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
@@ -281,6 +281,7 @@ paperReader/
 ├── src-tauri/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/online_metadata.rs  # Crossref 查询
+│   ├── src/radar.rs            # 论文雷达（radar.db）
 │   └── schema.sql              # 数据库迁移
 └── docs/
     ├── DEVELOPMENT.md          # 本文档
@@ -347,6 +348,11 @@ paperReader/
 | `purge_paper` | 回收站论文永久删除（记录 + 受管文件） |
 | `create_backup` / `restore_backup` | 备份恢复 |
 | `lookup_online_metadata` | Crossref 元数据（设置开启 + 论文详情手动触发） |
+| `radar_get_settings` / `radar_save_settings` | 论文雷达开关与订阅类目（独立 `radar.db`） |
+| `radar_fetch_today` | 用户点击后三路召回 Hot + New(+日窗) + Interest(关键词)；发现期只写元数据 |
+| `radar_import_to_library` | 加入资料库；可选下载 PDF，或仅元数据 |
+| `radar_list_feed` / `radar_recommend` / `radar_week_hot` | 三榜（Hot/New/Interest）、推荐 cascade + 可选 embedding rerank、近 7 日热点 |
+| `radar_explain_paper` / `radar_get_explanation` / `radar_list_explained_ids` / `radar_delete_explanation` | 单篇解读生成/读缓存/列出已解读/删缓存 |
 | `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
 | `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
 | `save_custom_field_definition` | 新增或更新字段定义 |
@@ -379,9 +385,10 @@ flowchart TB
 ```
 
 - 阅读台以 **absolute overlay** 覆盖工作区卡片（`embedded` 模式），不占用独立路由。
-- `App.tsx` 仅同步加载论文库首页；阅读台和其余五个屏幕以 `React.lazy` 按需获取，并在切换期间显示页面加载态。PDF 解析器在用户选择 PDF 后由顶栏导入流程加载。
+- `App.tsx` 仅同步加载论文库首页；阅读台、论文雷达和其余屏幕以 `React.lazy` 按需获取，并在切换期间显示页面加载态。PDF 解析器在用户选择 PDF 后由顶栏导入流程加载。
 - 左侧导航在阅读台打开时也会关闭 overlay；若本会话有批注或收录改动，先弹出保存确认。
 - `Escape` 关闭阅读台（`App.tsx` 全局快捷键），同样走保存确认。
+- 论文雷达：设置默认关闭；进入雷达页只读本地 `radar.db`；点击「推荐今日论文」后才三路召回（alphaxiv 热点 / arXiv 新稿 / 兴趣召回）；采集进度全局保持。发现期不下 PDF。可勾选「仅元数据入库」。隐藏可恢复；单篇解读可并行，含中文标题/摘要并缓存，侧栏可删缓存重生成；「已解读」按钮区分样式。加入论文库时若开启「导入后自动整理」，跑填空式 LLM（不覆盖解读缓存）。语义重排可用云端 Embeddings 或本地 `BGE-small`。
 
 ### 7.1 视觉令牌
 
@@ -417,12 +424,14 @@ flowchart TB
 ```powershell
 npm install
 npm run dev              # 浏览器预览（localStorage 后端）
-npm run tauri dev        # 桌面端
+npm run tauri dev        # 桌面端（Vite 开发服默认 http://127.0.0.1:5173）
 npm run test             # Vitest
 npm run build            # 前端生产构建
 npm run tauri build      # 安装包
 npm run check            # test + build
 ```
+
+> 若本机 Hyper-V 预留了 `1388–2087` 等端口段，勿再使用 `1420`；当前 `vite.config` / `tauri.conf` 已改为 `5173`。
 
 ---
 

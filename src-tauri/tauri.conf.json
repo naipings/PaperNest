@@ -1,28 +1,44 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PaperNest",
-  "version": "0.1.95",
+  "version": "0.2.10",
   "identifier": "cn.papernest.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://127.0.0.1:1420",
+    "devUrl": "http://127.0.0.1:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "PaperNest · 本地论文库", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 700, "center": true }],
-    "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost" }
+    "windows": [
+      {
+        "title": "PaperNest · 本地论文库",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost"
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "shortDescription": "Windows 本地双语论文管理与阅读工具",
     "longDescription": "在本地管理、阅读、批注论文，并沉淀双语术语和写作素材。",
     "windows": {
       "allowDowngrades": true,
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
         "displayLanguageSelector": false,
         "installerHooks": "./windows/hooks.nsh"
       }

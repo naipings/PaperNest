@@ -21,6 +21,7 @@ const TrashView = lazy(() => import("./components/TrashView").then(module => ({ 
 const SettingsView = lazy(() => import("./components/SettingsView").then(module => ({ default: module.SettingsView })));
 const KnowledgeGraphInteractive = lazy(() => import("./components/KnowledgeGraphInteractive").then(module => ({ default: module.KnowledgeGraphInteractive })));
 const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module => ({ default: module.TaskCalendar })));
+const RadarView = lazy(() => import("./components/RadarView").then(module => ({ default: module.RadarView })));
 
 function readSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -33,7 +34,7 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 export default function App() {
-  const { data, loading, error, refresh, savePaper, saveProfile, movePapersToFolder, importBusy, importNotice } = useLibrary();
+  const { data, loading, error, refresh, savePaper, saveProfile, movePapersToFolder, importBusy, importNotice, radarBusy, radarNotice, radarExplainBusy } = useLibrary();
   const [screen, setScreen] = useState<Screen>("library");
   const [search, setSearch] = useState("");
   const [searchHitPaperIds, setSearchHitPaperIds] = useState<string[]>([]);
@@ -193,9 +194,13 @@ export default function App() {
         </div>
       </>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
+      {radarBusy && screen !== "radar" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{radarBusy}</div>}
+      {!radarBusy && radarExplainBusy && screen !== "radar" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{radarExplainBusy}</div>}
+      {!radarBusy && !radarExplainBusy && radarNotice && screen !== "radar" && <div className="import-status-banner">{radarNotice}</div>}
       {screen === "writing" && <LazyScreenBoundary><Suspense fallback={pageFallback}><WritingLibrary onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
       {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => locatePaper(paper.id)} /></Suspense></LazyScreenBoundary>}
       {screen === "tasks" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TaskCalendar /></Suspense></LazyScreenBoundary>}
+      {screen === "radar" && <LazyScreenBoundary><Suspense fallback={pageFallback}><RadarView onImported={paperId => locatePaper(paperId)} /></Suspense></LazyScreenBoundary>}
       {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
       {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}
       {screen === "settings" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SettingsView /></Suspense></LazyScreenBoundary>}

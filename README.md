@@ -1,6 +1,6 @@
 # PaperNest 本地论文库
 
-> PaperNest 是面向计算机研究生的 Windows 本地论文管理工具。论文表格、PDF 阅读批注、术语学习、写作素材和本地知识树共用同一资料库；数据保存在本机，无账户与云同步。
+> PaperNest 面向计算机研究生的 Windows 本地论文工作台：论文库与 PDF 阅读批注、双语术语与写作素材同库沉淀；LLM 自动整理摘要与分类；本地知识树串联相关文献；论文雷达按需发现 alphaxiv / arXiv 新稿。数据全程在本机，无账号与云同步。
 
 <p align="center">
   <img src="assets/001.png" alt="PaperNest 论文库总览：文件夹树、表格与 LLM 智能研读提示" width="920" />
@@ -14,10 +14,12 @@ flowchart TB
     Reader["阅读台"]
     Writing["写作资料库"]
     Graph["本地知识树"]
+    Radar["论文雷达"]
   end
 
   subgraph Core["Tauri + Rust 后端"]
     DB[(SQLite + FTS5)]
+    RadarDB[(radar.db)]
     Files["受管文件 pdf/figures/avatars"]
   end
 
@@ -25,7 +27,9 @@ flowchart TB
   Detail --> Reader
   Reader --> Writing
   Library --> Graph
+  Radar --> Library
   UI --> Core
+  Radar -.-> RadarDB
 ```
 
 
@@ -70,7 +74,7 @@ sequenceDiagram
 
 1. 在阅读台顶栏切换高亮、下划线或手绘，再拖选文字批注。
 2. 拖选英文词语或句子，使用浮动工具栏「收为术语」或「加入写作库」。加入写作库时可从下拉选择已有写作用途，也可新增类别。
-3. 术语和佳句保留来源论文和页码，可从资料库跳回原文；中文用已配置的 LLM 做学术翻译，LibreTranslate 仅作本地弱回退。
+3. 术语和佳句保留来源论文和页码，可从资料库跳回原文；中文由已配置的 LLM 做学术翻译，LibreTranslate 作本地备用翻译。
 4. 导出时生成带可见批注的新 PDF 副本，原始文件不修改。
 
 
@@ -80,7 +84,7 @@ sequenceDiagram
 - 使用领域、标签、阅读状态、保存视图和全局搜索定位论文。
 - 勾选表格第一列可批量移入回收站；回收站中可恢复或永久删除。
 - 定期在「设置」中创建完整备份。
-- 需要翻译时，在设置中配置 LLM；本地 LibreTranslate 需先启动，并填写地址（可只填 `http://127.0.0.1:5000`）。
+- 需要翻译与自动整理时，在设置中配置 LLM；本地 LibreTranslate 需先启动，并填写地址（可只填 `http://127.0.0.1:5000`）。
 
 
 
@@ -95,6 +99,7 @@ sequenceDiagram
 | 写作资料库 | 英文原句、中文译文、用途标签、回到原文页码                       |
 | 本地知识树 | 按领域/标签/文本相似度组织节点，双击定位论文                     |
 | 任务日历  | 本地任务，可关联论文；页底阅读打卡（每日新增 + 满 5 分钟阅读）          |
+| 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 
 
@@ -186,6 +191,39 @@ flowchart LR
 
 
 
+### 论文雷达（发现层）
+
+默认关闭；启用后进入本页**不会**自动联网，需点击「推荐今日论文」才采集。发现期只写 `radar.db` 元数据，**加入论文库**时才下载 PDF。
+
+四类榜单（前三路为采集，第四路为排序层）：
+
+| 榜单 | 数据从哪来 | 解决什么问题 |
+| --- | --- | --- |
+| **alphaxiv 热点榜** | [alphaxiv](https://www.alphaxiv.org) 社区 Hot 榜（排名、点赞、tl;dr） | 看社区当下在追什么 |
+| **arXiv 新稿榜** | arXiv 官方 API，按你订阅的 `cs.*` 类目 + 近几日投稿窗 | 看订阅方向的新投稿 |
+| **兴趣召回** | 用兴趣关键词做 arXiv 标题/摘要查询（近几日窗 × 订阅类目） | 补 Hot∪New Top-N 之外的相关稿，降低漏检 |
+| **为你推荐** | **不新采数据**；在已有快照上按兴趣/规则（可选本地 embedding）排序，空池时级联兜底 | 个性化排序与降级展示 |
+
+另有 **趋势综述**（日/近 7 日 LLM 聚类归纳）与 **单篇解读**（按需 LLM：中文标题/摘要/问题·方法·结论·亮点；可并行解读多篇；「已解读」按钮区分样式；侧栏可删缓存后重生成）。顶栏「刷新」只重载界面，不触发采集。
+
+<p align="center">
+  <img src="assets/009-1.png" alt="论文雷达：alphaxiv 热点榜、兴趣过滤与已解读按钮" width="900" />
+</p>
+
+<p align="center">
+  <img src="assets/009-2.png" alt="论文雷达：单篇解读侧栏（中文标题/摘要）与删除缓存" width="900" />
+</p>
+
+<p align="center">
+  <img src="assets/009-3.png" alt="论文雷达：问题/方法/结论/亮点结构化解读" width="900" />
+</p>
+
+<p align="center">
+  <img src="assets/009-4.png" alt="论文雷达：兴趣召回榜与关键词过滤" width="900" />
+</p>
+
+
+
 ### 导入、搜索与辅助能力
 
 - 支持 PDF、BibTeX 和 RIS 导入；有文本层时建立页级全文索引。
@@ -206,6 +244,10 @@ flowchart LR
   <img src="assets/007.png" alt="分类与标签：主领域与子领域词表维护" width="900" />
 </p>
 
+<p align="center">
+  <img src="assets/008.png" alt="设置：分类与标签词表维护界面" width="900" />
+</p>
+
 
 
 ## 资料库目录结构
@@ -224,7 +266,7 @@ flowchart LR
 
 ## 翻译服务与换机
 
-学术翻译使用已配置的 LLM；LibreTranslate 为可选本地弱回退。
+学术翻译使用已配置的 LLM；LibreTranslate 作本地备用翻译。
 
 
 | 方案                | 说明                                                                                                                         |
@@ -233,7 +275,6 @@ flowchart LR
 | 本地 LibreTranslate | 先 `scripts/setup-libretranslate.cmd` 安装，再用 `start-libretranslate.cmd` 启动；设置中填写 `http://127.0.0.1:5000`（会自动补全 `/translate`） |
 | 模型路径              | `%LOCALAPPDATA%\PaperNest\LibreTranslate`（或仓库内 `.libretranslate-venv`）                                                     |
 | 凭据存储              | LLM API Key 在 Windows 凭据管理器；翻译地址在本机 localStorage                                                                           |
-
 
 
 
@@ -256,3 +297,4 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [界面风格](docs/UI_STYLE.md)                                     | 单一「主题」选项（经典工作台 / 柔光紫 / 雾蓝 / 苔绿暖黄 × 明暗）与视觉规范 |
 | [更新记录](docs/CHANGELOG.md)                                    | 版本变更                                        |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界                  |
+| [论文雷达评估](docs/research/paper-radar-feature-assessment.md) | 发现层定位、双层保护、稀疏使用与空池降级 |

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -222,6 +222,29 @@ export const backend = {
     const data = loadPreview(); data.llm = { ...settings, apiKeySaved: Boolean(apiKey) || settings.apiKeySaved }; persistPreview(data); return data.llm;
   },
   async testLlmConnection(): Promise<void> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 连接"); return invoke("test_llm_connection"); },
+  async localEmbeddingStatus(): Promise<{ modelId: string; displayName: string; hfUrl: string; cacheDir: string; installed: boolean; ready: boolean; approxSizeHint: string; note: string }> {
+    if (!isTauri()) {
+      return {
+        modelId: "local:bge-small-en-v1.5",
+        displayName: "BAAI/bge-small-en-v1.5",
+        hfUrl: "https://huggingface.co/BAAI/bge-small-en-v1.5",
+        cacheDir: "",
+        installed: false,
+        ready: false,
+        approxSizeHint: "约 130MB（ONNX）",
+        note: "浏览器预览模式不支持本地向量。",
+      };
+    }
+    return invoke("local_embedding_status");
+  },
+  async ensureLocalEmbeddingModel(): Promise<{ modelId: string; displayName: string; hfUrl: string; cacheDir: string; installed: boolean; ready: boolean; approxSizeHint: string; note: string }> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持本地下载向量模型");
+    return invoke("ensure_local_embedding_model");
+  },
+  async enableLocalEmbeddingModel(): Promise<LlmSettings> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持本地向量模型");
+    return invoke("enable_local_embedding_model");
+  },
   async translateText(endpoint: string, text: string, apiKey?: string): Promise<string> {
     if (isTauri()) return invoke("translate_text", { endpoint, text, apiKey });
     const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text, source: "en", target: "zh-Hans", format: "text", api_key: apiKey }) });
@@ -282,6 +305,70 @@ export const backend = {
     if (!isTauri()) return false;
     const path = await open({ multiple: false, filters: [{ name: "PaperNest 备份", extensions: ["zip"] }] });
     if (!path || Array.isArray(path)) return false; await invoke("restore_backup", { path }); return true;
+  },
+  async radarGetSettings(): Promise<RadarSettings> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_get_settings");
+  },
+  async radarSaveSettings(settings: RadarSettings): Promise<RadarSettings> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_save_settings", { settings });
+  },
+  async radarCategoryCatalog(): Promise<[string, string][]> {
+    if (!isTauri()) return [];
+    return invoke("radar_category_catalog");
+  },
+  async radarListDates(): Promise<string[]> {
+    if (!isTauri()) return [];
+    return invoke("radar_list_dates");
+  },
+  async radarListFeed(date: string, feed: string, interestFilter?: boolean, includeHidden?: boolean): Promise<RadarFeedPage> {
+    if (!isTauri()) return { cards: [], totalCount: 0, interestFilterApplied: false };
+    return invoke("radar_list_feed", { date, feed, interestFilter: interestFilter ?? null, includeHidden: includeHidden ?? null });
+  },
+  async radarFetchToday(): Promise<RadarFetchResult> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_fetch_today");
+  },
+  async radarWeekHot(anchorDate?: string): Promise<RadarWeekHot> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_week_hot", { anchorDate: anchorDate ?? null });
+  },
+  async radarSetUserState(arxivId: string, later?: boolean, hidden?: boolean): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("radar_set_user_state", { arxivId, later: later ?? null, hidden: hidden ?? null });
+  },
+  async radarRecommend(anchorDate?: string, interestFilter?: boolean): Promise<RadarRecommendResult> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_recommend", { anchorDate: anchorDate ?? null, interestFilter: interestFilter ?? null });
+  },
+  async radarGenerateDigest(kind: "daily" | "weekly", anchorDate?: string): Promise<RadarDigest> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_generate_digest", { kind, anchorDate: anchorDate ?? null });
+  },
+  async radarGetDigest(kind: "daily" | "weekly", anchorDate: string): Promise<RadarDigest | null> {
+    if (!isTauri()) return null;
+    return invoke("radar_get_digest", { kind, anchorDate });
+  },
+  async radarExplainPaper(arxivId: string): Promise<RadarExplanation> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_explain_paper", { arxivId });
+  },
+  async radarGetExplanation(arxivId: string): Promise<RadarExplanation | null> {
+    if (!isTauri()) return null;
+    return invoke("radar_get_explanation", { arxivId });
+  },
+  async radarListExplainedIds(): Promise<string[]> {
+    if (!isTauri()) return [];
+    return invoke("radar_list_explained_ids");
+  },
+  async radarDeleteExplanation(arxivId: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("radar_delete_explanation", { arxivId });
+  },
+  async radarImportToLibrary(arxivId: string, downloadPdf = true, folderId?: string | null): Promise<RadarImportResult> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
+    return invoke("radar_import_to_library", { arxivId, downloadPdf, folderId: folderId ?? null });
   },
   resetPreview() { localStorage.removeItem(STORAGE_KEY); }
 };

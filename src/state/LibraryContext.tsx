@@ -6,6 +6,13 @@ interface LibraryContextValue {
   data?: LibrarySnapshot; loading: boolean; error?: string;
   importBusy: string; importNotice: string;
   setImportBusy(value: string): void; setImportNotice(value: string): void;
+  radarBusy: string; radarNotice: string;
+  setRadarBusy(value: string): void; setRadarNotice(value: string): void;
+  /** arxivId → 短标题；多篇解读可并行，离开雷达页仍可展示进度 */
+  radarExplaining: Record<string, string>;
+  startRadarExplain(arxivId: string, title: string): void;
+  finishRadarExplain(arxivId: string): void;
+  radarExplainBusy: string;
   refresh(): Promise<void>; savePaper(paper: Paper): Promise<void>; saveAnnotation(annotation: Annotation): Promise<void>;
   deleteAnnotation(id: string): Promise<void>; saveVocabulary(entry: VocabularyEntry): Promise<void>; deleteVocabulary(id: string): Promise<void>;
   saveExcerpt(entry: WritingExcerpt): Promise<void>; deleteExcerpt(id: string): Promise<void>; purgePaper(id: string): Promise<void>;
@@ -25,8 +32,27 @@ const LibraryContext = createContext<LibraryContextValue | null>(null);
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<LibrarySnapshot>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
   const [importBusy, setImportBusy] = useState(""); const [importNotice, setImportNotice] = useState("");
+  const [radarBusy, setRadarBusy] = useState(""); const [radarNotice, setRadarNotice] = useState("");
+  const [radarExplaining, setRadarExplaining] = useState<Record<string, string>>({});
   const refresh = useCallback(async () => { try { setError(undefined); setData(await backend.initialize()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useEffect(() => { void refresh(); }, [refresh]);
+  const startRadarExplain = useCallback((arxivId: string, title: string) => {
+    setRadarExplaining(current => ({ ...current, [arxivId]: title.slice(0, 36) }));
+  }, []);
+  const finishRadarExplain = useCallback((arxivId: string) => {
+    setRadarExplaining(current => {
+      if (!(arxivId in current)) return current;
+      const next = { ...current };
+      delete next[arxivId];
+      return next;
+    });
+  }, []);
+  const radarExplainBusy = useMemo(() => {
+    const entries = Object.entries(radarExplaining);
+    if (entries.length === 0) return "";
+    if (entries.length === 1) return `正在解读：${entries[0][1]}…`;
+    return `正在解读 ${entries.length} 篇…`;
+  }, [radarExplaining]);
   const wrap = useCallback(<T,>(fn: (value: T) => Promise<void>) => async (value: T) => { await fn(value); await refresh(); }, [refresh]);
   const addReadingSeconds = useCallback(async (paperId: string, day: string, seconds: number) => {
     const total = await backend.addReadingSeconds(paperId, day, seconds);
@@ -39,7 +65,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       return { ...prev, readingDays };
     });
   }, []);
-  const value = useMemo<LibraryContextValue>(() => ({ data, loading, error, importBusy, importNotice, setImportBusy, setImportNotice, refresh,
+  const value = useMemo<LibraryContextValue>(() => ({
+    data, loading, error, importBusy, importNotice, setImportBusy, setImportNotice, radarBusy, radarNotice, setRadarBusy, setRadarNotice,
+    radarExplaining, startRadarExplain, finishRadarExplain, radarExplainBusy, refresh,
     savePaper: wrap(backend.savePaper), saveAnnotation: wrap(backend.saveAnnotation), deleteAnnotation: wrap(backend.deleteAnnotation),
     saveVocabulary: wrap(backend.saveVocabulary), deleteVocabulary: async id => { await backend.deleteVocabulary(id); await refresh(); },
     saveExcerpt: wrap(backend.saveExcerpt), deleteExcerpt: async id => { await backend.deleteExcerpt(id); await refresh(); },
@@ -57,7 +85,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     archiveCustomFieldDefinition: async fieldId => { await backend.archiveCustomFieldDefinition(fieldId); await refresh(); },
     savePaperCustomFieldValues: async (paperId, values) => { await backend.savePaperCustomFieldValues(paperId, values); await refresh(); },
     saveTask: wrap(backend.saveTask), deleteTask: async id => { await backend.deleteTask(id); await refresh(); },
-  }), [data, loading, error, importBusy, importNotice, refresh, wrap, addReadingSeconds]);
+  }), [data, loading, error, importBusy, importNotice, radarBusy, radarNotice, radarExplaining, radarExplainBusy, startRadarExplain, finishRadarExplain, refresh, wrap, addReadingSeconds]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 

@@ -140,11 +140,99 @@ export interface LlmSettings {
   apiKeySaved: boolean;
   autoClassifyOnImport: boolean;
   taxonomyStrictness: TaxonomyStrictness;
+  /** OpenAI 兼容 embeddings 模型；留空则雷达推荐不做语义 rerank */
+  embeddingModel?: string;
 }
 export interface ImportedPaper { paper: Paper; isNew: boolean; }
 export interface OnlineMetadataSettings { enabled: boolean; provider: "crossref"; mailto?: string; }
 export interface OnlineMetadataCandidate { titleEn?: string; authors: string[]; abstractEn?: string; venue?: string; publicationDate?: string; doi?: string; sourceUrl?: string; score?: number; }
 export interface OnlineMetadataLookup { provider: "crossref"; candidates: OnlineMetadataCandidate[]; cached?: boolean; }
+
+export interface RadarSettings {
+  enabled: boolean;
+  mailto?: string;
+  categories: string[];
+  keywords?: string[];
+  defaultFilterEnabled?: boolean;
+  hotLimit: number;
+  newLimit: number;
+  retainDays: number;
+}
+export interface RadarFeedPage {
+  cards: RadarCard[];
+  totalCount: number;
+  interestFilterApplied: boolean;
+}
+export interface RadarCard {
+  arxivId: string;
+  title: string;
+  abstractText?: string;
+  aiSummary?: string;
+  authors: string[];
+  categories: string[];
+  topics?: string[];
+  primaryCategory?: string;
+  publishedDate?: string;
+  absUrl?: string;
+  alphaxivUrl?: string;
+  feed: string;
+  rank?: number;
+  upvotes?: number;
+  snapshotDate: string;
+  inLibrary: boolean;
+  later: boolean;
+  hidden: boolean;
+}
+export interface RadarFetchResult {
+  snapshotDate: string;
+  hotCount: number;
+  newCount: number;
+  interestCount?: number;
+  errors: string[];
+  status: string;
+}
+export interface RadarWeekHot {
+  windowStart: string;
+  windowEnd: string;
+  coverageDays: number;
+  categories: { category: string; paperCount: number; maxUpvotes: number }[];
+  persistent: { arxivId: string; title: string; days: number; peakUpvotes: number }[];
+}
+export interface RadarDigest {
+  anchorDate: string;
+  kind: string;
+  windowStart?: string;
+  windowEnd?: string;
+  coverageDays: number;
+  overview: string;
+  clusters: { theme: string; summary: string; papers: { id: string; title: string }[] }[];
+  paperCount: number;
+  model?: string;
+}
+export interface RadarExplanation {
+  arxivId: string;
+  titleEn?: string;
+  titleZh?: string;
+  abstractEn?: string;
+  abstractZh?: string;
+  summaryZh?: string;
+  problem: string;
+  method: string;
+  finding: string;
+  highlight: string;
+  model?: string;
+}
+export interface RadarRecommendResult {
+  strategy: string;
+  windowDays: number;
+  coverageDays: number;
+  items: { card: RadarCard; reasons: string[]; score: number }[];
+}
+export interface RadarImportResult {
+  paper: Paper;
+  downloadedPdf: boolean;
+  alreadyInLibrary: boolean;
+}
 
 export interface LlmPageImage { page: number; dataUrl: string; }
 export interface LlmAnalysisInput { text: string; candidateImages: LlmPageImage[]; }
