@@ -13,6 +13,8 @@ interface LibraryContextValue {
   startRadarExplain(arxivId: string, title: string): void;
   finishRadarExplain(arxivId: string): void;
   radarExplainBusy: string;
+  researchBusy: string; researchNotice: string;
+  setResearchBusy(value: string): void; setResearchNotice(value: string): void;
   refresh(): Promise<void>; savePaper(paper: Paper): Promise<void>; saveAnnotation(annotation: Annotation): Promise<void>;
   deleteAnnotation(id: string): Promise<void>; saveVocabulary(entry: VocabularyEntry): Promise<void>; deleteVocabulary(id: string): Promise<void>;
   saveExcerpt(entry: WritingExcerpt): Promise<void>; deleteExcerpt(id: string): Promise<void>; purgePaper(id: string): Promise<void>;
@@ -33,6 +35,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<LibrarySnapshot>(); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
   const [importBusy, setImportBusy] = useState(""); const [importNotice, setImportNotice] = useState("");
   const [radarBusy, setRadarBusy] = useState(""); const [radarNotice, setRadarNotice] = useState("");
+  const [researchBusy, setResearchBusy] = useState(""); const [researchNotice, setResearchNotice] = useState("");
   const [radarExplaining, setRadarExplaining] = useState<Record<string, string>>({});
   const refresh = useCallback(async () => { try { setError(undefined); setData(await backend.initialize()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -67,7 +70,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, []);
   const value = useMemo<LibraryContextValue>(() => ({
     data, loading, error, importBusy, importNotice, setImportBusy, setImportNotice, radarBusy, radarNotice, setRadarBusy, setRadarNotice,
-    radarExplaining, startRadarExplain, finishRadarExplain, radarExplainBusy, refresh,
+    radarExplaining, startRadarExplain, finishRadarExplain, radarExplainBusy,
+    researchBusy, researchNotice, setResearchBusy, setResearchNotice, refresh,
     savePaper: wrap(backend.savePaper), saveAnnotation: wrap(backend.saveAnnotation), deleteAnnotation: wrap(backend.deleteAnnotation),
     saveVocabulary: wrap(backend.saveVocabulary), deleteVocabulary: async id => { await backend.deleteVocabulary(id); await refresh(); },
     saveExcerpt: wrap(backend.saveExcerpt), deleteExcerpt: async id => { await backend.deleteExcerpt(id); await refresh(); },
@@ -85,7 +89,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     archiveCustomFieldDefinition: async fieldId => { await backend.archiveCustomFieldDefinition(fieldId); await refresh(); },
     savePaperCustomFieldValues: async (paperId, values) => { await backend.savePaperCustomFieldValues(paperId, values); await refresh(); },
     saveTask: wrap(backend.saveTask), deleteTask: async id => { await backend.deleteTask(id); await refresh(); },
-  }), [data, loading, error, importBusy, importNotice, radarBusy, radarNotice, radarExplaining, radarExplainBusy, startRadarExplain, finishRadarExplain, refresh, wrap, addReadingSeconds]);
+  }), [data, loading, error, importBusy, importNotice, radarBusy, radarNotice, radarExplaining, radarExplainBusy, researchBusy, researchNotice, startRadarExplain, finishRadarExplain, refresh, wrap, addReadingSeconds]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 

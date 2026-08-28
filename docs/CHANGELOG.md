@@ -1,5 +1,47 @@
 # 更新记录
 
+## 0.2.16 - 2026-08-28（规划）
+
+### 文献调研 Trajectory（Phase 9）
+
+- 方案文档：[research-trajectory-plan.md](research/research-trajectory-plan.md)
+- 复用 `@deepseek-ai/dsh-session`、`dsh-session-persistence-jsonl`、`dsh-client-ui-trajectory`（不自研事件层与 Trajectory UI）
+- Rust ↔ JS Harness Bridge；工作区 `.dsh-session/` 官方 JSONL 持久化
+- 嵌入 DSH `TrajectoryView`，外观 1:1；恢复/分叉走 `SessionStore.fork`
+
+## 0.2.15 - 2026-08-28
+
+### 文献调研 ReAct 深循环（Phase 7）
+
+- 默认 `researchMode=react`：LLM 通过 function calling 自主选工具循环，结束后 Writer 写 `report.md`。
+- 新增 `research_tools.rs`（SourceCollector、统一 tool 执行）；MCP 共用同一套检索工具。
+- 新工具：`search_annotations`、`search_excerpts`、`update_outline`、`finish_research`。
+- 设置项：`researchDepth`（quick/standard/deep）、`maxReactRounds`、`maxToolCalls`；可回退 `pipeline` 旧模式。
+- 方案文档：[research-react-upgrade-plan.md](research/research-react-upgrade-plan.md)
+- **JSON ReAct fallback**：弱 tool 模型在响应无 `tool_calls` 时解析 `{"action":"tool"|"finish",...}` JSON。
+- **pipeline 模式**统一走 `research_tools::pipeline_invoke`，与 ReAct/MCP 共用 SourceCollector 去重。
+- **Reviewer 门控**（Phase 7e）：ReAct 结束后审稿，最多 2 轮补检索。
+- **子 Agent**（Phase 8）：`research_subtopic` 委派子问题，各 6 轮受限 ReAct。
+- **ResearchView** 调研进行中每 1.5s 轮询步骤，`react-tool-*` 显示 label/detail 实时进度。
+
+## 0.2.14 - 2026-08-28
+
+### 文献调研（Phase 4～6）
+
+- Agent 拆分为 Planner → Researcher → Reflect → Writer；Reflect 可触发补充检索。
+- 调研完成后为未入库的 arXiv 来源生成 `proposals/`；UI 支持审批入库（元数据或下载 PDF）。
+- 新增 `papernest-mcp` 二进制：stdio MCP Server，供 Codex/Cursor 只读访问资料库与调研报告。
+- 设置页展示 MCP 注册命令与工具列表。
+
+## 0.2.13 - 2026-08-28
+
+### 文献调研（Phase 1～3）
+
+- 侧栏新增「文献调研」：创建任务、运行内置 Agent、预览 `report.md`。
+- 设置页新增「文献调研」分区：独立调研 LLM（`research_api_key`）、可选 arXiv 元数据检索。
+- 工作区默认 `PaperNestLibrary/research/<session-id>/`；可指定项目文件夹。过程文件写入 `steps/`、`sources.jsonl`、`outline.md`。
+- 外网来源只登记链接与摘要，调研期不下载 PDF。会话索引在 `research.db`。
+
 ## 0.2.12 - 2026-08-28
 
 ### 论文雷达单篇解读

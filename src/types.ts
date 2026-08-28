@@ -234,6 +234,79 @@ export interface RadarImportResult {
   alreadyInLibrary: boolean;
 }
 
+export interface ResearchLlmSettings {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  apiKeySaved: boolean;
+  allowWebSearch: boolean;
+  maxIterations: number;
+  maxTokensPerStep: number;
+  researchMode: "react" | "pipeline" | string;
+  researchDepth: "quick" | "standard" | "deep" | string;
+  maxReactRounds: number;
+  maxToolCalls: number;
+}
+
+export interface ResearchSession {
+  id: string;
+  title: string;
+  query: string;
+  outputRequirements: string;
+  workspacePath: string;
+  reportPath: string;
+  status: "draft" | "running" | "completed" | "failed" | string;
+  reportPreview?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResearchSource {
+  id: string;
+  kind: string;
+  url?: string;
+  title: string;
+  accessedAt: string;
+  excerpt: string;
+  localPaperId?: string;
+  page?: number;
+  storedLocally: boolean;
+}
+
+export interface ResearchStepSummary {
+  fileName: string;
+  kind: string;
+  createdAt: string;
+  label?: string;
+  detail?: string;
+}
+
+export interface ResearchProposal {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  arxivId?: string;
+  abstractEn?: string;
+  url?: string;
+  sourceId: string;
+  createdAt: string;
+  resolvedPaperId?: string;
+}
+
+export interface ResearchImportResult {
+  paperId: string;
+  title: string;
+  downloadedPdf: boolean;
+}
+
+export interface McpInfo {
+  command: string;
+  libraryPath: string;
+  tools: string[];
+}
+
 export interface LlmPageImage { page: number; dataUrl: string; }
 export interface LlmAnalysisInput { text: string; candidateImages: LlmPageImage[]; }
 export interface LlmVocabularySuggestion { termEn: string; meaningZh: string; sentenceEn?: string; sentenceZh?: string; page?: number; }

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -369,6 +369,76 @@ export const backend = {
   async radarImportToLibrary(arxivId: string, downloadPdf = true, folderId?: string | null): Promise<RadarImportResult> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持论文雷达");
     return invoke("radar_import_to_library", { arxivId, downloadPdf, folderId: folderId ?? null });
+  },
+  async researchGetSettings(): Promise<ResearchLlmSettings> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_get_settings");
+  },
+  async researchSaveSettings(settings: ResearchLlmSettings, apiKey?: string): Promise<ResearchLlmSettings> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_save_settings", { settings, apiKey: apiKey ?? null });
+  },
+  async researchTestConnection(): Promise<void> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_test_connection");
+  },
+  async researchListSessions(): Promise<ResearchSession[]> {
+    if (!isTauri()) return [];
+    return invoke("research_list_sessions");
+  },
+  async researchCreateSession(input: { query: string; outputRequirements?: string; workspacePath?: string; title?: string }): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_create_session", { input });
+  },
+  async researchGetSession(id: string): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_get_session", { id });
+  },
+  async researchReadReport(id: string): Promise<string> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_read_report", { id });
+  },
+  async researchReadSources(id: string): Promise<ResearchSource[]> {
+    if (!isTauri()) return [];
+    return invoke("research_read_sources", { id });
+  },
+  async researchListSteps(id: string): Promise<ResearchStepSummary[]> {
+    if (!isTauri()) return [];
+    return invoke("research_list_steps", { id });
+  },
+  async researchRunSession(id: string): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_run_session", { id });
+  },
+  async researchOpenWorkspace(id: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("research_open_workspace", { id });
+  },
+  async researchDeleteSession(id: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("research_delete_session", { id });
+  },
+  async researchListProposals(sessionId: string): Promise<ResearchProposal[]> {
+    if (!isTauri()) return [];
+    return invoke("research_list_proposals", { sessionId });
+  },
+  async researchApproveProposal(sessionId: string, proposalId: string, downloadPdf: boolean): Promise<ResearchImportResult> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_approve_proposal", { sessionId, proposalId, downloadPdf });
+  },
+  async researchRejectProposal(sessionId: string, proposalId: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("research_reject_proposal", { sessionId, proposalId });
+  },
+  async mcpGetInfo(): Promise<McpInfo> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持 MCP");
+    return invoke("mcp_get_info");
+  },
+  async researchChooseWorkspace(): Promise<string | null> {
+    if (!isTauri()) return null;
+    const path = await open({ directory: true, multiple: false });
+    if (!path || Array.isArray(path)) return null;
+    return path;
   },
   resetPreview() { localStorage.removeItem(STORAGE_KEY); }
 };

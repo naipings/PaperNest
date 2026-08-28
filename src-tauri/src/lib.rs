@@ -1,6 +1,14 @@
 mod online_metadata;
 mod custom_fields;
 mod radar;
+mod research;
+mod research_tools;
+mod research_llm;
+mod research_react;
+mod research_writer;
+mod research_reviewer;
+mod research_subagent;
+pub mod mcp_server;
 mod local_embed;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -501,7 +509,7 @@ fn fts_phrase(query: &str) -> String {
 
 
 async fn open_pool(dir: &Path) -> Result<SqlitePool> {
-  fs::create_dir_all(dir.join("pdf/originals")).map_err(err)?; fs::create_dir_all(dir.join("figures")).map_err(err)?; fs::create_dir_all(dir.join("avatars")).map_err(err)?; fs::create_dir_all(dir.join("backups")).map_err(err)?;
+  fs::create_dir_all(dir.join("pdf/originals")).map_err(err)?; fs::create_dir_all(dir.join("figures")).map_err(err)?; fs::create_dir_all(dir.join("avatars")).map_err(err)?; fs::create_dir_all(dir.join("backups")).map_err(err)?; fs::create_dir_all(dir.join("research")).map_err(err)?;
   let db_path = dir.join("library.db");
   let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.to_string_lossy())).map_err(err)?.create_if_missing(true).foreign_keys(true);
   let pool = SqlitePoolOptions::new().max_connections(5).connect_with(options).await.map_err(err)?;
@@ -940,7 +948,7 @@ async fn llm_completion_opts(settings:&LlmSettings,system:&str,content:serde_jso
   }
   Err(format!("无法连接 LLM（已重试）：{last_error}。请检查网络/代理，以及设置中的 Base URL 与 API Key"))
 }
-fn json_from_llm(text:&str)->Result<serde_json::Value>{let trimmed=text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();let start=trimmed.find('{').ok_or_else(||"LLM 未返回 JSON 对象".to_string())?;let end=trimmed.rfind('}').ok_or_else(||"LLM 未返回完整 JSON 对象".to_string())?;serde_json::from_str(&trimmed[start..=end]).map_err(err)}
+pub(crate) fn json_from_llm(text:&str)->Result<serde_json::Value>{let trimmed=text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();let start=trimmed.find('{').ok_or_else(||"LLM 未返回 JSON 对象".to_string())?;let end=trimmed.rfind('}').ok_or_else(||"LLM 未返回完整 JSON 对象".to_string())?;serde_json::from_str(&trimmed[start..=end]).map_err(err)}
 
 fn opt_string(value:&serde_json::Value,key:&str)->Option<String>{
   value.get(key).and_then(|item|match item {
@@ -1205,7 +1213,7 @@ async fn search_library(state:State<'_,AppState>,query:String)->Result<Vec<Searc
   search_library_rows(&p,&query).await
 }
 
-async fn search_library_rows(pool:&SqlitePool,query:&str)->Result<Vec<SearchHit>> {
+pub(crate) async fn search_library_rows(pool:&SqlitePool,query:&str)->Result<Vec<SearchHit>> {
   if query.trim().is_empty(){return Ok(vec![]);}
   let phrase=fts_phrase(query);
   let mut hits=vec![];
@@ -1261,6 +1269,6 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library])
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library,research::research_get_settings,research::research_save_settings,research::research_test_connection,research::research_list_sessions,research::research_create_session,research::research_get_session,research::research_read_report,research::research_read_sources,research::research_list_steps,research::research_run_session,research::research_open_workspace,research::research_delete_session,research::research_list_proposals,research::research_approve_proposal,research::research_reject_proposal,mcp_server::mcp_get_info])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

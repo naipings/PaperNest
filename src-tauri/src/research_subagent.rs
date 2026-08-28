@@ -1,0 +1,196 @@
+use super::*;
+use crate::research::{write_step, ResearchLlmSettings, ResearchSession};
+use crate::research_llm::{research_llm_with_tools, LlmToolCall};
+use crate::research_tools::{
+  execute_react_tool, react_tool_catalog, SourceCollector, ToolContext, ToolOutcome,
+};
+
+const MAX_SUBTOPICS: usize = 2;
+const SUBAGENT_MAX_ROUNDS: u32 = 6;
+const SUBAGENT_MAX_TOOLS: u32 = 12;
+
+pub async fn run_subtopics(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  session: &ResearchSession,
+  workspace: &Path,
+  collector: &mut SourceCollector,
+  step_index: &mut usize,
+  subtopics: &[String],
+) -> Result<String> {
+  let questions: Vec<String> = subtopics
+    .iter()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())
+    .take(MAX_SUBTOPICS)
+    .collect();
+  if questions.is_empty() {
+    return Err("research_subtopic 需要 1～2 个非空子问题".into());
+  }
+  if questions.len() > MAX_SUBTOPICS {
+    return Err(format!("research_subtopic 最多 {MAX_SUBTOPICS} 个子问题"));
+  }
+
+  let now = Utc::now().to_rfc3339();
+  let mut summaries = Vec::new();
+  for (idx, question) in questions.iter().enumerate() {
+    let summary = run_one_subagent(
+      library_pool,
+      settings,
+      session,
+      workspace,
+      collector,
+      step_index,
+      &now,
+      idx + 1,
+      question,
+    )
+    .await?;
+    summaries.push(format!("子题{}：{question}\n{summary}", idx + 1));
+  }
+  Ok(summaries.join("\n\n"))
+}
+
+async fn run_one_subagent(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  session: &ResearchSession,
+  workspace: &Path,
+  collector: &mut SourceCollector,
+  step_index: &mut usize,
+  now: &str,
+  index: usize,
+  question: &str,
+) -> Result<String> {
+  let tools: Vec<_> = react_tool_catalog(settings.allow_web_search)
+    .into_iter()
+    .filter(|t| t.name != "research_subtopic")
+    .collect();
+  let mut messages = vec![
+    serde_json::json!({"role": "system", "content": subagent_system_prompt()}),
+    serde_json::json!({"role": "user", "content": format!("主问题：{}\n子问题：{question}\n请检索并 finish_research。", session.query)}),
+  ];
+  let mut tool_used = 0u32;
+  let mut summary = String::new();
+
+  for round in 1..=SUBAGENT_MAX_ROUNDS {
+    let response = research_llm_with_tools(settings, &messages, &tools, Some(900), 90).await?;
+    write_step(
+      workspace,
+      *step_index,
+      &format!("subagent-{index}-react-llm"),
+      &serde_json::json!({ "round": round, "question": question, "toolCalls": response.tool_calls.iter().map(|c| &c.name).collect::<Vec<_>>() }),
+    )?;
+    *step_index += 1;
+
+    if response.tool_calls.is_empty() {
+      let parsed = crate::research_llm::parse_json_react_calls(response.content.as_deref().unwrap_or(""));
+      if !parsed.is_empty() {
+          messages.push(serde_json::json!({"role": "assistant", "content": response.content.clone().unwrap_or_default()}));
+          for call in parsed {
+            tool_used += 1;
+            if tool_used > SUBAGENT_MAX_TOOLS {
+              summary = "子 Agent 达到 tool 上限。".into();
+              return Ok(summary);
+            }
+            if handle_subagent_call(library_pool, settings, workspace, collector, now, step_index, index, round, &call, &mut messages, &mut summary).await? {
+              return Ok(summary);
+            }
+          }
+          continue;
+        }
+      messages.push(serde_json::json!({"role": "user", "content": "请调用工具或 finish_research。"}));
+      continue;
+    }
+
+    messages.push(subagent_assistant_message(&response.tool_calls, response.content.as_deref()));
+    for call in response.tool_calls {
+      tool_used += 1;
+      if tool_used > SUBAGENT_MAX_TOOLS {
+        summary = "子 Agent 达到 tool 上限。".into();
+        return Ok(summary);
+      }
+      if handle_subagent_call(library_pool, settings, workspace, collector, now, step_index, index, round, &call, &mut messages, &mut summary).await? {
+        return Ok(summary);
+      }
+    }
+    if !summary.is_empty() {
+      return Ok(summary);
+    }
+  }
+  if summary.is_empty() {
+    summary = format!("子题「{question}」已完成 {SUBAGENT_MAX_ROUNDS} 轮检索。");
+  }
+  Ok(summary)
+}
+
+async fn handle_subagent_call(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  workspace: &Path,
+  collector: &mut SourceCollector,
+  now: &str,
+  step_index: &mut usize,
+  sub_index: usize,
+  round: u32,
+  call: &LlmToolCall,
+  messages: &mut Vec<serde_json::Value>,
+  summary: &mut String,
+) -> Result<bool> {
+  let mut ctx = ToolContext {
+    library_pool,
+    workspace,
+    allow_web: settings.allow_web_search,
+    collector,
+    now,
+    allow_subtopic: false,
+  };
+  let outcome = execute_react_tool(&mut ctx, &call.name, &call.arguments).await?;
+  match outcome {
+    ToolOutcome::Finished { summary: text } => {
+      write_step(
+        workspace,
+        *step_index,
+        &format!("subagent-{sub_index}-finish"),
+        &serde_json::json!({ "round": round, "summary": text }),
+      )?;
+      *step_index += 1;
+      *summary = text;
+      Ok(true)
+    }
+    ToolOutcome::Continue {
+      observation,
+      new_source_ids,
+    } => {
+      write_step(
+        workspace,
+        *step_index,
+        &format!("subagent-{sub_index}-tool-{}", call.name),
+        &serde_json::json!({ "round": round, "tool": call.name, "newSourceIds": new_source_ids }),
+      )?;
+      *step_index += 1;
+      messages.push(serde_json::json!({"role": "tool", "tool_call_id": call.id, "content": observation}));
+      if call.name == "search_arxiv" {
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+      }
+      Ok(false)
+    }
+    ToolOutcome::Subtopics { .. } => Err("子 Agent 不可嵌套 research_subtopic".into()),
+  }
+}
+
+fn subagent_system_prompt() -> &'static str {
+  "你是文献调研子 Agent。针对给定子问题检索本地库与 arXiv 元数据，完成后调用 finish_research。不要调用 research_subtopic。"
+}
+
+fn subagent_assistant_message(calls: &[LlmToolCall], content: Option<&str>) -> serde_json::Value {
+  serde_json::json!({
+    "role": "assistant",
+    "content": content.unwrap_or(""),
+    "tool_calls": calls.iter().map(|call| serde_json::json!({
+      "id": call.id,
+      "type": "function",
+      "function": { "name": call.name, "arguments": call.arguments.to_string() }
+    })).collect::<Vec<_>>()
+  })
+}

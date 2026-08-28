@@ -371,7 +371,7 @@ fn today() -> String {
   Utc::now().date_naive().to_string()
 }
 
-fn clean_arxiv_id(value: &str) -> String {
+pub(crate) fn clean_arxiv_id(value: &str) -> String {
   let bytes = value.as_bytes();
   let mut i = 0;
   while i + 9 <= bytes.len() {
@@ -664,6 +664,33 @@ async fn fetch_arxiv_interest(
     }
   }
   Ok(out)
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArxivBrief {
+  pub arxiv_id: String,
+  pub title: String,
+  pub abstract_text: String,
+  pub abs_url: String,
+}
+
+pub async fn search_arxiv_briefs(keyword: &str, limit: i64) -> Result<Vec<ArxivBrief>> {
+  let phrase = escape_arxiv_phrase(keyword.trim());
+  if phrase.is_empty() {
+    return Ok(vec![]);
+  }
+  let query = format!("all:\"{phrase}\"");
+  let entries = arxiv_query(&query, limit.clamp(3, 15), None).await?;
+  Ok(entries
+    .into_iter()
+    .map(|(arxiv_id, title, summary, _, _, _, _)| ArxivBrief {
+      abs_url: format!("https://arxiv.org/abs/{arxiv_id}"),
+      arxiv_id,
+      title,
+      abstract_text: summary.chars().take(500).collect(),
+    })
+    .collect())
 }
 
 fn parse_arxiv_atom(xml: &str) -> Vec<ArxivEntry> {
@@ -2124,7 +2151,7 @@ pub async fn radar_import_to_library(
   })
 }
 
-async fn download_arxiv_pdf(library_dir: &Path, arxiv_id: &str) -> Result<String> {
+pub(crate) async fn download_arxiv_pdf(library_dir: &Path, arxiv_id: &str) -> Result<String> {
   let client = Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
   let url = format!("https://arxiv.org/pdf/{arxiv_id}.pdf");
   let response = client

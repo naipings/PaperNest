@@ -255,7 +255,7 @@ flowchart LR
 ```text
 paperReader/
 ├── src/
-│   ├── App.tsx                 # 屏幕路由：library / radar / writing / knowledge / tasks / trash / settings
+│   ├── App.tsx                 # 屏幕路由：library / radar / research / writing / knowledge / tasks / trash / settings
 │   ├── components/
 │   │   ├── PdfReader.tsx                  # 阅读台壳层
 │   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
@@ -275,6 +275,9 @@ paperReader/
 │   │   ├── backend.ts          # Tauri invoke 统一入口
 │   │   ├── translation.ts      # LibreTranslate 客户端
 │   │   └── llm.ts              # LLM 分析
+│   ├── components/
+│   │   └── research/           # ResearchView 等
+│   ├── research-harness/       # Phase 9：DSH session 桥接（bootstrap、sessionBridge）
 │   ├── state/
 │   │   └── LibraryContext.tsx  # 全局资料库状态
 │   └── types.ts                # 前后端共享类型（镜像 Rust 结构）
@@ -282,6 +285,15 @@ paperReader/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
+│   ├── src/research.rs         # 文献调研会话与命令
+│   ├── src/research_tools.rs   # 工具层 + SourceCollector（MCP 共用）
+│   ├── src/research_react.rs   # ReAct 主循环
+│   ├── src/research_reviewer.rs
+│   ├── src/research_subagent.rs
+│   ├── src/research_writer.rs
+│   ├── src/research_llm.rs
+│   ├── src/mcp_server.rs       # MCP Server（stdio JSON-RPC）
+│   └── src/bin/papernest_mcp.rs
 │   └── schema.sql              # 数据库迁移
 └── docs/
     ├── DEVELOPMENT.md          # 本文档
@@ -353,6 +365,13 @@ paperReader/
 | `radar_import_to_library` | 加入资料库；可选下载 PDF，或仅元数据 |
 | `radar_list_feed` / `radar_recommend` / `radar_week_hot` | 三榜（Hot/New/Interest）、推荐 cascade + 可选 embedding rerank、近 7 日热点 |
 | `radar_explain_paper` / `radar_get_explanation` / `radar_list_explained_ids` / `radar_delete_explanation` | 单篇解读生成/读缓存/列出已解读/删缓存 |
+| `research_get_settings` / `research_save_settings` / `research_test_connection` | 文献调研开关与独立 LLM |
+| `research_create_session` / `research_list_sessions` / `research_get_session` | 调研任务 CRUD |
+| `research_run_session` | 运行 Agent；事件经 `research_dsh_append` 写入 `.dsh-session/` |
+| `research_read_report` / `research_read_sources` / `research_list_steps` | 读交付物与过程投影 |
+| `research_dsh_append` / `research_dsh_derive_messages` / `research_dsh_load` | Phase 9：DSH Session 桥接 |
+| `research_dsh_fork` / `research_resume_session` | Phase 9：官方 `SessionStore.fork` + Rust 续跑 |
+| `research_open_workspace` / `research_delete_session` | 打开文件夹 / 删除任务 |
 | `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
 | `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
 | `save_custom_field_definition` | 新增或更新字段定义 |
@@ -371,6 +390,8 @@ flowchart TB
 
   subgraph Workspace
     Library["screen=library"]
+    Radar["screen=radar"]
+    Research["screen=research"]
     Writing["screen=writing"]
     Knowledge["screen=knowledge"]
     Tasks["screen=tasks"]
@@ -526,6 +547,47 @@ paper_custom_field_values(paper_id, field_id, value_json, updated_at)
 
 ---
 
-## 14. 扩展方向
+## 15. 文献调研
+
+默认关闭。用户在 **设置 → 文献调研** 启用并配置独立 LLM（Credential：`research_api_key`）。
+
+```text
+设置启用 + 页内「开始调研」
+  → research_create_session（创建工作区）
+  → research_run_session
+       react（默认）：ReAct 循环 → Reviewer 门控 → Writer → report.md
+       pipeline：Planner → Researcher → Reflect → Writer → report.md
+  → 过程写入 steps/、sources.jsonl；Phase 9 起追加 `.dsh-session/`（DSH 官方格式）
+  → 报告以 report.md 为准
+```
+
+### MCP Server（Phase 6）
+
+独立二进制 `papernest-mcp`（与主程序同目录）。stdio JSON-RPC，工具：
+
+| 工具 | 说明 |
+| --- | --- |
+| `search_library` | 全文检索本地论文库 |
+| `get_paper` | 按 ID 读取论文元数据 |
+| `list_research_sessions` | 列出调研任务 |
+| `get_research_report` | 读取 `report.md` |
+
+资料库路径：环境变量 `PAPERNEST_LIBRARY`，或 `%APPDATA%/com.papernest.app/library-location.json`。
+
+注册示例（设置页可复制）：
+
+```text
+codex mcp add papernest -- "<path>/papernest-mcp.exe"
+```
+
+实现：Rust 侧 `research_*.rs`；Phase 9 前端 `src/research-harness/`（`@deepseek-ai/dsh-session`、`dsh-client-ui-trajectory` 等）、`ResearchView.tsx`、`ResearchSettingsForm.tsx`。
+
+默认 `researchMode=react`：LLM 通过 function calling 循环调用工具；无 native `tool_calls` 时走 JSON ReAct fallback；结束后 Reviewer 门控与 Writer 生成报告。`pipeline` 为旧版固定流水线，检索统一走 `research_tools::pipeline_invoke`。深度预设见 [research-react-upgrade-plan.md](research/research-react-upgrade-plan.md)。
+
+**Phase 9 Trajectory（0.2.16）**：复用 DSH 官方 session 持久化与 `TrajectoryView`；Rust 经 Harness Bridge 追加标准事件。方案见 [research-trajectory-plan.md](research/research-trajectory-plan.md)。
+
+---
+
+## 16. 扩展方向
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。
