@@ -124,15 +124,15 @@ flowchart LR
 ```
 
 - 导入仅复制文件，不修改原件。当前选中真实文件夹时写入 `folder_id`；在「全部」或「未归档」下导入则 `folder_id` 为空。
-- **同文件一好一坏的根因**：封面与 LLM 各开一次 PDF.js 时，`destroy` 后立刻再 `getDocument` 会与共享 worker 竞态。导入现走 `extractForImport`：一次打开同时得到封面与分析用正文；全局 `enqueuePdfWork` 保证打开串行，关闭用 `loadingTask.destroy()`。
+- 封面与 LLM 共用 `extractForImport` 单次 PDF.js 会话；`enqueuePdfWork` 串行打开，`loadingTask.destroy()` 关闭。
 - 封面读取文档 Info 与首页/次页文本，填写标题、作者、日期、英文摘要；单字拆开的 Abstract 会拼回单词，折行会拼成段落。
-- 双栏首页按文本 x 的最大空隙分栏：优先在 Abstract 下方正文字号内测中缝（避免作者行铺满整页导致中缝失效）。Abstract 仅在一侧时只取该列；正文首行跨中缝且为连字符折行时保留全宽；右栏 Index Terms 上方出现小写短尾时按「左栏全文 + 右栏短尾」拼接（IEEE TKDE 常见）。
+- 双栏首页按文本 x 的最大空隙分栏：优先在 Abstract 下方正文字号内测中缝。Abstract 仅在一侧时只取该列；正文首行跨中缝且为连字符折行时保留全宽；右栏 Index Terms 上方出现小写短尾时按「左栏全文 + 右栏短尾」拼接（IEEE TKDE 常见）。
 - 摘要只用第 1 页 runs。同栏折行连字符与摘要区 drop-cap 在聚类时拼回；标题只在 Abstract 以上选取，忽略摘要超大号首字母。
-- 刊名：会议缩写匹配时 `WWW` 须带年份（避免 `www.ieee.org`）；IEEE DOI（如 `10.1109/TKDE…`）映射为 `IEEE TKDE` 等。
+- 刊名：会议缩写匹配时 `WWW` 须带年份；IEEE DOI（如 `10.1109/TKDE…`）映射为 `IEEE TKDE` 等。
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
 - 封面提取同时写入 PDF 页数。
-- 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本，避免带图请求拖垮整次分析）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
-- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：仅从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。已有分类的论文不覆盖。
+- 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
+- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。向尚无分类的论文写入分类结果。
 - LLM「测试连接」先写入当前设置；写入失败时不发起连接请求，测试结束前保持按钮禁用。
 - 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
 - PDF、Bib/RIS 导入失败时刷新资料库快照，并在顶部显示错误；导入期间禁用两个导入按钮与新建论文按钮。
@@ -234,7 +234,7 @@ flowchart LR
 ```
 
 - 文本层选区在 mouseup 时捕获；点选区外或选区折叠后收起浮动条。
-- 收录时优先用已配置的 LLM 做学术翻译（术语释义与句子翻译分提示词，并带页内上下文）；LibreTranslate 仅作弱回退。
+- 收录时用已配置的 LLM 做学术翻译（术语释义与句子翻译分提示词，并带页内上下文）；可配置 LibreTranslate 提供本地翻译。
 - 「加入写作库」弹出写作用途对话框：下拉选择已有类别（含内置与历史自定义），或选「新增类别…」命名后保存。
 - LibreTranslate 需先运行 `scripts/start-libretranslate.cmd`；设置里可填 `http://127.0.0.1:5000`（自动补全 `/translate`）。
 
@@ -310,7 +310,7 @@ paperReader/
 
 - **主领域**（`categories`）：16 个中文预设，对齐 [ACM CCS 2012](https://www.acm.org/publications/class-2012) 顶层概念，并将「计算方法」中国内常用的 CV / NLP / ML / 推荐等拆成独立主领域，便于论文库单选。
 - **子领域**（`tags`）：31 个可多选标签（方法、任务、阅读用途）。设置页可继续增删改。
-- 启动时 `schema.sql` 对预设执行 `INSERT OR IGNORE`，已有资料库会自动补全缺失项，不覆盖用户自建名称。
+- 启动时 `schema.sql` 对预设执行 `INSERT OR IGNORE`，已有资料库自动补全缺失项，保留用户自建名称。
 
 ### 5.3 文件夹
 
@@ -321,7 +321,7 @@ paperReader/
 
 ### 5.4 软删除与回收站
 
-- 删除论文设置 `papers.deletedAt`，不立即删文件。
+- 删除论文设置 `papers.deletedAt`，软删除并保留文件至永久删除。
 - 回收站永久删除才移除 PDF 与关联记录。
 - 批注、术语、佳句通过 `paperId` 外键关联。
 
@@ -388,7 +388,7 @@ flowchart TB
 - `App.tsx` 仅同步加载论文库首页；阅读台、论文雷达和其余屏幕以 `React.lazy` 按需获取，并在切换期间显示页面加载态。PDF 解析器在用户选择 PDF 后由顶栏导入流程加载。
 - 左侧导航在阅读台打开时也会关闭 overlay；若本会话有批注或收录改动，先弹出保存确认。
 - `Escape` 关闭阅读台（`App.tsx` 全局快捷键），同样走保存确认。
-- 论文雷达：设置默认关闭；进入雷达页只读本地 `radar.db`；点击「推荐今日论文」后才三路召回（alphaxiv 热点 / arXiv 新稿 / 兴趣召回）；采集进度全局保持。发现期不下 PDF。可勾选「仅元数据入库」。隐藏可恢复；单篇解读可并行，含中文标题/摘要并缓存，侧栏可删缓存重生成；「已解读」按钮区分样式。加入论文库时若开启「导入后自动整理」，跑填空式 LLM（不覆盖解读缓存）。语义重排可用云端 Embeddings 或本地 `BGE-small`。
+- 论文雷达：设置默认关闭；进入雷达页只读本地 `radar.db`；点击「推荐今日论文」后才三路召回（alphaxiv 热点 / arXiv 新稿 / 兴趣召回）；采集进度全局保持。发现期不下 PDF。可勾选「仅元数据入库」。隐藏可恢复；单篇解读可并行，含中文标题/摘要并缓存，侧栏可删除；「已解读」按钮区分样式。加入论文库时若开启「导入后自动整理」，向空字段写入 LLM 分析结果。语义重排可用云端 Embeddings 或本地 `BGE-small`。
 
 ### 7.1 视觉令牌
 
@@ -498,10 +498,10 @@ cd src-tauri; cargo check
 
 约束：
 
-- 导入 PDF（单篇或多篇）只走本地封面解析与可选 LLM，不调用 Crossref。
-- 关闭开关时，后端 `lookup_online_metadata` 直接返回错误，前端不显示按钮。
+- 导入 PDF（单篇或多篇）走本地封面解析与可选 LLM。
+- 关闭开关时，后端 `lookup_online_metadata` 直接返回错误，前端隐藏按钮。
 - 已有字段默认保留；确认面板只对差异字段提供勾选。
-- 同一论文、同一 DOI/标题查询键的结果缓存在 `settings.online_metadata_cache`，避免重复联网。
+- 同一论文、同一 DOI/标题查询键的结果缓存在 `settings.online_metadata_cache`。
 
 实现：`src-tauri/src/online_metadata.rs`、`OnlineMetadataSettingsForm.tsx`、`OnlineMetadataFillButton.tsx`、`src/lib/onlineMetadataPatch.ts`。
 
@@ -519,7 +519,7 @@ paper_custom_field_values(paper_id, field_id, value_json, updated_at)
 ```
 
 - 文本字段默认不在主表显示；其他类型默认显示，可在字段定义里关闭「表格列」。
-- 归档字段保留历史值，界面不再展示；归档前提示受影响论文数。
+- 归档字段保留历史值，界面隐藏该字段；归档前提示受影响论文数。
 - 导入、LLM、Crossref 只写固定核心字段。
 
 实现：`src-tauri/src/custom_fields.rs`、`CustomFieldsSettingsForm.tsx`、`PaperCustomFieldsSection.tsx`、`src/lib/customFields.ts`。

@@ -6,7 +6,7 @@
 
 | 能力 | 纳入 PaperNest | 推荐范围与顺序 |
 | --- | --- | --- |
-| 在线元数据补全 | 已实现 | Crossref；默认关闭；论文详情手动触发；导入 PDF 不联网 |
+| 在线元数据补全 | 已实现 | Crossref；默认关闭；论文详情手动触发；导入 PDF 走本地解析 |
 | 自定义字段 | 已实现 | 七种标量类型；设置页定义；详情页填写；可选表格列 |
 | Word 插件 | 独立后续模块 | 从 PaperNest 搜索并插入格式化引用/参考文献；与桌面应用分项目、分安装包交付。 |
 | 浏览器插件 | 轻量采集器，晚于 Word 插件 | Manifest V3 网页采集器提取 URL、DOI、标题和下载链接，发送待导入请求。 |
@@ -40,7 +40,7 @@ User-Agent: PaperNest/0.1 (+https://github.com/<项目地址>; mailto:<用户邮
 mailto=<用户邮箱>
 ```
 
-`mailto` 或 `agent` header 是进入 polite pool 的官方方式；本项目使用前者并同时提供可识别的 User-Agent。当前官方限制：public pool 每秒 5 请求、并发 1；polite pool 每秒 10 请求、并发 3。实现读取 `x-rate-limit-limit`、`x-rate-limit-interval` 和 `x-concurrency-limit`，收到 `429` 时指数退避并显示「稍后重试」。单篇手动补全最多一次精确 DOI 请求或一次候选搜索，导入时不自动联网；成功和失败均缓存，避免重复查询。  
+`mailto` 或 `agent` header 是进入 polite pool 的官方方式；本项目使用前者并同时提供可识别的 User-Agent。当前官方限制：public pool 每秒 5 请求、并发 1；polite pool 每秒 10 请求、并发 3。实现读取 `x-rate-limit-limit`、`x-rate-limit-interval` 和 `x-concurrency-limit`，收到 `429` 时指数退避并显示「稍后重试」。单篇手动补全最多一次精确 DOI 请求或一次候选搜索；导入走本地解析。成功和失败均缓存在本地。  
 来源：[Crossref Access and authentication](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)、[Crossref REST API 使用建议](https://crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)
 
 ### 实施设计

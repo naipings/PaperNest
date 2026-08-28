@@ -66,7 +66,7 @@ export function OnlineMetadataConfirmModal({
   return (
     <Modal title="Crossref 元数据确认" onClose={onClose} wide>
       <div className="online-metadata-modal">
-        {cached && <p className="inline-notice">本次结果来自本地缓存，同一篇论文不会重复请求 Crossref。</p>}
+        {cached && <p className="inline-notice">本次结果来自本地缓存。</p>}
         {candidates.length > 1 && (
           <section className="metadata-candidate-list">
             <h3>选择候选条目</h3>

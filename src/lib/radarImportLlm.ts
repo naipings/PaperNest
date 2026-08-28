@@ -38,16 +38,13 @@ async function analysisTextForRadarPaper(paper: Paper): Promise<string> {
       const extracted = await extractForImport(bytes, false);
       if (extracted.text.trim().length >= 80) return extracted.text;
     } catch {
-      /* 无 PDF 文本时回退标题摘要 */
+      /* 无 PDF 文本时用标题摘要 */
     }
   }
   return liteAnalysisSeed(paper, undefined, "");
 }
 
-/**
- * 雷达新入库后：与 PDF 导入同开关跑 LLM 整理；字段仅填空，不覆盖解读缓存 / arXiv 元数据。
- * 失败由调用方展示提示，不回滚已入库论文。
- */
+/** 雷达新入库后，与 PDF 导入共用自动整理开关，向空字段写入 LLM 分析结果。 */
 export async function runRadarImportLlmFill(
   paper: Paper,
   opts: {
@@ -58,7 +55,7 @@ export async function runRadarImportLlmFill(
 ): Promise<{ paper: Paper; note: string }> {
   const text = await analysisTextForRadarPaper(paper);
   if (text.trim().length < 80) {
-    return { paper, note: "摘要过短且无可用 PDF 文本，已跳过 LLM 整理" };
+    return { paper, note: "摘要过短且无可用 PDF 文本，未执行 LLM 整理" };
   }
 
   const analysis = await analyzeWithFallback(paper, { text, candidateImages: [] });
@@ -96,7 +93,7 @@ export async function runRadarImportLlmFill(
     });
   }
 
-  const notes = ["已自动 LLM 整理（仅填空）"];
+  const notes = ["已自动 LLM 整理"];
   if (taxonomyNote) notes.push(taxonomyNote);
   return { paper: filled, note: notes.join("；") };
 }

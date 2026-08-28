@@ -64,7 +64,7 @@ export async function translateEnglishToChinese(text: string): Promise<string> {
   return backend.translateText(config.endpoint, value, config.apiKey);
 }
 
-/** Prefer configured LLM for academic quality; LibreTranslate is a weak offline fallback. */
+/** 学术翻译优先走 LLM；已配置 LibreTranslate 时用于本地翻译。 */
 export async function translateEnglishToChineseWithFallback(
   text: string,
   llmReady: boolean,

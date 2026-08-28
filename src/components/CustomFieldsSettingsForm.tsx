@@ -59,7 +59,7 @@ export function CustomFieldsSettingsForm() {
   const archive = async (definition: CustomFieldDefinition) => {
     const count = data.customFieldValues.filter(item => item.fieldId === definition.id).length;
     const message = count
-      ? `归档「${definition.name}」后，${count} 篇论文上的该字段值会保留但不再显示。继续吗？`
+      ? `归档「${definition.name}」后，${count} 篇论文上的该字段值保留在资料库，界面隐藏该字段。继续吗？`
       : `归档「${definition.name}」？`;
     if (!confirm(message)) return;
     setBusy(true);

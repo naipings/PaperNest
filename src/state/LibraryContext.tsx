@@ -8,7 +8,7 @@ interface LibraryContextValue {
   setImportBusy(value: string): void; setImportNotice(value: string): void;
   radarBusy: string; radarNotice: string;
   setRadarBusy(value: string): void; setRadarNotice(value: string): void;
-  /** arxivId → 短标题；多篇解读可并行，离开雷达页仍可展示进度 */
+  /** arxivId → 短标题；多篇解读可并行，全局状态展示进度 */
   radarExplaining: Record<string, string>;
   startRadarExplain(arxivId: string, title: string): void;
   finishRadarExplain(arxivId: string): void;

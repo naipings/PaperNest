@@ -42,8 +42,8 @@
 | D10 | 推荐空池        | **cascade + 策略标签**              | 见 §7                                        |
 | D11 | 兴趣过滤 vs 采集  | **修订为三路召回（见 §7.7）** | V1.1 曾定「广采+展示过滤」；实测遗漏来自「Hot Top-N ∪ New 最新 N」池太窄，关键词无法找回未入库稿 |
 | D12 | 关键词 vs 语义近义 | **子串过滤 + embedding rerank** | §7.5 / §7.6 |
-| D14 | 雷达入库 LLM     | **同 PDF 导入开关；仅填空合并**   | 有 PDF 用全文，否则标题+摘要；不覆盖解读缓存；失败不回滚 |
-| D15 | 单篇解读时延/质量 | **完整结构化优先于极简速读** | 输入完整摘要≤1800；含 abstractZh；`max_tokens≈1800`；alphaXiv Overview 抓取不做 V1 |
+| D14 | 雷达入库 LLM     | **同 PDF 导入开关；向空字段写入**   | 有 PDF 用全文，否则标题+摘要；保留已有字段 |
+| D15 | 单篇解读时延/质量 | **完整结构化；方法多段详析** | 方法 3 段 450–650 字；UI 不展英文摘要；配图延后 |
 | D16 | 榜单信息架构     | **四榜保留 + 来源写全** | Hot=alphaxiv；New=arXiv；Interest=关键词召回；Recommend=排序层非新采集 |
 
 
@@ -370,7 +370,7 @@ PaperNest 用户可能周一采、周五再采，中间四天空窗——若仍�
 
 ### 7.4 与「加入论文库」的关系
 
-- 「已在库」默认从推荐池排除（避免重复安利），双榜单仍可显示「已在库」角标。  
+- 「已在库」默认从推荐池排除，双榜单显示「已在库」角标。  
 - 画像信号（V1）：订阅 cs.*、`Profile.researchField`、库内标题/摘要词重叠、稍后读、隐藏、打开外链。  
 - **不**把未入库雷达浏览当成必须持久的重画像；点按模式下行为稀疏，规则信号优先于复杂向量。
 
@@ -445,7 +445,7 @@ interest_match = keyword_hit AND category_hit   （两组都配置时取 AND；�
 1. ~~V1.1 不做 embedding~~ → **Phase 5.2（0.2.2）已落地**：路径 C+A。
 2. 在已有 LLM 配置上增加可选 `embeddingModel`；对兴趣 query 与候选卡片 Top-K 做 cosine rerank，缓存于 `radar_embeddings`。
 3. **不**上本地向量库（Faiss/Qdrant）— 候选规模小，暴力 cosine 足够。
-4. 无 LLM Key / 未填 embedding 模型 / API 失败时**回退子串+规则排序**，不阻塞推荐面。
+4. 无 LLM Key / 未填 embedding 模型 / API 失败时用子串+规则排序，推荐面照常展示。
 
 **实施前置（V2）**
 
@@ -590,7 +590,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 | 边界   | 规则                                      |
 | ---- | --------------------------------------- |
 | 快照加载 | 不读 `radar.db`                           |
-| 论文表  | 不自动插入                                   |
+| 论文表  | 雷达采集不写主库论文表                                   |
 | PDF  | 发现期零文件；入库才写 `pdf/originals`             |
 | 联网   | `enabled=false` **或** 未走「推荐今日」命令 → 零外网  |
 | LLM  | 失败只影响雷达子面板                              |
@@ -603,7 +603,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 
 - alphaxiv：HTTP feed；失败则 New 榜仍可用。  
 - arXiv：官方 API，≥3.1s，mailto UA；默认订阅 5–8 个 cs.*。  
-- 入库：判重 → 元数据（可复用解读缓存中文三件套）→ **默认下载 PDF** → 若开启「导入后自动整理」则 **填空式 LLM**（summary/术语/空分类；不覆盖已有字段）→ `locatePaper`。
+- 入库：判重 → 元数据（可复用解读缓存中文三件套）→ **默认下载 PDF** → 若开启「导入后自动整理」则向空字段写入 LLM 分析（summary/术语/分类）→ `locatePaper`。
 
 
 
@@ -630,7 +630,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 | 现有功能    | 风险          | 缓解                    |
 | ------- | ----------- | --------------------- |
 | 启动 / 进页 | 误自动联网       | 双层保护；无空闲调度            |
-| 论文库表格   | 被日更淹没       | 不自动入库                 |
+| 论文库表格   | 被日更淹没       | 发现期元数据留在 radar.db                 |
 | 磁盘      | 日更 PDF 膨胀   | 方案 A 零预下载             |
 | 判重      | 双路径重复       | 复用 `paperDuplicate`   |
 | LLM 配额  | 自动综述烧 Token | 综述默认手动；与「推荐今日」解耦      |
@@ -666,7 +666,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 - [x] 按钮触发管道；Hot + New；日历标记有数日  
 - [x] 同日幂等（`INSERT … ON CONFLICT DO UPDATE`）；单源失败隔离  
 
-**验收**：点击后可见双榜；再进页不自动重抓，可浏览缓存。✅ 已通过。
+**验收**：点击后可见双榜；再进页读本地缓存，点按钮才重采。✅ 已通过。
 
 ### Phase 3 — 加入论文库（此时才下 PDF）
 
@@ -706,7 +706,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 - [x] 推荐 Top-K 上叠加 `0.3 * cosine(query, doc)`；失败回退规则排序  
 - [x] UI 策略标签 `embedding_rerank` / 「语义相近 N%」  
 
-**验收**：配置 embedding 模型与关键词后，「为你推荐」可出现语义重排；未配置 Key/模型时不阻塞、仍用规则排序。
+**验收**：配置 embedding 模型与关键词后，「为你推荐」可出现语义重排；未配置时用规则排序。
 
 ### Phase 6 — Agent（仍为后续）
 
@@ -723,7 +723,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 
 | 能力                  | 状态   | 实现位置                                      | 备注                      |
 | ------------------- | ---- | ----------------------------------------- | ----------------------- |
-| 双层启动保护              | ✅    | `RadarSettingsForm` + `radar_fetch_today` | 设置默认关；进页不联网             |
+| 双层启动保护              | ✅    | `RadarSettingsForm` + `radar_fetch_today` | 设置默认关；进页读本地快照，点按钮才采集 |
 | alphaxiv 热点榜        | ✅    | `fetch_alphaxiv_hot`                      | HTTP feed，无 Playwright  |
 | arXiv 新稿榜           | ✅    | `fetch_arxiv_new`                         | 官方 Atom API + mailto UA |
 | 独立 `radar.db`       | ✅    | `open_radar_pool`                         | 与 `library.db` 分离       |
@@ -755,7 +755,7 @@ Rust: R1 Hot + R2 New(+日窗) + R3 Interest(关键词查询) → radar.db（按
 | `npm run tauri build` → `PaperNest_0.2.2_x64-setup.exe` | ✅ 打包                 |
 | 仅元数据入库勾选                                                | ✅ 顶栏 + 按钮文案切换        |
 | embeddingModel 设置 + 缓存表                                 | ✅ `radar_embeddings` |
-| 未配置 embedding 时推荐不阻塞                                    | ✅ 回退规则排序             |
+| 未配置 embedding 时推荐照常展示                                    | ✅ 规则排序             |
 | 0.2.3 本地 BGE + onnxruntime.dll 一键下载                        | ✅ `models/` 按需安装；SciBERT 不适用 |
 
 

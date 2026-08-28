@@ -2,7 +2,7 @@
 
 PaperNest 通过设置中的单一「主题」选择界面外观，服务于论文管理与阅读任务。
 
-页眉对齐 [Helios Page Header](https://helios.hashicorp.design/components/page-header) 与 [Boreal PageHeader](https://www.borealui.ca/docs/components/pageheader)：标题与右侧操作同一基线，说明单行跟在标题下；去掉嵌套白卡片，避免背景接缝与左右错位。
+页眉对齐 [Helios Page Header](https://helios.hashicorp.design/components/page-header) 与 [Boreal PageHeader](https://www.borealui.ca/docs/components/pageheader)：标题与右侧操作同一基线，说明单行跟在标题下；页眉平铺在页面背景上，无嵌套白卡片。
 
 | 元素 | 规则 |
 |---|---|

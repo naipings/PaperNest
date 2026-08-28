@@ -70,7 +70,7 @@ export function RadarSettingsForm() {
     <section className="settings-form radar-settings">
       <h2><RadarIcon size={19} />论文雷达</h2>
       <p className="settings-description">
-        默认关闭。启用后，在「论文雷达」页点击「推荐今日论文」才会联网：Hot（alphaxiv）+ New（订阅类目日窗）+ Interest（关键词查询补漏）。发现期只保存元数据；界面默认按类目与关键词过滤展示。
+        默认关闭。启用后，在「论文雷达」页点击「推荐今日论文」联网采集：Hot（alphaxiv）+ New（订阅类目日窗）+ Interest（关键词查询）。发现期只保存元数据；界面默认按类目与关键词过滤展示。
       </p>
       {!isTauri() && <p className="inline-notice">浏览器预览模式不支持论文雷达联网功能。</p>}
       <label className="checkbox-setting">
@@ -130,11 +130,11 @@ export function RadarSettingsForm() {
       <div className="info-card">
         <RadarIcon size={18} />
         <div>
-          <strong>双层启动保护</strong>
+          <strong>使用步骤</strong>
           <ol className="metadata-guide-list">
             <li>在此页启用并保存。</li>
             <li>打开侧栏「论文雷达」。</li>
-            <li>点击「推荐今日论文」后才会采集。</li>
+            <li>点击「推荐今日论文」开始采集。</li>
           </ol>
         </div>
       </div>

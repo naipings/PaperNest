@@ -53,7 +53,7 @@ export function mergeFrameworkFields(textAnalysis: LlmAnalysis, visionAnalysis: 
   };
 }
 
-/** 仅填补空字段；已有解读缓存 / arXiv 元数据不被 LLM 覆盖。 */
+/** 向空字段写入 LLM 分析结果。 */
 export function applyAnalysisFillEmpty(paper: Paper, analysis: LlmAnalysis): Paper {
   const blank = (value?: string | null) => !value?.trim();
   const fill = (current: string | undefined, next?: string) =>

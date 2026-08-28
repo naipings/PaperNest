@@ -1871,7 +1871,7 @@ pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -
   let abstract_text: String = row.get("abstract_text");
   let ai_summary: String = row.get("ai_summary");
   radar.close().await;
-  // 解读输入优先完整英文摘要；alphaxiv tl;dr 仅作摘要缺失时的回退（避免对短 tl;dr 再压缩）
+  // 解读输入优先完整英文摘要；缺省时用 alphaxiv tl;dr
   let source_en = if abstract_text.trim().len() >= 80 {
     abstract_text.trim().to_string()
   } else if ai_summary.trim().len() >= 40 {
@@ -1883,13 +1883,13 @@ pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -
     return Err("缺少摘要，无法解读".into());
   }
   let llm = load_llm_settings(&*state.pool.read().await).await?;
-  let source_clip: String = source_en.chars().take(1800).collect();
+  let source_clip: String = source_en.chars().take(2200).collect();
   let raw = llm_completion_opts(
     &llm,
-    "你是学术研读助手。根据标题与英文摘要，用简体中文生成结构化解读，专有名词可保留英文。只输出 JSON：{\"titleZh\":\"中文标题\",\"abstractZh\":\"中文摘要（忠实翻译，可适度压缩）\",\"summaryZh\":\"一句话总结\",\"problem\":\"研究问题\",\"method\":\"方法与思路\",\"finding\":\"主要结论或贡献\",\"highlight\":\"亮点、局限或开源信息\"}。titleZh/summaryZh 各不超过40字；abstractZh 不超过320字；problem/method/finding/highlight 各不超过120字。不要输出 markdown 代码块。",
+    "你是学术研读助手。根据标题与英文摘要，用简体中文生成结构化解读，专有名词可保留英文。只输出 JSON：{\"titleZh\":\"中文标题\",\"abstractZh\":\"中文摘要（忠实翻译，可适度压缩）\",\"summaryZh\":\"一句话总结\",\"problem\":\"研究问题\",\"method\":\"方法详析\",\"finding\":\"主要结论或贡献\",\"highlight\":\"亮点、局限或开源信息\"}。titleZh/summaryZh 各不超过40字；abstractZh 不超过320字；problem/finding/highlight 各不超过140字。method 必须写成 3 段连续中文分析，段与段之间用两个换行符 \\n\\n 分隔，合计 450～650 字：第1段写问题切入与总体思路；第2段写关键模块、流水线或算法步骤（尽量具体）；第3段写训练/推理流程，或与常见做法的差异；摘要未写清的内容明确写「摘要未详述」，禁止编造实验数字与未给出的模块名。不要输出 markdown 代码块。",
     serde_json::Value::String(format!("标题：{title}\n\n摘要：{source_clip}")),
-    Some(1800),
-    120,
+    Some(2800),
+    150,
   )
   .await
   .map_err(|error| format!("解读请求失败：{error}"))?;
@@ -1903,7 +1903,13 @@ pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -
     abstract_zh: parsed.get("abstractZh").and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string),
     summary_zh: parsed.get("summaryZh").and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string),
     problem: parsed.get("problem").and_then(|v| v.as_str()).unwrap_or("").trim().to_string(),
-    method: parsed.get("method").and_then(|v| v.as_str()).unwrap_or("").trim().to_string(),
+    method: parsed
+      .get("method")
+      .and_then(|v| v.as_str())
+      .unwrap_or("")
+      .trim()
+      .replace("\\n\\n", "\n\n")
+      .replace("\\n", "\n"),
     finding: parsed.get("finding").and_then(|v| v.as_str()).unwrap_or("").trim().to_string(),
     highlight: parsed.get("highlight").and_then(|v| v.as_str()).unwrap_or("").trim().to_string(),
     model: Some(llm.model.clone()),

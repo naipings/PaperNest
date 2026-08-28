@@ -810,8 +810,19 @@ button.reading-heat-dot { cursor: default; }
 }
 
 .radar-page .radar-layout { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; align-items: start; }
-.radar-page .radar-layout:has(.radar-explain) { grid-template-columns: 180px minmax(0, 1fr) 280px; }
+.radar-page .radar-layout:has(.radar-explain) { grid-template-columns: 180px minmax(0, 1fr) 340px; }
 .radar-calendar, .radar-explain { border: 1px solid var(--line); background: var(--panel); border-radius: 18px; padding: 14px; box-shadow: 0 6px 18px rgba(40,70,120,.05); }
+.radar-explain {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+.radar-explain-method { margin: 0 0 10px; }
+.radar-explain-method strong { display: block; margin-bottom: 6px; color: var(--accent); font-size: 12px; }
+.radar-explain-method p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; }
+.radar-explain-method p:last-child { margin-bottom: 0; }
 .radar-calendar h3, .radar-explain header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 13px; }
 .radar-explain-actions { display: flex; align-items: center; gap: 4px; }
 .radar-explain-actions .ghost.danger { color: #b42318; }
@@ -903,7 +914,6 @@ button.reading-heat-dot { cursor: default; }
 .radar-explain p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
 .radar-explain strong { display: block; margin-bottom: 4px; color: var(--accent); font-size: 12px; }
 .radar-explain-en { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.radar-explain-hint { color: var(--muted); font-size: 11px !important; }
 @media (max-width: 1100px) {
   .radar-page .radar-layout, .radar-page .radar-layout:has(.radar-explain) { grid-template-columns: 1fr; }
   .radar-week-grid, .radar-category-grid, .radar-limit-row { grid-template-columns: 1fr; }

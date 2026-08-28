@@ -12,7 +12,7 @@
 | 主领域 | 0 或 1 个；无法合理匹配 → **弃权**（`categoryId = null`） |
 | 子领域 | 0～N 个；**弃权时强制为空**；默认严格度下 N ≤ 3 |
 | 严格度 | 默认 **strict**；设置页可选 standard / relaxed |
-| 覆盖策略 | 仅当论文**尚无** `categoryId` 且 `tagIds` 为空时写入；用户已分类的不覆盖 |
+| 覆盖策略 | 向尚无 `categoryId` 且 `tagIds` 为空的论文写入分类结果 |
 | 新标签 | V1 **不**自动创建 category/tag；域外论文保持未分类 |
 
 ---
@@ -31,15 +31,14 @@
 
 ### 1.2 V1 目标
 
-导入后自动为**能匹配现有词表**的 CS 论文填入主领域与子领域；**不能匹配则弃权**，避免标签膨胀。
+导入后自动为**能匹配现有词表**的 CS 论文填入主领域与子领域；无法匹配则保持未分类。
 
-### 1.3 V1 不做
+### 1.3 V1 范围边界
 
-- 不自动新建 category/tag
-- 不做两阶段（先主后子）独立 API 调用
-- 不用 logprob 置信度门槛（留 V2）
-- 不做「仅建议、用户点选」UI（留 V2；V1 直接写入，但有弃权与覆盖保护）
-- 不改造 Bib/RIS 导入路径（可 V1.1 复用同一 classify 命令）
+- 分类名称来自用户库内 `categories` / `tags`，LLM 不自造标签
+- 单步 API 同时输出主领域与子领域
+- 置信度门槛与「仅建议」UI 留待 V2
+- Bib/RIS 导入路径可 V1.1 复用同一 classify 命令
 
 ---
 
@@ -343,7 +342,7 @@ interface LlmSettings {
 
 | 文件 | 用例 |
 | --- | --- |
-| `src/lib/taxonomyClassify.test.ts` | `mergeTaxonomyIntoPaper` 不覆盖已有分类；弃权时 tag 清空；通知文案 |
+| `src/lib/taxonomyClassify.test.ts` | `mergeTaxonomyIntoPaper` 保留已有分类；弃权时 tag 清空；通知文案 |
 | `src-tauri/src/lib.rs` `#[cfg(test)]` | `validate_taxonomy`：非法 id 丢弃、strict 仅 central、弃权短路、超 max 截断 |
 | `src/components/LlmTopbar.taxonomy.test.tsx`（可选） | mock `classifyPaperTaxonomy`，断言 `savePaper` 带上 categoryId/tagIds |
 
@@ -386,7 +385,7 @@ tags.length === 0 → 允许只填 categoryId，tagIds 恒为 []
 3. **LLM Survey**：主领域 `自然语言处理`；strict 下 tags 含 `大语言模型`、`综述`（均为 central/substantial 视摘要而定）。
 4. **明显非 CS PDF**：abstain，categoryId/tagIds 为空，导入通知说明「未匹配现有主领域」。
 5. **LLM 返回伪造 id `cat-fake`**：校验后丢弃，若 category 无效则整单弃权。
-6. **用户已手动设 category 的论文再次分析**：不覆盖（V1 导入路径只跑一次；此条防未来「重新分析」功能误伤）。
+6. **用户已手动设 category 的论文再次分析**：保留已有分类（V1 导入路径只跑一次）。
 
 ---
 

@@ -33,7 +33,7 @@ export function OnlineMetadataSettingsForm() {
     <section className="settings-form online-metadata-settings">
       <h2><Globe2 size={19} />在线元数据补全</h2>
       <p className="settings-description">
-        默认关闭。启用后，在论文详情中手动点击「查找在线元数据」才会向 Crossref 查询；导入 PDF 时不会自动联网。
+        默认关闭。启用后，在论文详情手动点击「查找在线元数据」向 Crossref 查询；导入 PDF 走本地封面解析。
       </p>
       <label className="checkbox-setting">
         <input
@@ -86,7 +86,7 @@ export function OnlineMetadataSettingsForm() {
         <Globe2 size={18} />
         <div>
           <strong>联网范围</strong>
-          <p>关闭时不会发起任何 Crossref 请求。开启后也只在你点击按钮时查询；不上传 PDF、批注、术语或 LLM 密钥。查询结果会缓存在本地，避免重复请求。</p>
+          <p>关闭时保持离线。开启后在你点击按钮时查询 Crossref，只发送 DOI/标题等检索字段；查询结果缓存在本地。</p>
         </div>
       </div>
 

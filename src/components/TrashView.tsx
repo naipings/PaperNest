@@ -19,6 +19,6 @@ export function TrashView() {
       </div>
       <div className="page-heading-actions"><div className="stat-card"><strong>{papers.length}</strong><small>待处理</small></div></div>
     </header>
-    {!papers.length ? <EmptyState icon="trash" title="回收站是空的" description="删除的论文会先移动到这里，不会立即清除本地 PDF。" /> : <div className="trash-list">{papers.map(paper => <article key={paper.id}><Trash2 size={18} /><div><strong>{paper.titleZh || paper.titleEn}</strong><small>删除于 {new Date(paper.deletedAt!).toLocaleString("zh-CN")}</small></div><button className="secondary" onClick={() => void restore(paper)}><RotateCcw size={15} />恢复</button><button className="secondary danger" onClick={() => purge(paper)}><Trash2 size={15} />永久删除</button></article>)}</div>}
+    {!papers.length ? <EmptyState icon="trash" title="回收站是空的" description="删除的论文会移到这里，附件与批注保留，可随时恢复。" /> : <div className="trash-list">{papers.map(paper => <article key={paper.id}><Trash2 size={18} /><div><strong>{paper.titleZh || paper.titleEn}</strong><small>删除于 {new Date(paper.deletedAt!).toLocaleString("zh-CN")}</small></div><button className="secondary" onClick={() => void restore(paper)}><RotateCcw size={15} />恢复</button><button className="secondary danger" onClick={() => purge(paper)}><Trash2 size={15} />永久删除</button></article>)}</div>}
   </main>;
 }

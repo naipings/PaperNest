@@ -227,7 +227,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
       return;
     }
     if (exclusiveBusy) {
-      flashNotice("采集/入库/综述进行中，请稍后再发起新解读。已缓存解读仍可点开。");
+      flashNotice("采集/入库/综述进行中，请稍后再发起新解读。");
       return;
     }
     if (radarExplaining[card.arxivId]) {
@@ -267,7 +267,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
         next.delete(id);
         return next;
       });
-      flashNotice("已删除解读缓存，可重新点「解读」生成。");
+      flashNotice("已删除解读。");
     } catch (error) {
       flashNotice(error instanceof Error ? error.message : String(error));
     }
@@ -387,7 +387,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
   }
 
   if (!settings.enabled) {
-    return <main className="content-page radar-page"><header className="page-heading"><div className="page-title-block"><div className="page-title-row"><span className="page-title-icon"><RadarIcon size={18} /></span><h1>论文雷达</h1><span className="page-kicker">发现层</span></div><p>尚未启用。请到「设置 → 论文雷达」打开开关后再回来点击推荐。</p></div></header></main>;
+    return <main className="content-page radar-page"><header className="page-heading"><div className="page-title-block"><div className="page-title-row"><span className="page-title-icon"><RadarIcon size={18} /></span><h1>论文雷达</h1><span className="page-kicker">发现层</span></div><p>请到「设置 → 论文雷达」启用后，点击「推荐今日论文」开始采集。</p></div></header></main>;
   }
 
   return (
@@ -395,10 +395,10 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
       <header className="page-heading">
         <div className="page-title-block">
           <div className="page-title-row"><span className="page-title-icon"><RadarIcon size={18} /></span><h1>论文雷达</h1><span className="page-kicker">发现层</span></div>
-          <p>三路召回：alphaxiv 热点 / arXiv 新稿 / 关键词兴趣。加入论文库时才下载 PDF。进入本页不会自动联网。</p>
+    <p>三路召回：alphaxiv 热点 / arXiv 新稿 / 关键词兴趣。加入论文库时下载 PDF。本页默认只读本地快照，点击「推荐今日论文」才联网采集。</p>
         </div>
         <div className="page-heading-actions">
-          <button type="button" className="ghost" disabled={refreshing || !!exclusiveBusy} onClick={() => void refreshRadarView()} title="重新加载当前榜单（不联网采集）">
+          <button type="button" className="ghost" disabled={refreshing || !!exclusiveBusy} onClick={() => void refreshRadarView()} title="重新加载当前榜单（本地快照）">
             <RefreshCw size={15} className={refreshing ? "spin" : undefined} />刷新
           </button>
           <button type="button" className="primary" disabled={!!exclusiveBusy} onClick={() => void fetchToday()}>
@@ -407,7 +407,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
           </button>
           <label className="checkbox-setting radar-import-option">
             <input type="checkbox" checked={metadataOnly} onChange={event => setMetadataOnly(event.target.checked)} />
-            加入时仅元数据（不下 PDF）
+            加入时只入库元数据
           </label>
           <div className="stat-card"><strong>{dates.length}</strong><small>采集日</small></div>
         </div>
@@ -542,7 +542,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
             <header>
               <h3>单篇解读</h3>
               <div className="radar-explain-actions">
-                <button type="button" className="ghost danger" onClick={() => void deleteExplanation()} title="删除本地解读缓存">
+                <button type="button" className="ghost danger" onClick={() => void deleteExplanation()} title="删除解读">
                   <Trash2 size={14} />删除
                 </button>
                 <button type="button" className="ghost" onClick={() => setExplain(undefined)}>关闭</button>
@@ -557,12 +557,17 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
             )}
             {explain.summaryZh && <p><strong>一句话</strong>{explain.summaryZh}</p>}
             {explain.abstractZh && <p><strong>中文摘要</strong>{explain.abstractZh}</p>}
-            {explain.abstractEn && <p><strong>英文摘要</strong><span className="radar-explain-en">{explain.abstractEn}</span></p>}
             <p><strong>问题</strong>{explain.problem}</p>
-            <p><strong>方法</strong>{explain.method}</p>
+            <div className="radar-explain-method">
+              <strong>方法</strong>
+              {explain.method
+                .split(/\n{2,}/)
+                .map(part => part.trim())
+                .filter(Boolean)
+                .map((para, index) => <p key={index}>{para}</p>)}
+            </div>
             <p><strong>结论</strong>{explain.finding}</p>
             <p><strong>亮点</strong>{explain.highlight}</p>
-            <p className="radar-explain-hint">已缓存。删除后可重新解读；入库时可再做 LLM 整理补术语与分类。</p>
           </aside>
         )}
       </div>
