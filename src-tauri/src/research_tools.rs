@@ -11,7 +11,6 @@ pub struct ToolSpec {
 
 pub struct SourceCollector {
   sources: Vec<ResearchSource>,
-  seen_local: HashSet<String>,
   seen_urls: HashSet<String>,
   next_id: i64,
 }
@@ -19,15 +18,10 @@ pub struct SourceCollector {
 impl SourceCollector {
   pub fn from_workspace(workspace: &Path) -> Result<Self> {
     let sources = read_sources(workspace)?;
-    let seen_local = sources
-      .iter()
-      .filter_map(|s| s.local_paper_id.clone())
-      .collect();
     let seen_urls = sources.iter().filter_map(|s| s.url.clone()).collect();
     let next_id = sources.len() as i64 + 1;
     Ok(Self {
       sources,
-      seen_local,
       seen_urls,
       next_id,
     })
@@ -53,6 +47,8 @@ impl SourceCollector {
     Ok(())
   }
 
+  /// 返回论文对应的来源条目，以及它是否为本次新增。已登记的论文同样返回条目，
+  /// 让工具观察值始终带上 [src-xxx] 与元数据。
   pub fn add_local_hit(
     &mut self,
     workspace: &Path,
@@ -61,11 +57,14 @@ impl SourceCollector {
     title: &str,
     snippet: &str,
     page: Option<i64>,
-  ) -> Result<Option<ResearchSource>> {
-    if self.seen_local.contains(paper_id) {
-      return Ok(None);
+  ) -> Result<(ResearchSource, bool)> {
+    if let Some(existing) = self
+      .sources
+      .iter()
+      .find(|item| item.local_paper_id.as_deref() == Some(paper_id))
+    {
+      return Ok((existing.clone(), false));
     }
-    self.seen_local.insert(paper_id.to_string());
     let source = ResearchSource {
       id: self.next_source_id(),
       kind: "local".into(),
@@ -78,7 +77,7 @@ impl SourceCollector {
       stored_locally: true,
     };
     self.push_source(workspace, source.clone())?;
-    Ok(Some(source))
+    Ok((source, true))
   }
 
   pub fn add_arxiv_brief(
@@ -100,6 +99,34 @@ impl SourceCollector {
       title: title.to_string(),
       accessed_at: now.to_string(),
       excerpt: abstract_text.to_string(),
+      local_paper_id: None,
+      page: None,
+      stored_locally: false,
+    };
+    self.push_source(workspace, source.clone())?;
+    Ok(Some(source))
+  }
+
+  pub fn add_web_brief(
+    &mut self,
+    workspace: &Path,
+    now: &str,
+    url: &str,
+    title: &str,
+    excerpt: &str,
+    kind: &str,
+  ) -> Result<Option<ResearchSource>> {
+    if self.seen_urls.contains(url) {
+      return Ok(None);
+    }
+    self.seen_urls.insert(url.to_string());
+    let source = ResearchSource {
+      id: self.next_source_id(),
+      kind: kind.to_string(),
+      url: Some(url.to_string()),
+      title: title.to_string(),
+      accessed_at: now.to_string(),
+      excerpt: excerpt.to_string(),
       local_paper_id: None,
       page: None,
       stored_locally: false,
@@ -195,11 +222,13 @@ pub fn react_tool_catalog(allow_web: bool) -> Vec<ToolSpec> {
     ),
     tool(
       "get_paper",
-      "按论文 ID 读取元数据与摘要，登记为来源。",
+      "读取本地论文元数据与摘要。paperId 为 search_library 行内 paper: 后的 ID，或传入 [src-xxx] 来源编号。",
       serde_json::json!({
         "type": "object",
-        "properties": { "paperId": { "type": "string" } },
-        "required": ["paperId"]
+        "properties": {
+          "paperId": { "type": "string", "description": "本地 papers.id，或 src-xxx 来源编号" },
+          "sourceId": { "type": "string", "description": "同 paperId，可传 src-xxx" }
+        }
       }),
     ),
     tool(
@@ -265,17 +294,50 @@ pub fn react_tool_catalog(allow_web: bool) -> Vec<ToolSpec> {
       1,
       tool(
         "search_arxiv",
-        "检索 arXiv 元数据（仅链接与摘要，不下载 PDF）。",
+        "检索 arXiv 预印本元数据，按投稿时间由新到旧返回（仅链接与摘要，不下载 PDF）。",
         serde_json::json!({
           "type": "object",
           "properties": {
-            "query": { "type": "string" },
+            "query": {
+              "type": "string",
+              "description": "2～5 个英文主题词，按重要度排序；所有词按 AND 组合，词越多越精准"
+            },
             "limit": { "type": "integer" }
           },
           "required": ["query"]
         }),
       ),
     );
+    tools.insert(
+      2,
+      tool(
+        "search_web",
+        "检索外网学术与技术来源：OpenAlex（含 IEEE/ACM 等 DOI 论文）、Crossref、GitHub 仓库。返回链接与摘要，不下载 PDF。",
+        serde_json::json!({
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "2～5 个英文主题词，按重要度排序" },
+            "limit": { "type": "integer" },
+            "fromYear": {
+              "type": "integer",
+              "description": "只要该年（含）以后的论文；调研「最新进展」时必填，例如 2024"
+            }
+          },
+          "required": ["query"]
+        }),
+      ),
+    );
+    tools.push(tool(
+      "fetch_url",
+      "抓取指定网页正文并登记为来源。用户在提问里给出链接时用它读取内容。",
+      serde_json::json!({
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "description": "http/https 链接" }
+        },
+        "required": ["url"]
+      }),
+    ));
   }
   tools
 }
@@ -318,6 +380,23 @@ fn tool(name: &'static str, description: &'static str, parameters: serde_json::V
   }
 }
 
+/// 工具输出把来源编号显示成 [src-001]，LLM 会照抄方括号，这里统一剥掉。
+fn normalize_source_ref(raw: &str) -> String {
+  raw.trim().trim_start_matches('[').trim_end_matches(']').trim().to_string()
+}
+
+fn resolve_local_paper_id(collector: &SourceCollector, raw: &str) -> Option<String> {
+  if raw.starts_with("src-") {
+    collector
+      .sources()
+      .iter()
+      .find(|s| s.id == raw)
+      .and_then(|s| s.local_paper_id.clone())
+  } else {
+    Some(raw.to_string())
+  }
+}
+
 pub enum ToolOutcome {
   Continue { observation: String, new_source_ids: Vec<String> },
   Finished { summary: String },
@@ -345,28 +424,35 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
       let mut lines = Vec::new();
       let mut new_ids = Vec::new();
       for hit in hits.into_iter().take(limit) {
-        if let Some(source) = ctx.collector.add_local_hit(
+        let (source, is_new) = ctx.collector.add_local_hit(
           ctx.workspace,
           ctx.now,
           &hit.paper_id,
           &hit.title,
           &hit.snippet,
           hit.page,
-        )? {
+        )?;
+        if is_new {
           new_ids.push(source.id.clone());
-          lines.push(format!(
-            "[{}] {} | {} | {}",
-            source.id,
-            source.title,
-            hit.kind,
-            source.excerpt.chars().take(200).collect::<String>()
-          ));
         }
+        lines.push(format!(
+          "[{}] paper:{} | {} | {} | {}",
+          source.id,
+          hit.paper_id,
+          source.title,
+          hit.kind,
+          source.excerpt.chars().take(200).collect::<String>()
+        ));
       }
       let observation = if lines.is_empty() {
-        format!("未找到与「{query}」相关的本地论文。")
+        format!("未找到与「{query}」相关的本地论文。请改用更短关键词（如「冷启动」「推荐系统」）重试。")
       } else {
-        lines.join("\n")
+        format!(
+          "本地命中 {} 条（新增 {} 条）：\n{}",
+          lines.len(),
+          new_ids.len(),
+          lines.join("\n")
+        )
       };
       Ok(ToolOutcome::Continue {
         observation,
@@ -379,7 +465,17 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
       }
       let query = arg_str(args, "query")?;
       let limit = arg_limit(args, 8);
-      let briefs = radar::search_arxiv_briefs(&query, limit as i64).await?;
+      let briefs = match radar::search_arxiv_briefs(&query, limit as i64).await {
+        Ok(briefs) => briefs,
+        Err(error) => {
+          return Ok(ToolOutcome::Continue {
+            observation: format!(
+              "arXiv 检索暂时不可用（{error}）。请基于本地来源继续调研，必要时调用 finish_research。"
+            ),
+            new_source_ids: vec![],
+          });
+        }
+      };
       let mut lines = Vec::new();
       let mut new_ids = Vec::new();
       for brief in briefs {
@@ -410,30 +506,127 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         new_source_ids: new_ids,
       })
     }
+    "search_web" => {
+      if !ctx.allow_web {
+        return Err("未启用外网检索".into());
+      }
+      let query = arg_str(args, "query")?;
+      let limit = arg_limit(args, 8);
+      let from_year = arg_from_year(args);
+      let briefs = match crate::research_web::search_web_sources(&query, limit as i64, from_year).await {
+        Ok(briefs) => briefs,
+        Err(error) => {
+          return Ok(ToolOutcome::Continue {
+            observation: format!(
+              "外网检索暂时不可用（{error}）。请优先 search_library，或改用 search_arxiv。"
+            ),
+            new_source_ids: vec![],
+          });
+        }
+      };
+      let mut lines = Vec::new();
+      let mut new_ids = Vec::new();
+      for brief in briefs {
+        if let Some(source) = ctx.collector.add_web_brief(
+          ctx.workspace,
+          ctx.now,
+          &brief.url,
+          &brief.title,
+          &brief.excerpt,
+          &brief.kind,
+        )? {
+          new_ids.push(source.id.clone());
+          lines.push(format!(
+            "[{}] {} | {} | {}",
+            source.id,
+            source.title,
+            brief.url,
+            source.excerpt.chars().take(200).collect::<String>()
+          ));
+        }
+      }
+      let observation = if lines.is_empty() {
+        format!("外网未返回与「{query}」相关的学术/技术来源。请缩短关键词或换用英文检索。")
+      } else {
+        lines.join("\n")
+      };
+      Ok(ToolOutcome::Continue {
+        observation,
+        new_source_ids: new_ids,
+      })
+    }
+    "fetch_url" => {
+      if !ctx.allow_web {
+        return Err("未启用外网检索".into());
+      }
+      let url = arg_str(args, "url")?;
+      let (title, text) = match crate::research_web::fetch_url_text(&url, 4000).await {
+        Ok(result) => result,
+        Err(error) => {
+          return Ok(ToolOutcome::Continue {
+            observation: format!("抓取 {url} 失败（{error}）。"),
+            new_source_ids: vec![],
+          });
+        }
+      };
+      let source = ctx
+        .collector
+        .add_web_brief(ctx.workspace, ctx.now, &url, &title, &text, "web")?;
+      let observation = match &source {
+        Some(source) => format!("[{}] {}\n{}", source.id, title, text),
+        None => format!("该链接已登记过。\n{title}\n{text}"),
+      };
+      Ok(ToolOutcome::Continue {
+        observation,
+        new_source_ids: source.map(|s| vec![s.id]).unwrap_or_default(),
+      })
+    }
     "get_paper" => {
-      let paper_id = args
+      let raw_id = args
         .get("paperId")
         .or_else(|| args.get("paper_id"))
+        .or_else(|| args.get("sourceId"))
+        .or_else(|| args.get("source_id"))
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-      if paper_id.is_empty() {
-        return Err("paperId 不能为空".into());
+        .map(normalize_source_ref)
+        .unwrap_or_default();
+      if raw_id.is_empty() {
+        return Ok(ToolOutcome::Continue {
+          observation: "get_paper 需要 paperId（search_library 结果中 paper: 后的 ID）或 sourceId（[src-xxx]）。".into(),
+          new_source_ids: vec![],
+        });
       }
-      let row = sqlx::query("SELECT * FROM papers WHERE id=? AND deleted_at IS NULL")
+      let paper_id = resolve_local_paper_id(ctx.collector, &raw_id).unwrap_or_else(|| raw_id.clone());
+      let row = match sqlx::query("SELECT * FROM papers WHERE id=? AND deleted_at IS NULL")
         .bind(&paper_id)
         .fetch_optional(ctx.library_pool)
         .await
         .map_err(err)?
-        .ok_or_else(|| "论文不存在".to_string())?;
+      {
+        Some(row) => row,
+        None => {
+          let hint = if raw_id.starts_with("src-") {
+            format!(
+              "来源 {raw_id} 无对应本地论文（可能为 arXiv/外网来源）。请改用 search_library 命中行内的 paper:ID，或继续用已有 [src-xxx] 引用。"
+            )
+          } else {
+            format!(
+              "本地库中不存在论文 {paper_id}。请仅使用 search_library 返回的 paper: 后 ID，勿编造编号。"
+            )
+          };
+          return Ok(ToolOutcome::Continue {
+            observation: hint,
+            new_source_ids: vec![],
+          });
+        }
+      };
       let paper = row_paper(row)?;
       let excerpt = paper
         .abstract_en
         .clone()
         .or(paper.summary.clone())
         .unwrap_or_default();
-      let source = ctx.collector.add_local_hit(
+      let (source, is_new) = ctx.collector.add_local_hit(
         ctx.workspace,
         ctx.now,
         &paper.id,
@@ -441,25 +634,20 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         &excerpt,
         None,
       )?;
-      let new_ids = source
-        .as_ref()
-        .map(|item| vec![item.id.clone()])
-        .unwrap_or_default();
-      let observation = if let Some(item) = &source {
-        serde_json::to_string_pretty(&serde_json::json!({
-          "sourceId": item.id,
-          "title": paper.title_en,
-          "abstract": excerpt.chars().take(500).collect::<String>(),
-          "arxivId": paper.arxiv_id,
-          "doi": paper.doi,
-        }))
-        .map_err(err)?
-      } else {
-        format!("论文 {paper_id} 已在来源列表中。")
-      };
+      let observation = serde_json::to_string_pretty(&serde_json::json!({
+        "sourceId": source.id,
+        "title": paper.title_en,
+        "titleZh": paper.title_zh,
+        "venue": paper.venue,
+        "publicationDate": paper.publication_date,
+        "abstract": excerpt.chars().take(800).collect::<String>(),
+        "arxivId": paper.arxiv_id,
+        "doi": paper.doi,
+      }))
+      .map_err(err)?;
       Ok(ToolOutcome::Continue {
         observation,
-        new_source_ids: new_ids,
+        new_source_ids: if is_new { vec![source.id] } else { vec![] },
       })
     }
     "search_annotations" => {
@@ -681,25 +869,44 @@ fn arg_limit(args: &serde_json::Value, default: usize) -> usize {
     .unwrap_or(default)
 }
 
+fn arg_from_year(args: &serde_json::Value) -> Option<i64> {
+  args
+    .get("fromYear")
+    .or_else(|| args.get("from_year"))
+    .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())))
+    .filter(|year| (1900..=2100).contains(year))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
-  fn collector_skips_duplicate_local() {
+  fn source_ref_drops_citation_brackets() {
+    assert_eq!(normalize_source_ref("[src-001]"), "src-001");
+    assert_eq!(normalize_source_ref(" src-002 "), "src-002");
+    assert_eq!(
+      normalize_source_ref("0fa2f4b2-def5-4a01-95af-9521c0d15ece"),
+      "0fa2f4b2-def5-4a01-95af-9521c0d15ece"
+    );
+  }
+
+  #[test]
+  fn collector_reuses_source_id_for_duplicate_local() {
     let dir = std::env::temp_dir().join(format!("pn-collector-{}", Uuid::new_v4()));
     fs::create_dir_all(dir.join("steps")).unwrap();
     fs::write(dir.join("sources.jsonl"), "").unwrap();
     let mut collector = SourceCollector::from_workspace(&dir).unwrap();
     let now = "2026-01-01T00:00:00Z";
-    let first = collector
+    let (first, first_is_new) = collector
       .add_local_hit(&dir, now, "p1", "Title", "snippet", None)
       .unwrap();
-    assert!(first.is_some());
-    let second = collector
+    assert!(first_is_new);
+    let (second, second_is_new) = collector
       .add_local_hit(&dir, now, "p1", "Title", "snippet", None)
       .unwrap();
-    assert!(second.is_none());
+    assert!(!second_is_new);
+    assert_eq!(first.id, second.id);
     assert_eq!(collector.sources().len(), 1);
     let _ = fs::remove_dir_all(dir);
   }

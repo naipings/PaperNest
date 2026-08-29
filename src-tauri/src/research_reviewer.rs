@@ -1,5 +1,6 @@
 use super::*;
 use crate::research::{sources_block, write_step, ResearchLlmSettings, ResearchSession, ResearchSource};
+use crate::research_dsh_log::DshRecorder;
 use crate::research_llm::research_llm_completion;
 use crate::research_react::{run_supplementary_react, ReactFinish};
 
@@ -15,13 +16,15 @@ pub async fn apply_reviewer_gate(
   settings: &ResearchLlmSettings,
   session: &ResearchSession,
   finish: &mut ReactFinish,
+  dsh: &mut DshRecorder,
 ) -> Result<()> {
   let workspace = PathBuf::from(&session.workspace_path);
   let outline = fs::read_to_string(workspace.join("outline.md")).unwrap_or_default();
   let mut step_index = read_steps_count(&workspace)? + 1;
 
   for revision in 0..2 {
-    let review = review_once(settings, session, &outline, &finish.summary, &finish.sources).await?;
+    crate::research::ensure_not_cancelled(&session.id).await?;
+    let review = review_once(settings, session, &outline, &finish.summary, &finish.sources, dsh).await?;
     write_step(
       &workspace,
       step_index,
@@ -42,6 +45,10 @@ pub async fn apply_reviewer_gate(
       break;
     }
 
+    let review_turn = dsh.begin_session_turn(&format!(
+      "审稿补检索：{}",
+      review.follow_up_queries.join("；")
+    ))?;
     let extra = run_supplementary_react(
       library_pool,
       settings,
@@ -49,8 +56,11 @@ pub async fn apply_reviewer_gate(
       &review.follow_up_queries,
       &mut finish.sources,
       &mut step_index,
+      dsh,
+      review_turn,
     )
     .await?;
+    dsh.turn_end_completed(review_turn)?;
     finish.summary = format!("{}\n\n补检索备忘：{}", finish.summary, extra);
   }
   Ok(())
@@ -62,6 +72,7 @@ async fn review_once(
   outline: &str,
   summary: &str,
   sources: &[ResearchSource],
+  dsh: &mut DshRecorder,
 ) -> Result<ReviewResult> {
   let system = "你是文献调研审稿人（Reviewer）。根据问题、大纲、研究备忘与来源，输出 JSON：{\"accept\":true/false,\"gaps\":[\"缺口\"],\"follow_up_queries\":[\"补充检索词\"],\"notes\":\"备忘\"}。accept=true 表示可以写作；false 时 follow_up_queries 1～2 条。只输出 JSON。";
   let user = format!(
@@ -71,7 +82,13 @@ async fn review_once(
     summary,
     sources_block(sources)
   );
+  let turn = dsh.begin_session_turn(&user)?;
+  dsh.request_header(system, &[], "initial")?;
+  dsh.step_start(turn, 1)?;
   let raw = research_llm_completion(settings, system, serde_json::json!(user), Some(800), 90).await?;
+  dsh.assistant_message(turn, 1, Some(&raw), &[])?;
+  dsh.finish_step(turn, 1)?;
+  dsh.turn_end_completed(turn)?;
   let json = json_from_llm(&raw).unwrap_or_else(|_| serde_json::json!({}));
   let accept = json.get("accept").and_then(|v| v.as_bool()).unwrap_or(sources.len() >= 3);
   let follow_ups: Vec<String> = json

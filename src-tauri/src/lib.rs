@@ -1,6 +1,8 @@
 mod online_metadata;
 mod custom_fields;
 mod radar;
+mod search_query;
+mod research_web;
 mod research;
 mod research_tools;
 mod research_llm;
@@ -8,6 +10,12 @@ mod research_react;
 mod research_writer;
 mod research_reviewer;
 mod research_subagent;
+mod research_dsh_store;
+mod research_dsh_log;
+mod research_dsh_derive;
+mod research_dsh_surface;
+mod research_dsh_compact;
+mod research_turns;
 pub mod mcp_server;
 mod local_embed;
 use chrono::Utc;
@@ -223,7 +231,7 @@ mod library_path_tests {
 
   #[test]
   fn fts_phrase_escapes_double_quotes() {
-    assert_eq!(fts_phrase("attention \"mechanism\""), "\"attention \"\"mechanism\"\"\"");
+    assert_eq!(search_query::fts_phrase("attention \"mechanism\""), "\"attention \"\"mechanism\"\"\"");
   }
 
   #[test]
@@ -503,10 +511,96 @@ fn should_recover_library(dir: &Path) -> bool {
   }
 }
 
-fn fts_phrase(query: &str) -> String {
-  format!("\"{}\"", query.replace('"', "\"\""))
+
+pub(crate) async fn search_library_rows(pool: &SqlitePool, query: &str) -> Result<Vec<SearchHit>> {
+  if query.trim().is_empty() {
+    return Ok(vec![]);
+  }
+  let match_expr = search_query::fts_query(query);
+  let mut hits = vec![];
+  let mut seen = std::collections::HashSet::new();
+  if !match_expr.is_empty() {
+    for r in sqlx::query("SELECT p.id,COALESCE(p.title_zh,p.title_en),substr(COALESCE(p.abstract_zh,p.abstract_en,p.summary,''),1,300),bm25(paper_search) score FROM paper_search s JOIN papers p ON p.id=s.paper_id WHERE paper_search MATCH ? AND p.deleted_at IS NULL ORDER BY score LIMIT 30")
+      .bind(&match_expr)
+      .fetch_all(pool)
+      .await
+      .map_err(err)?
+    {
+      let paper_id: String = r.get(0);
+      if seen.insert(paper_id.clone()) {
+        hits.push(SearchHit {
+          kind: "paper".into(),
+          paper_id,
+          title: r.get(1),
+          snippet: r.get(2),
+          page: None,
+          score: r.get::<f64, _>(3),
+        });
+      }
+    }
+    for r in sqlx::query("SELECT p.id,COALESCE(p.title_zh,p.title_en),substr(s.text,1,220),s.page,bm25(pdf_search) score FROM pdf_search s JOIN papers p ON p.id=s.paper_id WHERE pdf_search MATCH ? AND p.deleted_at IS NULL ORDER BY score LIMIT 30")
+      .bind(&match_expr)
+      .fetch_all(pool)
+      .await
+      .map_err(err)?
+    {
+      let paper_id: String = r.get(0);
+      if seen.insert(paper_id.clone()) {
+        hits.push(SearchHit {
+          kind: "pdf".into(),
+          paper_id,
+          title: r.get(1),
+          snippet: r.get(2),
+          page: Some(r.get(3)),
+          score: r.get::<f64, _>(4),
+        });
+      }
+    }
+  }
+  if hits.is_empty() {
+    hits = search_library_like_rows(pool, query).await?;
+  }
+  Ok(hits)
 }
 
+async fn search_library_like_rows(pool: &SqlitePool, query: &str) -> Result<Vec<SearchHit>> {
+  let tokens = search_query::search_tokenize(query);
+  if tokens.is_empty() {
+    return Ok(vec![]);
+  }
+  let mut hits = vec![];
+  let mut seen = std::collections::HashSet::new();
+  for token in tokens.iter().take(8) {
+    let pattern = format!("%{token}%");
+    for r in sqlx::query(
+      "SELECT id, COALESCE(title_zh, title_en), COALESCE(summary, abstract_zh, abstract_en, '') \
+       FROM papers WHERE deleted_at IS NULL AND (title_zh LIKE ? OR title_en LIKE ? OR summary LIKE ? OR abstract_zh LIKE ? OR abstract_en LIKE ?) \
+       LIMIT 12",
+    )
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .fetch_all(pool)
+    .await
+    .map_err(err)?
+    {
+      let paper_id: String = r.get(0);
+      if seen.insert(paper_id.clone()) {
+        hits.push(SearchHit {
+          kind: "paper".into(),
+          paper_id,
+          title: r.get(1),
+          snippet: r.get(2),
+          page: None,
+          score: 0.0,
+        });
+      }
+    }
+  }
+  Ok(hits)
+}
 
 async fn open_pool(dir: &Path) -> Result<SqlitePool> {
   fs::create_dir_all(dir.join("pdf/originals")).map_err(err)?; fs::create_dir_all(dir.join("figures")).map_err(err)?; fs::create_dir_all(dir.join("avatars")).map_err(err)?; fs::create_dir_all(dir.join("backups")).map_err(err)?; fs::create_dir_all(dir.join("research")).map_err(err)?;
@@ -1213,15 +1307,6 @@ async fn search_library(state:State<'_,AppState>,query:String)->Result<Vec<Searc
   search_library_rows(&p,&query).await
 }
 
-pub(crate) async fn search_library_rows(pool:&SqlitePool,query:&str)->Result<Vec<SearchHit>> {
-  if query.trim().is_empty(){return Ok(vec![]);}
-  let phrase=fts_phrase(query);
-  let mut hits=vec![];
-  for r in sqlx::query("SELECT p.id,COALESCE(p.title_zh,p.title_en),substr(s.content,1,220),bm25(paper_search) score FROM paper_search s JOIN papers p ON p.id=s.paper_id WHERE paper_search MATCH ? AND p.deleted_at IS NULL ORDER BY score LIMIT 30").bind(&phrase).fetch_all(pool).await.map_err(err)?{hits.push(SearchHit{kind:"paper".into(),paper_id:r.get(0),title:r.get(1),snippet:r.get(2),page:None,score:r.get::<f64,_>(3)});}
-  for r in sqlx::query("SELECT p.id,COALESCE(p.title_zh,p.title_en),substr(s.text,1,220),s.page,bm25(pdf_search) score FROM pdf_search s JOIN papers p ON p.id=s.paper_id WHERE pdf_search MATCH ? AND p.deleted_at IS NULL ORDER BY score LIMIT 30").bind(&phrase).fetch_all(pool).await.map_err(err)?{hits.push(SearchHit{kind:"pdf".into(),paper_id:r.get(0),title:r.get(1),snippet:r.get(2),page:Some(r.get(3)),score:r.get::<f64,_>(4)});}
-  Ok(hits)
-}
-
 #[tauri::command]
 async fn create_backup(state:State<'_,AppState>)->Result<String>{ sqlx::query("PRAGMA wal_checkpoint(FULL)").execute(&*state.pool.read().await).await.map_err(err)?;let output=state.library_dir.join("backups").join(format!("papernest-{}.zip",Utc::now().format("%Y%m%d-%H%M%S")));let file=fs::File::create(&output).map_err(err)?;let mut zip=ZipWriter::new(file);let options=SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);for entry in WalkDir::new(&state.library_dir).into_iter().filter_map(|e|e.ok()){let path=entry.path();if path==output||path.starts_with(state.library_dir.join("backups"))||!path.is_file(){continue;}let name=path.strip_prefix(&state.library_dir).map_err(err)?.to_string_lossy().replace('\\',"/");zip.start_file(name,options).map_err(err)?;let mut source=fs::File::open(path).map_err(err)?;let mut buf=Vec::new();source.read_to_end(&mut buf).map_err(err)?;zip.write_all(&buf).map_err(err)?;}zip.finish().map_err(err)?;Ok(output.to_string_lossy().into_owned()) }
 
@@ -1268,7 +1353,7 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library,research::research_get_settings,research::research_save_settings,research::research_test_connection,research::research_list_sessions,research::research_create_session,research::research_get_session,research::research_read_report,research::research_read_sources,research::research_list_steps,research::research_run_session,research::research_open_workspace,research::research_delete_session,research::research_list_proposals,research::research_approve_proposal,research::research_reject_proposal,mcp_server::mcp_get_info])
+  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(research::reset_interrupted_sessions(&dir)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library,research::research_get_settings,research::research_save_settings,research::research_test_connection,research::research_list_sessions,research::research_create_session,research::research_get_session,research::research_list_turns,research::research_continue_session,research::research_export_report,research::research_read_sources,research::research_list_steps,research::research_run_session,research::research_resume_session,research::research_cancel_session,research::research_fork_session,research::research_dsh_load_snapshot,research::research_dsh_append_event,research::research_dsh_derive_messages,research::research_dsh_default_boundary,research::research_open_workspace,research::research_delete_session,research::research_list_proposals,research::research_approve_proposal,research::research_reject_proposal,mcp_server::mcp_get_info])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

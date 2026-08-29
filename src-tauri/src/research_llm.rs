@@ -170,7 +170,7 @@ fn parse_llm_message(value: &serde_json::Value) -> Result<LlmToolResponse> {
       }
     })
     .filter(|text| !text.trim().is_empty());
-  let tool_calls = message
+  let mut tool_calls = message
     .get("tool_calls")
     .and_then(|v| v.as_array())
     .map(|items| {
@@ -190,10 +190,20 @@ fn parse_llm_message(value: &serde_json::Value) -> Result<LlmToolResponse> {
   if content.is_none() && tool_calls.is_empty() {
     return Err("调研 LLM 响应为空".into());
   }
+  ensure_unique_tool_call_ids(&mut tool_calls);
   Ok(LlmToolResponse {
     content,
     tool_calls,
   })
+}
+
+fn ensure_unique_tool_call_ids(calls: &mut Vec<LlmToolCall>) {
+  let mut seen = std::collections::HashSet::new();
+  for call in calls.iter_mut() {
+    if call.id.is_empty() || !seen.insert(call.id.clone()) {
+      call.id = format!("call-{}", Uuid::new_v4());
+    }
+  }
 }
 
 #[cfg(test)]

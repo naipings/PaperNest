@@ -282,8 +282,9 @@ fn default_settings() -> RadarSettings {
   }
 }
 
-const NEW_WINDOW_DAYS: i64 = 2;
-const INTEREST_WINDOW_DAYS: i64 = 3;
+// arXiv 的 submittedDate 索引比自然日滞后约一天，2 天窗口在周末会返回空列表。
+const NEW_WINDOW_DAYS: i64 = 3;
+const INTEREST_WINDOW_DAYS: i64 = 4;
 const INTEREST_PER_KEYWORD: i64 = 50;
 const INTEREST_TOTAL_CAP: usize = 150;
 
@@ -611,18 +612,27 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
     urlencoding_encode(search_query),
     limit.clamp(5, 200)
   );
-  let response = client
-    .get(&url)
-    .header("User-Agent", arxiv_user_agent(mailto))
-    .send()
-    .await
-    .map_err(err)?;
-  let status = response.status();
-  let text = response.text().await.map_err(err)?;
-  if !status.is_success() {
+  for attempt in 0..5 {
+    if attempt > 0 {
+      tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
+    }
+    let response = client
+      .get(&url)
+      .header("User-Agent", arxiv_user_agent(mailto))
+      .send()
+      .await
+      .map_err(err)?;
+    let status = response.status();
+    let text = response.text().await.map_err(err)?;
+    if status.is_success() {
+      return Ok(parse_arxiv_atom(&text));
+    }
+    if status.as_u16() == 429 && attempt < 4 {
+      continue;
+    }
     return Err(format!("arXiv API 失败（{status}）"));
   }
-  Ok(parse_arxiv_atom(&text))
+  Err("arXiv API 失败（429 Too Many Requests）".into())
 }
 
 async fn fetch_arxiv_new(categories: &[String], limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
@@ -676,12 +686,11 @@ pub struct ArxivBrief {
 }
 
 pub async fn search_arxiv_briefs(keyword: &str, limit: i64) -> Result<Vec<ArxivBrief>> {
-  let phrase = escape_arxiv_phrase(keyword.trim());
-  if phrase.is_empty() {
+  let search_query = crate::search_query::arxiv_search_query(keyword.trim());
+  if search_query.is_empty() {
     return Ok(vec![]);
   }
-  let query = format!("all:\"{phrase}\"");
-  let entries = arxiv_query(&query, limit.clamp(3, 15), None).await?;
+  let entries = arxiv_query(&search_query, limit.clamp(3, 15), None).await?;
   Ok(entries
     .into_iter()
     .map(|(arxiv_id, title, summary, _, _, _, _)| ArxivBrief {

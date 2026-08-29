@@ -1,5 +1,9 @@
 use super::*;
+use std::collections::HashMap;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::Mutex;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS research_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -65,7 +69,7 @@ fn default_research_settings() -> ResearchLlmSettings {
     base_url: "https://api.openai.com/v1".into(),
     model: "gpt-4.1".into(),
     api_key_saved: false,
-    allow_web_search: false,
+    allow_web_search: true,
     max_iterations: 8,
     max_tokens_per_step: 4000,
     research_mode: "react".into(),
@@ -122,6 +126,30 @@ pub(crate) struct CreateSessionInput {
   output_requirements: Option<String>,
   workspace_path: Option<String>,
   title: Option<String>,
+  #[serde(default)]
+  attachments: Vec<crate::research_turns::AttachmentInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ContinueSessionInput {
+  id: String,
+  question: String,
+  #[serde(default)]
+  attachments: Vec<crate::research_turns::AttachmentInput>,
+}
+
+/// 会话流的一条记录：轮次问题、附件与该轮答复正文。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchTurnView {
+  pub turn: i64,
+  pub question: String,
+  pub attachments: Vec<crate::research_turns::ResearchAttachment>,
+  pub answer: String,
+  pub status: String,
+  pub created_at: String,
+  pub error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -132,6 +160,11 @@ struct SessionManifest {
   output_requirements: String,
   workspace_path: String,
   created_at: String,
+  dsh_session_id: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  parent_session_id: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  fork_boundary_seq: Option<i64>,
 }
 
 fn research_key_entry() -> Result<keyring::Entry> {
@@ -217,7 +250,7 @@ fn init_workspace(workspace: &Path, manifest: &SessionManifest) -> Result<()> {
   )
   .map_err(err)?;
   if !workspace.join("report.md").exists() {
-    fs::write(workspace.join("report.md"), "# 调研报告\n\n").map_err(err)?;
+    fs::write(workspace.join("report.md"), "").map_err(err)?;
   }
   if !workspace.join("sources.jsonl").exists() {
     fs::write(workspace.join("sources.jsonl"), "").map_err(err)?;
@@ -328,6 +361,20 @@ pub async fn open_research_pool_public(library_dir: &Path) -> Result<SqlitePool>
   open_research_pool(library_dir).await
 }
 
+/// 启动时内存里还没有任何运行令牌，数据库里残留的 running 只可能来自上次异常退出。
+/// 不清理的话前端会一直停在「调研进行中」并持续轮询。
+pub(crate) async fn reset_interrupted_sessions(library_dir: &Path) -> Result<()> {
+  let pool = open_research_pool(library_dir).await?;
+  sqlx::query("UPDATE research_sessions SET status='failed', error=?, updated_at=? WHERE status='running'")
+    .bind("上次运行随应用退出中断，可在轨迹页选择恢复点续跑。")
+    .bind(Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await
+    .map_err(err)?;
+  pool.close().await;
+  Ok(())
+}
+
 pub async fn list_sessions_public(pool: &SqlitePool) -> Result<Vec<ResearchSession>> {
   let rows = sqlx::query("SELECT * FROM research_sessions ORDER BY updated_at DESC")
     .fetch_all(pool)
@@ -424,6 +471,29 @@ async fn write_import_proposals(
   Ok(())
 }
 
+/// 旧会话没有 turns.jsonl：按 session 自身补一条首轮记录，让会话流与追问共用同一份轮次数据。
+fn ensure_turn_history(
+  workspace: &Path,
+  session: &ResearchSession,
+) -> Result<Vec<crate::research_turns::ResearchTurn>> {
+  let turns = crate::research_turns::read_turns(workspace)?;
+  if !turns.is_empty() {
+    return Ok(turns);
+  }
+  let record = crate::research_turns::ResearchTurn {
+    turn: 1,
+    question: session.query.clone(),
+    attachments: vec![],
+    answer_path: "report.md".into(),
+    status: session.status.clone(),
+    created_at: session.created_at.clone(),
+    updated_at: session.updated_at.clone(),
+    error: session.error.clone(),
+  };
+  crate::research_turns::append_turn(workspace, &record)?;
+  Ok(vec![record])
+}
+
 pub(crate) fn sources_block(collected: &[ResearchSource]) -> String {
   collected
     .iter()
@@ -445,13 +515,76 @@ async fn run_research_agent(
   settings: &ResearchLlmSettings,
   session: &ResearchSession,
 ) -> Result<String> {
-  if settings.research_mode == "pipeline" {
-    return run_pipeline_agent(library_pool, settings, session).await;
+  run_research_agent_inner(library_pool, settings, session, false).await
+}
+
+async fn run_research_agent_resume(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  session: &ResearchSession,
+) -> Result<String> {
+  run_research_agent_inner(library_pool, settings, session, true).await
+}
+
+async fn run_research_agent_inner(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  session: &ResearchSession,
+  resume: bool,
+) -> Result<String> {
+  let workspace = PathBuf::from(&session.workspace_path);
+  research_dsh_store::init_session_log(&workspace, &session.id)?;
+  let mut dsh = crate::research_dsh_log::DshRecorder::open(&workspace, "openai-compatible", &settings.model)?;
+  if resume {
+    dsh.session_end_seed()?;
+    let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+    crate::research_dsh_derive::close_orphan_react_steps(&mut dsh, &snapshot.events)?;
+    let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+    match crate::research_dsh_derive::detect_resume_stage(&snapshot.events, &workspace)? {
+      crate::research_dsh_derive::ResumeStage::PostReact { finish } => {
+        let mut finish = finish;
+        crate::research_reviewer::apply_reviewer_gate(library_pool, settings, session, &mut finish, &mut dsh).await?;
+        let report = crate::research_writer::write_research_report(settings, session, &finish, &mut dsh).await?;
+        write_import_proposals(&workspace, &finish.sources, library_pool).await?;
+        return Ok(report);
+      }
+      crate::research_dsh_derive::ResumeStage::React {
+        messages,
+        react_turn,
+        start_round,
+        tool_calls_used,
+      } => {
+        if settings.research_mode == "pipeline" {
+          return Err("pipeline 模式暂不支持从事件恢复，请新建任务".into());
+        }
+        let finish = crate::research_react::run_react_loop_resume(
+          library_pool,
+          settings,
+          session,
+          &mut dsh,
+          crate::research_react::ReactResumeState {
+            messages,
+            react_turn,
+            start_round,
+            tool_calls_used,
+          },
+        )
+        .await?;
+        let mut finish = finish;
+        crate::research_reviewer::apply_reviewer_gate(library_pool, settings, session, &mut finish, &mut dsh).await?;
+        let report = crate::research_writer::write_research_report(settings, session, &finish, &mut dsh).await?;
+        write_import_proposals(&workspace, &finish.sources, library_pool).await?;
+        return Ok(report);
+      }
+    }
   }
-  let finish = crate::research_react::run_react_loop(library_pool, settings, session).await?;
+  if settings.research_mode == "pipeline" {
+    return run_pipeline_agent(library_pool, settings, session, &mut dsh).await;
+  }
+  let finish = crate::research_react::run_react_loop(library_pool, settings, session, &mut dsh).await?;
   let mut finish = finish;
-  crate::research_reviewer::apply_reviewer_gate(library_pool, settings, session, &mut finish).await?;
-  let report = crate::research_writer::write_research_report(settings, session, &finish).await?;
+  crate::research_reviewer::apply_reviewer_gate(library_pool, settings, session, &mut finish, &mut dsh).await?;
+  let report = crate::research_writer::write_research_report(settings, session, &finish, &mut dsh).await?;
   write_import_proposals(
     Path::new(&session.workspace_path),
     &finish.sources,
@@ -461,10 +594,62 @@ async fn run_research_agent(
   Ok(report)
 }
 
+/// 追问：沿用同一份 DSH 会话历史，开一个新 turn 继续 ReAct，然后审稿并写出本轮答复。
+async fn run_research_followup(
+  library_pool: &SqlitePool,
+  settings: &ResearchLlmSettings,
+  session: &ResearchSession,
+  question: &str,
+  attachments: &[crate::research_turns::ResearchAttachment],
+) -> Result<String> {
+  let workspace = PathBuf::from(&session.workspace_path);
+  research_dsh_store::init_session_log(&workspace, &session.id)?;
+  let mut dsh = crate::research_dsh_log::DshRecorder::open(&workspace, "openai-compatible", &settings.model)?;
+  let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+  crate::research_dsh_derive::close_orphan_react_steps(&mut dsh, &snapshot.events)?;
+  let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+  crate::research_dsh_derive::close_open_turn(&mut dsh, &snapshot.events)?;
+  let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+  let mut messages = crate::research_dsh_derive::derive_openai_messages(&snapshot.events);
+  // 历史里最后一个 request/header 来自 Writer，system 必须换回 ReAct 才能继续调工具。
+  messages[0] = serde_json::json!({
+    "role": "system",
+    "content": crate::research_react::react_system_prompt()
+  });
+
+  let text = format!(
+    "{}{}",
+    question,
+    crate::research_turns::attachment_text_block(&workspace, attachments)
+  );
+  let images = crate::research_turns::attachment_image_blocks(&workspace, attachments)?;
+  let react_turn = dsh.begin_session_turn(&text)?;
+  messages.push(crate::research_turns::user_message_value(text, images));
+
+  let mut finish = crate::research_react::run_react_loop_resume(
+    library_pool,
+    settings,
+    session,
+    &mut dsh,
+    crate::research_react::ReactResumeState {
+      messages,
+      react_turn,
+      start_round: 1,
+      tool_calls_used: 0,
+    },
+  )
+  .await?;
+  crate::research_reviewer::apply_reviewer_gate(library_pool, settings, session, &mut finish, &mut dsh).await?;
+  let report = crate::research_writer::write_research_report(settings, session, &finish, &mut dsh).await?;
+  write_import_proposals(&workspace, &finish.sources, library_pool).await?;
+  Ok(report)
+}
+
 async fn run_pipeline_agent(
   library_pool: &SqlitePool,
   settings: &ResearchLlmSettings,
   session: &ResearchSession,
+  dsh: &mut crate::research_dsh_log::DshRecorder,
 ) -> Result<String> {
   let workspace = PathBuf::from(&session.workspace_path);
   let now = Utc::now().to_rfc3339();
@@ -482,6 +667,11 @@ async fn run_pipeline_agent(
     }
   );
   let plan_raw = crate::research_llm::research_llm_completion(settings, plan_system, serde_json::json!(plan_user), Some(1200), 120).await?;
+  let planner_turn = 1u32;
+  dsh.request_header(plan_system, &[], "initial")?;
+  dsh.step_start(planner_turn, 1)?;
+  dsh.assistant_message(planner_turn, 1, Some(&plan_raw), &[])?;
+  dsh.finish_step(planner_turn, 1)?;
   let plan_json = json_from_llm(&plan_raw)?;
   let queries: Vec<String> = plan_json
     .get("queries")
@@ -509,7 +699,15 @@ async fn run_pipeline_agent(
   )?;
   step_index += 1;
 
+  let mut pipeline_step = 2u32;
   for query in queries.iter().take(settings.max_iterations.max(2) as usize) {
+    let call = crate::research_llm::LlmToolCall {
+      id: format!("pipeline-lib-{pipeline_step}"),
+      name: "search_library".into(),
+      arguments: serde_json::json!({ "query": query }),
+    };
+    dsh.step_start(planner_turn, pipeline_step)?;
+    dsh.tool_call(planner_turn, pipeline_step, &call)?;
     let outcome = crate::research_tools::pipeline_invoke(
       library_pool,
       &workspace,
@@ -520,17 +718,28 @@ async fn run_pipeline_agent(
       serde_json::json!({ "query": query }),
     )
     .await?;
+    let observation = tool_observation(&outcome);
+    dsh.tool_result(planner_turn, pipeline_step, &call.id, &observation, false)?;
+    dsh.finish_step(planner_turn, pipeline_step)?;
+    pipeline_step += 1;
     write_step(
       &workspace,
       step_index,
       "researcher-search_library",
-      &serde_json::json!({ "role": "researcher", "query": query, "observation": tool_observation(&outcome) }),
+      &serde_json::json!({ "role": "researcher", "query": query, "observation": observation }),
     )?;
     step_index += 1;
   }
 
   if settings.allow_web_search {
     for query in queries.iter().take(2) {
+      let call = crate::research_llm::LlmToolCall {
+        id: format!("pipeline-arxiv-{pipeline_step}"),
+        name: "search_arxiv".into(),
+        arguments: serde_json::json!({ "query": query }),
+      };
+      dsh.step_start(planner_turn, pipeline_step)?;
+      dsh.tool_call(planner_turn, pipeline_step, &call)?;
       let outcome = crate::research_tools::pipeline_invoke(
         library_pool,
         &workspace,
@@ -541,11 +750,15 @@ async fn run_pipeline_agent(
         serde_json::json!({ "query": query }),
       )
       .await?;
+      let observation = tool_observation(&outcome);
+      dsh.tool_result(planner_turn, pipeline_step, &call.id, &observation, false)?;
+      dsh.finish_step(planner_turn, pipeline_step)?;
+      pipeline_step += 1;
       write_step(
         &workspace,
         step_index,
         "researcher-search_arxiv",
-        &serde_json::json!({ "role": "researcher", "query": query, "observation": tool_observation(&outcome) }),
+        &serde_json::json!({ "role": "researcher", "query": query, "observation": observation }),
       )?;
       step_index += 1;
       tokio::time::sleep(Duration::from_millis(1100)).await;
@@ -568,6 +781,12 @@ async fn run_pipeline_agent(
     90,
   )
   .await?;
+  let reflect_turn = dsh.begin_session_turn(&reflect_user)?;
+  dsh.request_header(reflect_system, &[], "initial")?;
+  dsh.step_start(reflect_turn, 1)?;
+  dsh.assistant_message(reflect_turn, 1, Some(&reflect_raw), &[])?;
+  dsh.finish_step(reflect_turn, 1)?;
+  dsh.turn_end_completed(reflect_turn)?;
   let reflect_json = json_from_llm(&reflect_raw).unwrap_or_else(|_| serde_json::json!({}));
   let follow_ups: Vec<String> = reflect_json
     .get("follow_up_queries")
@@ -595,6 +814,13 @@ async fn run_pipeline_agent(
   step_index += 1;
 
   for query in follow_ups {
+    let call = crate::research_llm::LlmToolCall {
+      id: format!("pipeline-follow-{pipeline_step}"),
+      name: "search_library".into(),
+      arguments: serde_json::json!({ "query": query }),
+    };
+    dsh.step_start(planner_turn, pipeline_step)?;
+    dsh.tool_call(planner_turn, pipeline_step, &call)?;
     let outcome = crate::research_tools::pipeline_invoke(
       library_pool,
       &workspace,
@@ -605,14 +831,25 @@ async fn run_pipeline_agent(
       serde_json::json!({ "query": query }),
     )
     .await?;
+    let observation = tool_observation(&outcome);
+    dsh.tool_result(planner_turn, pipeline_step, &call.id, &observation, false)?;
+    dsh.finish_step(planner_turn, pipeline_step)?;
+    pipeline_step += 1;
     write_step(
       &workspace,
       step_index,
       "researcher-followup",
-      &serde_json::json!({ "role": "researcher", "query": query, "observation": tool_observation(&outcome) }),
+      &serde_json::json!({ "role": "researcher", "query": query, "observation": observation }),
     )?;
     step_index += 1;
     if settings.allow_web_search {
+      let arxiv_call = crate::research_llm::LlmToolCall {
+        id: format!("pipeline-follow-arxiv-{pipeline_step}"),
+        name: "search_arxiv".into(),
+        arguments: serde_json::json!({ "query": query }),
+      };
+      dsh.step_start(planner_turn, pipeline_step)?;
+      dsh.tool_call(planner_turn, pipeline_step, &arxiv_call)?;
       let arxiv = crate::research_tools::pipeline_invoke(
         library_pool,
         &workspace,
@@ -623,23 +860,28 @@ async fn run_pipeline_agent(
         serde_json::json!({ "query": query }),
       )
       .await?;
+      let arxiv_obs = tool_observation(&arxiv);
+      dsh.tool_result(planner_turn, pipeline_step, &arxiv_call.id, &arxiv_obs, false)?;
+      dsh.finish_step(planner_turn, pipeline_step)?;
+      pipeline_step += 1;
       write_step(
         &workspace,
         step_index,
         "researcher-followup-arxiv",
-        &serde_json::json!({ "role": "researcher", "query": query, "observation": tool_observation(&arxiv) }),
+        &serde_json::json!({ "role": "researcher", "query": query, "observation": arxiv_obs }),
       )?;
       step_index += 1;
       tokio::time::sleep(Duration::from_millis(1100)).await;
     }
   }
 
+  dsh.turn_end_completed(planner_turn)?;
   let collected = collector.into_sources();
   let finish = crate::research_react::ReactFinish {
     summary: reflect_notes.clone(),
     sources: collected.clone(),
   };
-  let report = crate::research_writer::write_research_report(settings, session, &finish).await?;
+  let report = crate::research_writer::write_research_report(settings, session, &finish, dsh).await?;
   write_import_proposals(&workspace, &collected, library_pool).await?;
   Ok(report)
 }
@@ -708,9 +950,6 @@ pub async fn research_create_session(
   let settings_pool = open_research_pool(&state.library_dir).await?;
   let settings = load_settings(&settings_pool).await?;
   settings_pool.close().await;
-  if !settings.enabled {
-    return Err("请先在设置中启用文献调研".into());
-  }
   let query = input.query.trim().to_string();
   if query.is_empty() {
     return Err("请填写研究问题".into());
@@ -735,8 +974,32 @@ pub async fn research_create_session(
     output_requirements: output_requirements.clone(),
     workspace_path: workspace.to_string_lossy().into_owned(),
     created_at: now.clone(),
+    dsh_session_id: id.clone(),
+    parent_session_id: None,
+    fork_boundary_seq: None,
   };
   init_workspace(&workspace, &manifest)?;
+  let attachments = crate::research_turns::store_attachments(&workspace, 1, &input.attachments)?;
+  crate::research_turns::append_turn(
+    &workspace,
+    &crate::research_turns::ResearchTurn {
+      turn: 1,
+      question: query.clone(),
+      attachments: attachments.clone(),
+      answer_path: "report.md".into(),
+      status: "draft".into(),
+      created_at: now.clone(),
+      updated_at: now.clone(),
+      error: None,
+    },
+  )?;
+  research_dsh_store::init_session_log(&workspace, &id)?;
+  let mut dsh = crate::research_dsh_log::DshRecorder::open(&workspace, "openai-compatible", &settings.model)?;
+  dsh.begin_session_turn(&format!(
+    "{}{}",
+    query,
+    crate::research_turns::attachment_text_block(&workspace, &attachments)
+  ))?;
   let session = ResearchSession {
     id,
     title,
@@ -765,11 +1028,121 @@ pub async fn research_get_session(state: State<'_, AppState>, id: String) -> Res
 }
 
 #[tauri::command]
-pub async fn research_read_report(state: State<'_, AppState>, id: String) -> Result<String> {
+pub async fn research_list_turns(
+  state: State<'_, AppState>,
+  id: String,
+) -> Result<Vec<ResearchTurnView>> {
   let pool = open_research_pool(&state.library_dir).await?;
   let session = get_session_row(&pool, &id).await?;
   pool.close().await;
-  fs::read_to_string(&session.report_path).map_err(err)
+  let workspace = PathBuf::from(&session.workspace_path);
+  let turns = ensure_turn_history(&workspace, &session)?;
+  Ok(
+    turns
+      .into_iter()
+      .map(|turn| ResearchTurnView {
+        answer: crate::research_turns::read_answer(&workspace, &turn.answer_path),
+        turn: turn.turn,
+        question: turn.question,
+        attachments: turn.attachments,
+        status: turn.status,
+        created_at: turn.created_at,
+        error: turn.error,
+      })
+      .collect(),
+  )
+}
+
+/// 把各轮答复合成一份可交付的 Markdown，落在工作区 report-full.md。
+#[tauri::command]
+pub async fn research_export_report(state: State<'_, AppState>, id: String) -> Result<String> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  let workspace = PathBuf::from(&session.workspace_path);
+  let turns = ensure_turn_history(&workspace, &session)?;
+  let mut body = format!("# {}\n\n> 研究问题：{}\n", session.title, session.query);
+  for turn in &turns {
+    let answer = crate::research_turns::read_answer(&workspace, &turn.answer_path);
+    if answer.trim().is_empty() {
+      continue;
+    }
+    body.push_str(&format!(
+      "\n---\n\n## 第 {} 轮：{}\n\n{}\n",
+      turn.turn,
+      turn.question,
+      answer.trim()
+    ));
+  }
+  let path = workspace.join("report-full.md");
+  fs::write(&path, body).map_err(err)?;
+  Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub async fn research_continue_session(
+  state: State<'_, AppState>,
+  input: ContinueSessionInput,
+) -> Result<ResearchSession> {
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let settings = load_settings(&research_pool).await?;
+  if !settings.enabled {
+    research_pool.close().await;
+    return Err("请先在设置中启用文献调研".into());
+  }
+  let mut session = get_session_row(&research_pool, &input.id).await?;
+  research_pool.close().await;
+  if session.status == "running" {
+    return Err("该调研正在运行".into());
+  }
+  if session.status == "draft" {
+    return Err("请先点击「开始调研」完成第一轮".into());
+  }
+  let question = input.question.trim().to_string();
+  if question.is_empty() {
+    return Err("请填写追问内容".into());
+  }
+  let workspace = PathBuf::from(&session.workspace_path);
+  let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+  if snapshot.events.is_empty() {
+    return Err("该任务还没有调研记录，请先点击「开始调研」".into());
+  }
+
+  let previous = ensure_turn_history(&workspace, &session)?;
+  let next_turn = previous.last().map(|turn| turn.turn).unwrap_or(0) + 1;
+  let attachments = crate::research_turns::store_attachments(&workspace, next_turn, &input.attachments)?;
+  let now = Utc::now().to_rfc3339();
+  crate::research_turns::append_turn(
+    &workspace,
+    &crate::research_turns::ResearchTurn {
+      turn: next_turn,
+      question: question.clone(),
+      attachments: attachments.clone(),
+      answer_path: crate::research_turns::answer_path_for(next_turn),
+      status: "running".into(),
+      created_at: now.clone(),
+      updated_at: now.clone(),
+      error: None,
+    },
+  )?;
+
+  session.status = "running".into();
+  session.error = None;
+  session.updated_at = now;
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+
+  let library_pool = state.pool.read().await.clone();
+  ResearchRunControl::global().begin(&input.id).await;
+  let run = run_research_followup(&library_pool, &settings, &session, &question, &attachments).await;
+  ResearchRunControl::global().end(&input.id).await;
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let mut session = get_session_row(&research_pool, &input.id).await?;
+  finalize_research_run(&mut session, run)?;
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+  Ok(session)
 }
 
 #[tauri::command]
@@ -864,6 +1237,263 @@ fn step_label_from_file(path: &Path) -> (Option<String>, Option<String>) {
   (label, detail)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ForkSessionInput {
+  id: String,
+  boundary_seq: Option<i64>,
+  title: Option<String>,
+}
+
+fn copy_fork_artifacts(from: &Path, to: &Path) -> Result<()> {
+  for name in ["sources.jsonl", "outline.md", "turns.jsonl", "report.md"] {
+    let source = from.join(name);
+    if source.exists() {
+      fs::copy(source, to.join(name)).map_err(err)?;
+    }
+  }
+  for dir in ["attachments", "turns"] {
+    let source = from.join(dir);
+    if !source.is_dir() {
+      continue;
+    }
+    let target = to.join(dir);
+    fs::create_dir_all(&target).map_err(err)?;
+    for entry in fs::read_dir(source).map_err(err)? {
+      let entry = entry.map_err(err)?;
+      fs::copy(entry.path(), target.join(entry.file_name())).map_err(err)?;
+    }
+  }
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn research_fork_session(
+  state: State<'_, AppState>,
+  input: ForkSessionInput,
+) -> Result<ResearchSession> {
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let parent = get_session_row(&research_pool, &input.id).await?;
+  research_pool.close().await;
+
+  let parent_workspace = PathBuf::from(&parent.workspace_path);
+  let snapshot = research_dsh_store::load_snapshot(&parent_workspace)?;
+  if snapshot.events.is_empty() {
+    return Err("父任务没有可分叉的 DSH 事件".into());
+  }
+  let boundary = match input.boundary_seq {
+    Some(seq) => seq,
+    None => research_dsh_store::default_resume_boundary(&snapshot.events)?,
+  };
+  let seed = research_dsh_store::fork_prefix(&snapshot.events, boundary)?;
+
+  let id = Uuid::new_v4().to_string();
+  let title = input
+    .title
+    .filter(|value| !value.trim().is_empty())
+    .unwrap_or_else(|| format!("{}（分叉）", parent.title));
+  let workspace = state.library_dir.join("research").join(&id);
+  fs::create_dir_all(&workspace).map_err(err)?;
+  research_dsh_store::write_forked_session(&workspace, &id, &snapshot.header, &seed)?;
+  let now = Utc::now().to_rfc3339();
+  let manifest = SessionManifest {
+    id: id.clone(),
+    title: title.clone(),
+    query: parent.query.clone(),
+    output_requirements: parent.output_requirements.clone(),
+    workspace_path: workspace.to_string_lossy().into_owned(),
+    created_at: now.clone(),
+    dsh_session_id: id.clone(),
+    parent_session_id: Some(parent.id.clone()),
+    fork_boundary_seq: Some(boundary),
+  };
+  init_workspace(&workspace, &manifest)?;
+  copy_fork_artifacts(&parent_workspace, &workspace)?;
+
+  let session = ResearchSession {
+    id,
+    title,
+    query: parent.query,
+    output_requirements: parent.output_requirements,
+    workspace_path: workspace.to_string_lossy().into_owned(),
+    report_path: workspace.join("report.md").to_string_lossy().into_owned(),
+    status: "draft".into(),
+    report_preview: None,
+    error: None,
+    created_at: now.clone(),
+    updated_at: now,
+  };
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+  Ok(session)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ResumeSessionInput {
+  id: String,
+  boundary_seq: Option<i64>,
+}
+
+#[tauri::command]
+pub async fn research_resume_session(
+  state: State<'_, AppState>,
+  input: ResumeSessionInput,
+) -> Result<ResearchSession> {
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let settings = load_settings(&research_pool).await?;
+  if !settings.enabled {
+    research_pool.close().await;
+    return Err("请先在设置中启用文献调研".into());
+  }
+  let mut session = get_session_row(&research_pool, &input.id).await?;
+  if session.status == "running" {
+    research_pool.close().await;
+    return Err("该调研正在运行".into());
+  }
+  if session.status == "draft" {
+    research_pool.close().await;
+    return Err("草稿任务请使用「开始调研」".into());
+  }
+  research_pool.close().await;
+
+  let workspace = PathBuf::from(&session.workspace_path);
+  let snapshot = research_dsh_store::load_snapshot(&workspace)?;
+  if snapshot.events.is_empty() {
+    return Err("没有可恢复的 DSH 事件".into());
+  }
+  let boundary = match input.boundary_seq {
+    Some(seq) => seq,
+    None => research_dsh_store::default_resume_boundary(&snapshot.events)?,
+  };
+  research_dsh_store::truncate_to_boundary(&workspace, boundary)?;
+
+  session.status = "running".into();
+  session.error = None;
+  session.updated_at = Utc::now().to_rfc3339();
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+
+  let library_pool = state.pool.read().await.clone();
+  ResearchRunControl::global().begin(&input.id).await;
+  let run = run_research_agent_resume(&library_pool, &settings, &session).await;
+  ResearchRunControl::global().end(&input.id).await;
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let mut session = get_session_row(&research_pool, &input.id).await?;
+  finalize_research_run(&mut session, run)?;
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+  Ok(session)
+}
+
+#[tauri::command]
+pub async fn research_dsh_derive_messages(
+  state: State<'_, AppState>,
+  id: String,
+) -> Result<Vec<serde_json::Value>> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  let snapshot = research_dsh_store::load_snapshot(Path::new(&session.workspace_path))?;
+  Ok(crate::research_dsh_derive::derive_openai_messages(&snapshot.events))
+}
+
+#[tauri::command]
+pub async fn research_dsh_default_boundary(state: State<'_, AppState>, id: String) -> Result<i64> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  let snapshot = research_dsh_store::load_snapshot(Path::new(&session.workspace_path))?;
+  research_dsh_store::default_resume_boundary(&snapshot.events)
+}
+
+struct ResearchRunControl {
+  tokens: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl ResearchRunControl {
+  fn global() -> &'static Self {
+    static CONTROL: OnceLock<ResearchRunControl> = OnceLock::new();
+    CONTROL.get_or_init(|| ResearchRunControl {
+      tokens: Mutex::new(HashMap::new()),
+    })
+  }
+
+  async fn begin(&self, session_id: &str) {
+    self
+      .tokens
+      .lock()
+      .await
+      .insert(session_id.to_string(), Arc::new(AtomicBool::new(false)));
+  }
+
+  async fn end(&self, session_id: &str) {
+    self.tokens.lock().await.remove(session_id);
+  }
+
+  async fn cancel(&self, session_id: &str) {
+    if let Some(token) = self.tokens.lock().await.get(session_id) {
+      token.store(true, Ordering::SeqCst);
+    }
+  }
+}
+
+pub(crate) async fn ensure_not_cancelled(session_id: &str) -> Result<()> {
+  let cancelled = ResearchRunControl::global()
+    .tokens
+    .lock()
+    .await
+    .get(session_id)
+    .is_some_and(|token| token.load(Ordering::SeqCst));
+  if cancelled {
+    return Err("调研已取消".into());
+  }
+  Ok(())
+}
+
+fn finalize_research_run(session: &mut ResearchSession, run: Result<String>) -> Result<()> {
+  match run {
+    Ok(report) => {
+      session.status = "completed".into();
+      session.report_preview = Some(report_preview(&report));
+      session.error = None;
+    }
+    Err(error) => {
+      if error.contains("调研已取消") {
+        session.status = "cancelled".into();
+      } else {
+        session.status = "failed".into();
+      }
+      session.error = Some(error);
+    }
+  }
+  session.updated_at = Utc::now().to_rfc3339();
+  crate::research_turns::finish_last_turn(
+    Path::new(&session.workspace_path),
+    &session.status,
+    session.error.as_deref(),
+  )
+}
+
+#[tauri::command]
+pub async fn research_cancel_session(state: State<'_, AppState>, id: String) -> Result<ResearchSession> {
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let mut session = get_session_row(&research_pool, &id).await?;
+  if session.status != "running" {
+    research_pool.close().await;
+    return Err("该调研未在运行".into());
+  }
+  ResearchRunControl::global().cancel(&id).await;
+  session.status = "cancelled".into();
+  session.error = Some("用户已取消调研".into());
+  session.updated_at = Utc::now().to_rfc3339();
+  upsert_session(&research_pool, &session).await?;
+  research_pool.close().await;
+  Ok(session)
+}
+
 #[tauri::command]
 pub async fn research_run_session(state: State<'_, AppState>, id: String) -> Result<ResearchSession> {
   let research_pool = open_research_pool(&state.library_dir).await?;
@@ -884,21 +1514,20 @@ pub async fn research_run_session(state: State<'_, AppState>, id: String) -> Res
   research_pool.close().await;
 
   let library_pool = state.pool.read().await.clone();
-  let run = run_research_agent(&library_pool, &settings, &session).await;
+  let workspace = PathBuf::from(&session.workspace_path);
+  let should_resume = research_dsh_store::load_snapshot(&workspace)
+    .map(|snapshot| !snapshot.events.is_empty())
+    .unwrap_or(false);
+  ResearchRunControl::global().begin(&id).await;
+  let run = if should_resume {
+    run_research_agent_resume(&library_pool, &settings, &session).await
+  } else {
+    run_research_agent(&library_pool, &settings, &session).await
+  };
+  ResearchRunControl::global().end(&id).await;
   let research_pool = open_research_pool(&state.library_dir).await?;
   let mut session = get_session_row(&research_pool, &id).await?;
-  match run {
-    Ok(report) => {
-      session.status = "completed".into();
-      session.report_preview = Some(report_preview(&report));
-      session.error = None;
-    }
-    Err(error) => {
-      session.status = "failed".into();
-      session.error = Some(error);
-    }
-  }
-  session.updated_at = Utc::now().to_rfc3339();
+  finalize_research_run(&mut session, run)?;
   upsert_session(&research_pool, &session).await?;
   research_pool.close().await;
   Ok(session)
@@ -916,6 +1545,10 @@ pub async fn research_open_workspace(state: State<'_, AppState>, id: String) -> 
 pub async fn research_delete_session(state: State<'_, AppState>, id: String) -> Result<()> {
   let pool = open_research_pool(&state.library_dir).await?;
   let session = get_session_row(&pool, &id).await?;
+  if session.status == "running" {
+    pool.close().await;
+    return Err("调研进行中，请先点击「停止调研」".into());
+  }
   sqlx::query("DELETE FROM research_sessions WHERE id=?")
     .bind(&id)
     .execute(&pool)
@@ -923,8 +1556,7 @@ pub async fn research_delete_session(state: State<'_, AppState>, id: String) -> 
     .map_err(err)?;
   pool.close().await;
   let workspace = PathBuf::from(session.workspace_path);
-  let default_root = state.library_dir.join("research");
-  if workspace.starts_with(&default_root) {
+  if workspace.starts_with(&state.library_dir) {
     let _ = fs::remove_dir_all(workspace);
   }
   Ok(())
@@ -1016,6 +1648,26 @@ pub async fn research_reject_proposal(
   }
   proposal.status = "rejected".into();
   write_proposal(workspace, proposal)
+}
+
+#[tauri::command]
+pub async fn research_dsh_load_snapshot(state: State<'_, AppState>, id: String) -> Result<research_dsh_store::DshSessionSnapshot> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  research_dsh_store::load_snapshot(Path::new(&session.workspace_path))
+}
+
+#[tauri::command]
+pub async fn research_dsh_append_event(
+  state: State<'_, AppState>,
+  id: String,
+  event: serde_json::Value,
+) -> Result<serde_json::Value> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  research_dsh_store::append_event(Path::new(&session.workspace_path), &event)
 }
 
 #[cfg(test)]

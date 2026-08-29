@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -386,7 +386,7 @@ export const backend = {
     if (!isTauri()) return [];
     return invoke("research_list_sessions");
   },
-  async researchCreateSession(input: { query: string; outputRequirements?: string; workspacePath?: string; title?: string }): Promise<ResearchSession> {
+  async researchCreateSession(input: { query: string; outputRequirements?: string; workspacePath?: string; title?: string; attachments?: ResearchAttachmentInput[] }): Promise<ResearchSession> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_create_session", { input });
   },
@@ -394,9 +394,17 @@ export const backend = {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_get_session", { id });
   },
-  async researchReadReport(id: string): Promise<string> {
+  async researchListTurns(id: string): Promise<ResearchTurnView[]> {
+    if (!isTauri()) return [];
+    return invoke("research_list_turns", { id });
+  },
+  async researchContinueSession(id: string, question: string, attachments: ResearchAttachmentInput[]): Promise<ResearchSession> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
-    return invoke("research_read_report", { id });
+    return invoke("research_continue_session", { input: { id, question, attachments } });
+  },
+  async researchExportReport(id: string): Promise<string> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_export_report", { id });
   },
   async researchReadSources(id: string): Promise<ResearchSource[]> {
     if (!isTauri()) return [];
@@ -409,6 +417,18 @@ export const backend = {
   async researchRunSession(id: string): Promise<ResearchSession> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_run_session", { id });
+  },
+  async researchCancelSession(id: string): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_cancel_session", { id });
+  },
+  async researchResumeSession(id: string, boundarySeq?: number): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_resume_session", { input: { id, boundarySeq } });
+  },
+  async researchForkSession(id: string, boundarySeq?: number, title?: string): Promise<ResearchSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_fork_session", { input: { id, boundarySeq, title } });
   },
   async researchOpenWorkspace(id: string): Promise<void> {
     if (!isTauri()) return;

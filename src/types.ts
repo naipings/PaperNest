@@ -282,6 +282,33 @@ export interface ResearchStepSummary {
   detail?: string;
 }
 
+export interface ResearchAttachmentInput {
+  name: string;
+  kind: "image" | "text" | "link";
+  mime?: string;
+  text?: string;
+  dataBase64?: string;
+  url?: string;
+}
+
+export interface ResearchAttachment {
+  name: string;
+  kind: string;
+  mime?: string;
+  path?: string;
+  url?: string;
+}
+
+export interface ResearchTurnView {
+  turn: number;
+  question: string;
+  attachments: ResearchAttachment[];
+  answer: string;
+  status: string;
+  createdAt: string;
+  error?: string;
+}
+
 export interface ResearchProposal {
   id: string;
   kind: string;

@@ -22,7 +22,7 @@ const SettingsView = lazy(() => import("./components/SettingsView").then(module 
 const KnowledgeGraphInteractive = lazy(() => import("./components/KnowledgeGraphInteractive").then(module => ({ default: module.KnowledgeGraphInteractive })));
 const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module => ({ default: module.TaskCalendar })));
 const RadarView = lazy(() => import("./components/RadarView").then(module => ({ default: module.RadarView })));
-const ResearchView = lazy(() => import("./components/ResearchView").then(module => ({ default: module.ResearchView })));
+const ResearchView = lazy(() => import("./components/ResearchScreen").then(module => ({ default: module.ResearchScreen })));
 
 function readSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
