@@ -406,8 +406,9 @@ export async function ensureTrajectoryRuntime(): Promise<TrajectoryEmbedRuntime>
           const found = [...trajectoryMountRoot.querySelectorAll("[data-slot]")].map(el =>
             el.getAttribute("data-slot"),
           );
-          const rootEntries = slots.entries("root") as unknown[];
-          const viewEntries = slots.entries("conversation.view") as unknown[];
+          const slotsWithEntries = slots as unknown as { entries: (name: string) => unknown[] };
+          const rootEntries = slotsWithEntries.entries("root");
+          const viewEntries = slotsWithEntries.entries("conversation.view");
           throw new Error(
             `renderSlot('${key}'): 未找到 data-slot 容器（已有：${found.length ? found.join(", ") : "无"}；root注册=${rootEntries.length}；view注册=${viewEntries.length}；html=${trajectoryMountRoot.innerHTML.slice(0, 120)}）`,
           );

@@ -1,13 +1,28 @@
 # 更新记录
 
-## 0.2.16 - 2026-08-28（规划）
+## 0.2.17 - 2026-08-29
+
+### 文献调研：单窗口多轮追问 + 附件/链接（Phase 10）
+
+- **单会话多轮**：调研结束后可在同一窗口继续追问，不再需要「新增分支」。`turns.jsonl` 记录每轮问题、附件与答复路径；`research_continue_session` 复用既有 DSH 事件重建上下文后开新 turn 继续 ReAct+Writer。旧会话首次进入时按 session 合成首轮。
+- **附件与链接**：新建调研与追问都支持图片、PDF、Word/Excel/PPT 与纯文本附件（前端提取文本，图片走多模态）；网址渲染成 Cursor 风格链接 chip，并新增 `fetch_url` 工具由 Agent 自行抓取网页正文并登记为来源。
+- **候选论文页**：入库提案从报告页移到独立「候选论文」Tab，复用论文雷达卡片样式，Tab 上以角标显示待审批数量。
+- **标准 Markdown 渲染**：报告改用 `react-markdown` + `remark-gfm`，段落间不再出现多余空行。
+- **合并导出**：多轮会话头部新增「合并导出」，`research_export_report` 把各轮答复合并为一份 `report-full.md`。
+- **鲁棒性**：`finish_research` 传入空 summary 时回喂提示让模型补写摘要而非中断整轮；LLM 请求遇连接/超时/发送类瞬时网络错误时最多重试 2 次（指数退避），HTTP 状态错误不重试。
+- 真实验证：以「推荐系统冷启动」会话追问「结合 arXiv:2608.26804 补充因果推断路线」，Agent 自主调用 `fetch_url` 抓取该论文并产出引用 `[src-016]` 的因果推断专章（`turns/005.md`）。
+
+## 0.2.16 - 2026-08-29
 
 ### 文献调研 Trajectory（Phase 9）
 
-- 方案文档：[research-trajectory-plan.md](research/research-trajectory-plan.md)
-- 复用 `@deepseek-ai/dsh-session`、`dsh-session-persistence-jsonl`、`dsh-client-ui-trajectory`（不自研事件层与 Trajectory UI）
-- Rust ↔ JS Harness Bridge；工作区 `.dsh-session/` 官方 JSONL 持久化
-- 嵌入 DSH `TrajectoryView`，外观 1:1；恢复/分叉走 `SessionStore.fork`
+- 复用 `@deepseek-ai/dsh-session`、`dsh-client-ui-trajectory`、`dsh-compaction`；Rust 写明文 `.dsh-session/session.jsonl`。
+- **对话 / 轨迹**双 Tab；轨迹嵌入官方 `TrajectoryView`。
+- **恢复** `research_resume_session`、**分叉** `research_fork_session`；子 Agent 写入 `children/<id>/session.jsonl`。
+- **deep** 模式按 token 压力自动 compaction（`compaction/*` + surface replace checkpoint）。
+- ReAct / Reviewer / Writer / `steps/` / `report.md` / 提案审批保持原交付路径；DSH 为并行事件层。
+- Webview：`node:module` shim 支持 `package.json` 版本读取；文献调研页懒加载，避免启动白屏。
+- 方案：[research-trajectory-plan.md](research/research-trajectory-plan.md)
 
 ## 0.2.15 - 2026-08-28
 

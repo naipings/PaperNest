@@ -100,7 +100,7 @@ sequenceDiagram
 | 本地知识树 | 按领域/标签/文本相似度组织节点，双击定位论文                     |
 | 任务日历  | 本地任务，可关联论文；页底阅读打卡（每日新增 + 满 5 分钟阅读）          |
 | 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
-| 文献调研  | ReAct Agent；**轨迹 Tab**（DSH 1:1 UI，Phase 9）；`report.md` + `proposals/`；MCP（`papernest-mcp`） |
+| 文献调研  | ReAct Agent；**单窗口多轮追问** + 附件/链接 + `fetch_url`；对话/轨迹/候选论文三 Tab（DSH 1:1 UI）；`report.md` + `turns/` + `proposals/`；MCP（`papernest-mcp`） |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 
 
@@ -233,13 +233,16 @@ flowchart LR
 
 - 默认关闭；在 **设置 → 文献调研** 配置独立调研 LLM（与「LLM 自动整理」分开）。
 - 侧栏 **文献调研**：填写研究问题 → 创建任务 → **开始调研**。主交付物为项目文件夹内的 `report.md`。
+- **附件与链接**：新建与追问的输入框支持拖入/粘贴图片、PDF、Word/Excel/PPT 与纯文本（前端提取文本，图片走多模态）；网址渲染成链接 chip，Agent 用 `fetch_url` 工具按需抓取网页正文。
 - Agent 流程（**react 模式**，默认）：LLM ReAct 循环选工具检索 → `finish_research` → Reviewer 门控（最多 2 轮补检索）→ Writer 写报告。
 - 主 Agent 可调用 `research_subtopic` 委派子问题；弱 tool 模型自动走 JSON ReAct fallback。
 - 可回退 `pipeline` 固定流水线（设置 → 文献调研 → 调研模式）。
-- 调研进行中 **ResearchView** 轮询步骤；**Phase 9** 起提供「对话 / 轨迹」双 Tab，轨迹视图与 DeepSeek Harness 1:1 对齐（热图、来源徽章、Inspector）。
-- 调研完成后，未入库的 arXiv 来源生成 `proposals/`，可在 UI 审批（仅元数据或下载 PDF 入库）。
+- 调研进行中 **ResearchView** 轮询步骤与 DSH 事件；**对话 / 轨迹 / 候选论文**三 Tab：对话为多轮会话流（底部追问框），轨迹为 DeepSeek Harness `TrajectoryView`，候选论文以雷达卡片样式展示未入库来源。
+- **单窗口多轮**：调研结束后在对话框继续追问即开新一轮（`turns/NNN.md`），无需新增分支；头部「合并导出」生成 `report-full.md`。报告用 `react-markdown` + `remark-gfm` 标准渲染。
+- 轨迹底栏支持 **从此处恢复**、**分叉为新任务**；deep 模式长会话自动压缩。
+- 调研完成后，未入库的 arXiv 来源生成 `proposals/`，可在「候选论文」Tab 审批（仅元数据或下载 PDF 入库）。
 - 默认工作区：`PaperNestLibrary/research/<session-id>/`；也可指定任意项目文件夹。
-- 过程文件：`.dsh-session/`（Phase 9，DSH 官方格式）、`steps/`、`sources.jsonl`、`outline.md`。外网论文只记链接与摘要，调研期不下载 PDF。
+- 过程文件：`.dsh-session/`（DSH 事件日志）、`steps/`、`sources.jsonl`、`outline.md`、`turns.jsonl`、`turns/`、`attachments/`。外网论文只记链接与摘要，调研期不下载 PDF。
 - **Codex MCP**：设置页复制 `codex mcp add` 命令；`papernest-mcp.exe` 与主程序同目录。
 
 

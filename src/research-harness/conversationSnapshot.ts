@@ -3,7 +3,7 @@ import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-runtime/clien
 /** 与 @deepseek-ai/dsh-client-test-runtime 中 conversationSnapshot 一致（空 views/chat 由 sync 覆盖） */
 export function conversationSnapshot(sessionId: string): ConversationSnapshot {
   return {
-    sessionId,
+    sessionId: sessionId as ConversationSnapshot["sessionId"],
     views: new Map() as ConversationSnapshot["views"],
     chat: {
       legacy: {

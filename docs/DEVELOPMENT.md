@@ -285,13 +285,15 @@ paperReader/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
-│   ├── src/research.rs         # 文献调研会话与命令
-│   ├── src/research_tools.rs   # 工具层 + SourceCollector（MCP 共用）
+│   ├── src/research.rs         # 文献调研会话与命令（含多轮 continue/export）
+│   ├── src/research_turns.rs   # turns.jsonl 轮次记录 + 附件存储/多模态注入
+│   ├── src/research_web.rs     # fetch_url 网页正文抓取
+│   ├── src/research_tools.rs   # 工具层 + SourceCollector（MCP 共用，含 fetch_url）
 │   ├── src/research_react.rs   # ReAct 主循环
 │   ├── src/research_reviewer.rs
 │   ├── src/research_subagent.rs
 │   ├── src/research_writer.rs
-│   ├── src/research_llm.rs
+│   ├── src/research_llm.rs     # 调研 LLM 客户端（瞬时网络错误有界重试）
 │   ├── src/mcp_server.rs       # MCP Server（stdio JSON-RPC）
 │   └── src/bin/papernest_mcp.rs
 │   └── schema.sql              # 数据库迁移
@@ -368,7 +370,8 @@ paperReader/
 | `research_get_settings` / `research_save_settings` / `research_test_connection` | 文献调研开关与独立 LLM |
 | `research_create_session` / `research_list_sessions` / `research_get_session` | 调研任务 CRUD |
 | `research_run_session` | 运行 Agent；事件经 `research_dsh_append` 写入 `.dsh-session/` |
-| `research_read_report` / `research_read_sources` / `research_list_steps` | 读交付物与过程投影 |
+| `research_list_turns` / `research_read_sources` / `research_list_steps` | 读多轮答复与过程投影 |
+| `research_continue_session` / `research_export_report` | 单窗口追问开新一轮 / 合并各轮为 `report-full.md` |
 | `research_dsh_append` / `research_dsh_derive_messages` / `research_dsh_load` | Phase 9：DSH Session 桥接 |
 | `research_dsh_fork` / `research_resume_session` | Phase 9：官方 `SessionStore.fork` + Rust 续跑 |
 | `research_open_workspace` / `research_delete_session` | 打开文件夹 / 删除任务 |
@@ -553,12 +556,14 @@ paper_custom_field_values(paper_id, field_id, value_json, updated_at)
 
 ```text
 设置启用 + 页内「开始调研」
-  → research_create_session（创建工作区）
+  → research_create_session（创建工作区 + turns.jsonl 首轮 + 附件存储）
   → research_run_session
-       react（默认）：ReAct 循环 → Reviewer 门控 → Writer → report.md
+       react（默认）：ReAct 循环 → Reviewer 门控 → Writer → turn 1 = report.md
        pipeline：Planner → Researcher → Reflect → Writer → report.md
+  → 对话框追问 → research_continue_session
+       复用 DSH 事件重建上下文 → 追加 turn → ReAct+Writer → turns/NNN.md
   → 过程写入 steps/、sources.jsonl；Phase 9 起追加 `.dsh-session/`（DSH 官方格式）
-  → 报告以 report.md 为准
+  → 首轮 report.md，后续 turns/NNN.md；research_export_report 合并为 report-full.md
 ```
 
 ### MCP Server（Phase 6）
@@ -584,7 +589,9 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 默认 `researchMode=react`：LLM 通过 function calling 循环调用工具；无 native `tool_calls` 时走 JSON ReAct fallback；结束后 Reviewer 门控与 Writer 生成报告。`pipeline` 为旧版固定流水线，检索统一走 `research_tools::pipeline_invoke`。深度预设见 [research-react-upgrade-plan.md](research/research-react-upgrade-plan.md)。
 
-**Phase 9 Trajectory（0.2.16）**：复用 DSH 官方 session 持久化与 `TrajectoryView`；Rust 经 Harness Bridge 追加标准事件。方案见 [research-trajectory-plan.md](research/research-trajectory-plan.md)。
+**Phase 9 Trajectory（0.2.16）**：Rust 写 DSH 兼容 JSONL；Webview 嵌入官方 `TrajectoryView`；支持恢复、分叉、deep 压缩。方案见 [research-trajectory-plan.md](research/research-trajectory-plan.md)。
+
+**Phase 10 多轮追问（0.2.17）**：`turns.jsonl` 记录每轮问题/附件/答复路径，`research_continue_session` 复用既有 DSH 事件重建上下文后开新 turn 继续 ReAct+Writer（`research_dsh_derive` 以「带 tools 的 request/header」定位最后一轮 ReAct）。输入框（`ResearchComposer`）支持图片/PDF/Office/文本附件与链接 chip，前端在 `src/lib/researchAttachments.ts` 提取文本、图片走多模态；`fetch_url` 工具抓取网页正文。入库提案移至「候选论文」Tab（雷达卡片样式），报告改用 `react-markdown` + `remark-gfm`。`research_llm` 对连接/超时/发送类瞬时错误有界重试。
 
 ---
 
