@@ -413,7 +413,10 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         .trim()
         .to_string();
       if summary.is_empty() {
-        return Err("finish_research 需要非空 summary".into());
+        return Ok(ToolOutcome::Continue {
+          observation: "finish_research 的 summary 不能为空。请先用一段话总结关键证据与结论，再调用 finish_research 并把它写进 summary。".into(),
+          new_source_ids: vec![],
+        });
       }
       Ok(ToolOutcome::Finished { summary })
     }

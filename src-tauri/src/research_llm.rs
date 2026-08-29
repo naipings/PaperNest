@@ -78,14 +78,25 @@ pub async fn research_llm_with_tools(
     .pool_max_idle_per_host(0)
     .build()
     .map_err(err)?;
-  let response = client
-    .post(&endpoint)
-    .bearer_auth(&key)
-    .header("Accept", "application/json")
-    .json(&request)
-    .send()
-    .await
-    .map_err(err)?;
+  let mut attempt = 0u32;
+  let response = loop {
+    match client
+      .post(&endpoint)
+      .bearer_auth(&key)
+      .header("Accept", "application/json")
+      .json(&request)
+      .send()
+      .await
+    {
+      Ok(resp) => break resp,
+      Err(e) if attempt < 2 && (e.is_connect() || e.is_timeout() || e.is_request()) => {
+        attempt += 1;
+        tokio::time::sleep(Duration::from_secs(2 * attempt as u64)).await;
+        continue;
+      }
+      Err(e) => return Err(err(e)),
+    }
+  };
   let status = response.status();
   let value: serde_json::Value = response.json().await.map_err(err)?;
   if !status.is_success() {
