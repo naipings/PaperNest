@@ -37,6 +37,8 @@ pub struct ResearchLlmSettings {
   pub max_iterations: i64,
   #[serde(default = "default_max_tokens")]
   pub max_tokens_per_step: u32,
+  #[serde(default = "default_report_max_tokens")]
+  pub report_max_tokens: u32,
   #[serde(default = "default_research_mode")]
   pub research_mode: String,
   #[serde(default = "default_research_depth")]
@@ -70,6 +72,10 @@ fn default_max_tokens() -> u32 {
   4000
 }
 
+fn default_report_max_tokens() -> u32 {
+  12_000
+}
+
 fn default_research_settings() -> ResearchLlmSettings {
   ResearchLlmSettings {
     enabled: false,
@@ -79,6 +85,7 @@ fn default_research_settings() -> ResearchLlmSettings {
     allow_web_search: true,
     max_iterations: 8,
     max_tokens_per_step: 4000,
+    report_max_tokens: default_report_max_tokens(),
     research_mode: "react".into(),
     research_depth: "standard".into(),
     max_react_rounds: 0,
@@ -510,6 +517,14 @@ fn ensure_turn_history(
 }
 
 pub(crate) fn sources_block(collected: &[ResearchSource]) -> String {
+  sources_block_with_excerpt(collected, 280)
+}
+
+pub(crate) fn sources_block_for_writer(collected: &[ResearchSource]) -> String {
+  sources_block_with_excerpt(collected, 800)
+}
+
+fn sources_block_with_excerpt(collected: &[ResearchSource], excerpt_chars: usize) -> String {
   collected
     .iter()
     .map(|s| {
@@ -518,7 +533,7 @@ pub(crate) fn sources_block(collected: &[ResearchSource]) -> String {
         s.id,
         s.title,
         s.url.clone().unwrap_or_else(|| "本地论文库".into()),
-        s.excerpt.chars().take(280).collect::<String>()
+        s.excerpt.chars().take(excerpt_chars).collect::<String>()
       )
     })
     .collect::<Vec<_>>()

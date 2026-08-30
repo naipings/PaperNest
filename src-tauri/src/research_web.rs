@@ -47,6 +47,118 @@ pub async fn search_web_sources(query: &str, limit: i64, from_year: Option<i64>)
   Ok(out)
 }
 
+/// DuckDuckGo Lite SERP，用于具名来源补链与 llm_web 兜底。
+pub async fn search_ddg_lite(query: &str, limit: usize) -> Result<Vec<WebBrief>> {
+  let compact = query.trim();
+  if compact.len() < 2 {
+    return Ok(vec![]);
+  }
+  let client = http_client()?;
+  let response = client
+    .post("https://lite.duckduckgo.com/lite/")
+    .header("Content-Type", "application/x-www-form-urlencoded")
+    .body(format!("q={}", url_encode(compact)))
+    .send()
+    .await
+    .map_err(err)?;
+  if !response.status().is_success() {
+    return Err(format!("DuckDuckGo Lite 请求失败：{}", response.status()));
+  }
+  let html = response.text().await.map_err(err)?;
+  Ok(parse_ddg_lite_html(&html, limit.clamp(1, 5)))
+}
+
+pub async fn resolve_named_web_title(title: &str) -> Option<WebBrief> {
+  let compact = title.trim();
+  if compact.len() < 4 {
+    return None;
+  }
+  if let Ok(briefs) = search_ddg_lite(compact, 1).await {
+    if let Some(brief) = briefs.into_iter().next() {
+      return Some(brief);
+    }
+  }
+  search_web_sources(compact, 1, None)
+    .await
+    .ok()
+    .and_then(|items| items.into_iter().next())
+}
+
+fn parse_ddg_lite_html(html: &str, limit: usize) -> Vec<WebBrief> {
+  let mut out = Vec::new();
+  let mut seen = HashSet::new();
+  let mut pos = 0usize;
+  while out.len() < limit {
+    let Some(rel) = html[pos..].find(r#"rel="nofollow""#) else {
+      break;
+    };
+    let chunk = &html[pos + rel..];
+    let Some(href_start) = chunk.find("href=\"") else {
+      pos += rel + 1;
+      continue;
+    };
+    let href = &chunk[href_start + 6..];
+    let Some(href_end) = href.find('"') else {
+      break;
+    };
+    let raw_url = &href[..href_end];
+    let url = decode_ddg_result_url(raw_url);
+    if !url.starts_with("http") || url.contains("duckduckgo.com") {
+      pos += rel + 1;
+      continue;
+    }
+    let tag = &chunk[href_start..];
+    let Some(gt) = tag.find('>') else {
+      pos += rel + 1;
+      continue;
+    };
+    let inner = &tag[gt + 1..];
+    let title = if let Some(close) = inner.find('<') {
+      squash(inner[..close].chars().take(160).collect())
+    } else {
+      url.clone()
+    };
+    if title.len() < 2 || !seen.insert(url.clone()) {
+      pos += rel + 1;
+      continue;
+    }
+    out.push(WebBrief {
+      title,
+      url,
+      excerpt: "DuckDuckGo Lite".into(),
+      kind: "ddg".into(),
+    });
+    pos += rel + href_start + href_end + 1;
+  }
+  out
+}
+
+fn decode_ddg_result_url(raw: &str) -> String {
+  if let Some(encoded) = raw.split("uddg=").nth(1).and_then(|part| part.split('&').next()) {
+  let mut decoded = String::new();
+  let bytes = encoded.as_bytes();
+  let mut i = 0usize;
+  while i < bytes.len() {
+    if bytes[i] == b'%' && i + 2 < bytes.len() {
+      if let Ok(byte) = u8::from_str_radix(&encoded[i + 1..i + 3], 16) {
+        decoded.push(byte as char);
+        i += 3;
+        continue;
+      }
+    }
+    decoded.push(bytes[i] as char);
+    i += 1;
+  }
+    if decoded.starts_with("http") {
+      return decoded;
+    }
+  }
+  if raw.starts_with("//") {
+    return format!("https:{raw}");
+  }
+  raw.to_string()
+}
+
 /// 学术检索词取前 5 个 token：`title_and_abstract.search` 是 AND 语义，词越多越精准，
 /// 但整句会把命中降到零。
 fn academic_terms(query: &str) -> String {
@@ -356,4 +468,24 @@ fn url_encode(value: &str) -> String {
 
 fn err<E: std::fmt::Display>(e: E) -> String {
   e.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parses_ddg_lite_result_links() {
+    let html = r#"<a rel="nofollow" href="https://example.com/report">Gartner Report</a>"#;
+    let hits = parse_ddg_lite_html(html, 3);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].url, "https://example.com/report");
+    assert_eq!(hits[0].title, "Gartner Report");
+  }
+
+  #[test]
+  fn decodes_ddg_redirect_urls() {
+    let raw = "//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fmit";
+    assert_eq!(decode_ddg_result_url(raw), "https://example.com/mit");
+  }
 }

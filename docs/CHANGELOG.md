@@ -1,10 +1,22 @@
 # 更新记录
 
+## 0.2.23 - 2026-08-30
+
+### 文献调研：报告详度与多轮上下文（Phase 11）
+
+- 新增 **`reportMaxTokens`**（默认 12000），Writer 专用；设置页区分「中间步默认 tokens」与「报告最大 tokens」。
+- Writer：`sources_block_for_writer` 每条来源摘录 800 字；写作超时 300s；system prompt 要求按大纲充分展开。
+- ReAct 每步 `max_tokens` 2000。
+- DSH 上下文压缩：**全部调研深度**启用（原仅 deep）；`turns.jsonl` ≥2 轮时压缩阈值 0.65（单轮 0.8）。
+- 与 `llm_web_search`（Phase 12a）无冲突：联网检索仍用 `max_tokens_per_step.min(3000)` 独立请求。
+
 ## 0.2.22 - 2026-08-30
 
 ### 文献调研：llm_web_search 来源登记修复
 
 - 百炼 OpenAI 兼容模式常不返回 `search_info`：当结构化来源为空时，从综述文本提取 `arXiv:` 编号与 `http(s)` 链接并登记为 `llm_web` 来源。
+- 仍无链接时登记 1 条「综述备忘」`llm_web` 来源；提示模型在文末输出「标题 | URL / 无链接」列表，并解析具名来源。
+- 兼容模式无 `search_info` 时回退 DashScope 原生 `generation` API 取结构化来源；具名来源经 DuckDuckGo Lite 补链。
 - `watch_research.py` 修复 Windows 控制台 UTF-8 输出。
 
 ## 0.2.21 - 2026-08-30

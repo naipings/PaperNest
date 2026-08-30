@@ -135,6 +135,43 @@ impl SourceCollector {
     Ok(Some(source))
   }
 
+  /// 无结构化链接时，将本次 LLM 联网综述登记为可引用来源。
+  pub fn add_llm_web_memo(
+    &mut self,
+    workspace: &Path,
+    now: &str,
+    query: &str,
+    summary: &str,
+  ) -> Result<ResearchSource> {
+    let memo_url = format!("llm-web-memo://{}", query.trim());
+    if let Some(existing) = self
+      .sources
+      .iter()
+      .find(|item| item.url.as_deref() == Some(memo_url.as_str()))
+    {
+      return Ok(existing.clone());
+    }
+    self.seen_urls.insert(memo_url.clone());
+    let title = format!(
+      "LLM联网综述：{}",
+      query.chars().take(80).collect::<String>()
+    );
+    let excerpt = summary.chars().take(800).collect::<String>();
+    let source = ResearchSource {
+      id: self.next_source_id(),
+      kind: "llm_web".into(),
+      url: Some(memo_url),
+      title,
+      accessed_at: now.to_string(),
+      excerpt,
+      local_paper_id: None,
+      page: None,
+      stored_locally: false,
+    };
+    self.push_source(workspace, source.clone())?;
+    Ok(source)
+  }
+
   pub fn add_annotation(
     &mut self,
     workspace: &Path,
@@ -656,8 +693,13 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         crate::research_llm_web::provider_label(result.provider),
         result.summary.chars().take(1200).collect::<String>()
       )];
+      let mut hits =
+        crate::research_llm_web::enrich_llm_web_hits(result.hits).await;
+      if hits.is_empty() && !result.summary.trim().is_empty() {
+        hits = crate::research_llm_web::supplement_hits_from_query(&query).await;
+      }
       let mut new_ids = Vec::new();
-      for hit in result.hits.iter().take(8) {
+      for hit in hits.iter().take(8) {
         if let Some(source) = ctx.collector.add_web_brief(
           ctx.workspace,
           ctx.now,
@@ -676,11 +718,23 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
           ));
         }
       }
-      if !result.hits.is_empty() {
+      if !hits.is_empty() {
         lines.push(format!(
           "链接 {} 条，新登记 {} 条。",
-          result.hits.len(),
+          hits.len(),
           new_ids.len()
+        ));
+      } else if !result.summary.trim().is_empty() {
+        let source = ctx.collector.add_llm_web_memo(
+          ctx.workspace,
+          ctx.now,
+          &query,
+          &result.summary,
+        )?;
+        new_ids.push(source.id.clone());
+        lines.push(format!(
+          "[{}] {}（无结构化链接，已登记综述备忘）",
+          source.id, source.title
         ));
       }
       Ok(ToolOutcome::Continue {
@@ -1085,6 +1139,24 @@ mod tests {
     let off = crate::research::catalog_settings(true, "off");
     let off_names: Vec<_> = react_tool_catalog(&off).into_iter().map(|t| t.name).collect();
     assert!(!off_names.contains(&"llm_web_search"));
+  }
+
+  #[test]
+  fn collector_registers_llm_web_memo() {
+    let dir = std::env::temp_dir().join(format!("pn-memo-{}", Uuid::new_v4()));
+    fs::create_dir_all(dir.join("steps")).unwrap();
+    fs::write(dir.join("sources.jsonl"), "").unwrap();
+    let mut collector = SourceCollector::from_workspace(&dir).unwrap();
+    let now = "2026-01-01T00:00:00Z";
+    let first = collector
+      .add_llm_web_memo(&dir, now, "AI agent survey", "summary text")
+      .unwrap();
+    let second = collector
+      .add_llm_web_memo(&dir, now, "AI agent survey", "other")
+      .unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(collector.sources().len(), 1);
+    let _ = fs::remove_dir_all(dir);
   }
 
   #[test]

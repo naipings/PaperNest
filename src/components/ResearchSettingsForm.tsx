@@ -11,6 +11,7 @@ const DEFAULT: ResearchLlmSettings = {
   allowWebSearch: false,
   maxIterations: 8,
   maxTokensPerStep: 4000,
+  reportMaxTokens: 12000,
   researchMode: "react",
   researchDepth: "standard",
   maxReactRounds: 0,
@@ -113,7 +114,8 @@ export function ResearchSettingsForm() {
       <label>最大 ReAct 轮次（0=按深度预设）<input type="number" min={0} max={50} value={value.maxReactRounds} onChange={e => setValue(v => ({ ...v, maxReactRounds: Number(e.target.value) || 0 }))} /></label>
       <label>最大 tool 调用（0=按深度预设）<input type="number" min={0} max={120} value={value.maxToolCalls} onChange={e => setValue(v => ({ ...v, maxToolCalls: Number(e.target.value) || 0 }))} /></label>
       <label>最大检索轮次（pipeline）<input type="number" min={2} max={12} value={value.maxIterations} onChange={e => setValue(v => ({ ...v, maxIterations: Number(e.target.value) || 8 }))} /></label>
-      <label>单步最大 tokens<input type="number" min={1000} max={16000} step={500} value={value.maxTokensPerStep} onChange={e => setValue(v => ({ ...v, maxTokensPerStep: Number(e.target.value) || 4000 }))} /></label>
+      <label>中间步默认 tokens<input type="number" min={1000} max={16000} step={500} value={value.maxTokensPerStep} onChange={e => setValue(v => ({ ...v, maxTokensPerStep: Number(e.target.value) || 4000 }))} /></label>
+      <label>报告最大 tokens<input type="number" min={4000} max={32000} step={500} value={value.reportMaxTokens ?? 12000} onChange={e => setValue(v => ({ ...v, reportMaxTokens: Number(e.target.value) || 12000 }))} /></label>
       <div className="settings-actions">
         <button className="primary" disabled={busy || !isTauri()} onClick={() => void save()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}保存调研设置</button>
         <button className="secondary" disabled={busy || !isTauri()} onClick={() => void test()}><TestTube2 size={16} />测试连接</button>

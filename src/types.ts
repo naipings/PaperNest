@@ -242,6 +242,7 @@ export interface ResearchLlmSettings {
   allowWebSearch: boolean;
   maxIterations: number;
   maxTokensPerStep: number;
+  reportMaxTokens: number;
   researchMode: "react" | "pipeline" | string;
   researchDepth: "quick" | "standard" | "deep" | string;
   maxReactRounds: number;

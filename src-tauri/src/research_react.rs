@@ -109,7 +109,7 @@ async fn run_react_loop_inner(
     ensure_not_cancelled(&session.id).await?;
     let system_prompt = react_system_prompt();
     let snapshot = research_dsh_store::load_snapshot(&workspace)?;
-    if research_dsh_compact::maybe_compact_if_needed(settings, dsh, &snapshot.events, react_turn).await? {
+    if research_dsh_compact::maybe_compact_if_needed(settings, dsh, &snapshot.events, react_turn, &workspace).await? {
       messages = crate::research_dsh_derive::derive_openai_messages(
         &research_dsh_store::load_snapshot(&workspace)?.events,
       );
@@ -128,7 +128,7 @@ async fn run_react_loop_inner(
     }
     dsh.step_start(react_turn, round)?;
 
-    let mut response = research_llm_with_tools(settings, &messages, &tools, Some(1200), 120).await?;
+    let mut response = research_llm_with_tools(settings, &messages, &tools, Some(2000), 120).await?;
 
     if response.tool_calls.is_empty() {
       if let Some(content) = &response.content {

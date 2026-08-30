@@ -43,6 +43,14 @@ impl CompactionPolicy {
     }
   }
 
+  pub fn for_session(turn_count: usize) -> Self {
+    let mut policy = Self::deep();
+    if turn_count >= 2 {
+      policy.threshold_ratio = 0.65;
+    }
+    policy
+  }
+
   pub fn threshold_tokens(&self) -> u64 {
     ((self.context_window as f64) * self.threshold_ratio) as u64
   }
@@ -167,15 +175,16 @@ pub(crate) async fn maybe_compact_if_needed(
   dsh: &mut DshRecorder,
   events: &[serde_json::Value],
   react_turn: u32,
+  workspace: &std::path::Path,
 ) -> Result<bool> {
-  if settings.research_depth != "deep" {
-    return Ok(false);
-  }
   if compaction_locked(events) {
     return Ok(false);
   }
+  let turn_count = crate::research_turns::read_turns(workspace)
+    .map(|turns| turns.len())
+    .unwrap_or(0);
   let messages = crate::research_dsh_derive::derive_openai_messages(events);
-  let policy = CompactionPolicy::deep();
+  let policy = CompactionPolicy::for_session(turn_count);
   if estimate_openai_message_tokens(&messages) < policy.threshold_tokens() {
     return Ok(false);
   }
@@ -217,5 +226,12 @@ mod tests {
     let policy = CompactionPolicy::deep();
     assert_eq!(policy.threshold_tokens(), 102_400);
     assert_eq!(policy.retain_tokens(), 20_480);
+  }
+
+  #[test]
+  fn multi_turn_policy_lowers_threshold() {
+    let policy = CompactionPolicy::for_session(2);
+    assert_eq!(policy.threshold_ratio, 0.65);
+    assert_eq!(policy.threshold_tokens(), 83_200);
   }
 }

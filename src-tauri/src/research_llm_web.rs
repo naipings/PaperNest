@@ -150,7 +150,7 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
     "temperature": 0.2,
     "max_tokens": settings.max_tokens_per_step.min(3000),
     "messages": [
-      {"role": "system", "content": "你是文献调研助手。基于联网搜索结果给出简洁中文综述，并保留可核验的事实。"},
+      {"role": "system", "content": LLM_WEB_SYSTEM_PROMPT},
       {"role": "user", "content": user_prompt}
     ],
     "enable_search": true,
@@ -162,7 +162,17 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
   });
   if dashscope_needs_stream(&settings.model) {
     body["stream"] = serde_json::json!(true);
-    let (summary, hits, raw) = dashscope_stream_request(&client, &endpoint, key, &body).await?;
+    let (mut summary, mut hits, raw) = dashscope_stream_request(&client, &endpoint, key, &body).await?;
+    if hits.is_empty() {
+      if let Ok(native) = dashscope_native_search(settings, key, query).await {
+        if !native.hits.is_empty() {
+          hits = native.hits;
+        }
+        if summary.trim().is_empty() && !native.summary.trim().is_empty() {
+          summary = native.summary;
+        }
+      }
+    }
     if summary.trim().is_empty() && hits.is_empty() {
       return Err(parse_api_error(&raw));
     }
@@ -187,7 +197,17 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
     let message = parse_api_error(&raw);
     if message.contains("Non-streaming") || message.contains("Web Search") {
       body["stream"] = serde_json::json!(true);
-      let (summary, hits, raw) = dashscope_stream_request(&client, &endpoint, key, &body).await?;
+      let (mut summary, mut hits, raw) = dashscope_stream_request(&client, &endpoint, key, &body).await?;
+      if hits.is_empty() {
+        if let Ok(native) = dashscope_native_search(settings, key, query).await {
+          if !native.hits.is_empty() {
+            hits = native.hits;
+          }
+          if summary.trim().is_empty() && !native.summary.trim().is_empty() {
+            summary = native.summary;
+          }
+        }
+      }
       if summary.trim().is_empty() && hits.is_empty() {
         return Err(parse_api_error(&raw));
       }
@@ -199,8 +219,18 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
     }
     return Err(message);
   }
-  let summary = extract_message_content(&raw);
-  let hits = parse_search_hits(&raw);
+  let mut summary = extract_message_content(&raw);
+  let mut hits = parse_search_hits(&raw);
+  if hits.is_empty() {
+    if let Ok(native) = dashscope_native_search(settings, key, query).await {
+      if !native.hits.is_empty() {
+        hits = native.hits;
+      }
+      if summary.trim().is_empty() && !native.summary.trim().is_empty() {
+        summary = native.summary;
+      }
+    }
+  }
   if summary.trim().is_empty() && hits.is_empty() {
     return Err("DashScope 联网响应无正文与来源".into());
   }
@@ -209,6 +239,70 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
     hits,
     provider: NativeWebProvider::DashScope,
   }))
+}
+
+fn dashscope_native_generation_endpoint(base_url: &str) -> String {
+  let base = base_url.trim().trim_end_matches('/');
+  let root = base
+    .split("/compatible-mode")
+    .next()
+    .unwrap_or("https://dashscope.aliyuncs.com");
+  format!("{root}/api/v1/services/aigc/text-generation/generation")
+}
+
+async fn dashscope_native_search(
+  settings: &ResearchLlmSettings,
+  key: &str,
+  query: &str,
+) -> Result<LlmWebSearchResult> {
+  let endpoint = dashscope_native_generation_endpoint(&settings.base_url);
+  let client = llm_client(120)?;
+  let body = serde_json::json!({
+    "model": settings.model,
+    "input": {
+      "messages": [
+        {"role": "system", "content": LLM_WEB_SYSTEM_PROMPT},
+        {"role": "user", "content": format!("请联网检索并简要综述：{query}")}
+      ]
+    },
+    "parameters": {
+      "temperature": 0.2,
+      "max_tokens": settings.max_tokens_per_step.min(3000),
+      "enable_search": true,
+      "search_options": {
+        "forced_search": true,
+        "enable_source": true,
+        "search_strategy": "agent"
+      },
+      "result_format": "message"
+    }
+  });
+  let response = client
+    .post(&endpoint)
+    .bearer_auth(key)
+    .header("Accept", "application/json")
+    .json(&body)
+    .send()
+    .await
+    .map_err(err)?;
+  let status = response.status();
+  let raw: serde_json::Value = response.json().await.map_err(err)?;
+  if !status.is_success() {
+    return Err(parse_api_error(&raw));
+  }
+  let summary = raw
+    .pointer("/output/choices/0/message/content")
+    .and_then(content_to_string)
+    .unwrap_or_default();
+  let hits = parse_search_hits(&raw);
+  if summary.trim().is_empty() && hits.is_empty() {
+    return Err("DashScope 原生联网响应无正文与来源".into());
+  }
+  Ok(LlmWebSearchResult {
+    summary,
+    hits,
+    provider: NativeWebProvider::DashScope,
+  })
 }
 
 async fn dashscope_stream_request(
@@ -267,11 +361,53 @@ async fn dashscope_stream_request(
   Ok((summary, hits, last_json))
 }
 
+const LLM_WEB_SYSTEM_PROMPT: &str = "你是文献调研助手。基于联网搜索结果给出简洁中文综述，并保留可核验的事实。\n\
+文末必须附「来源：」列表，每行一条，格式严格为「- 标题 | URL」；无 URL 时写「无链接」。\n\
+示例：\n来源：\n- MIT AI Agent Index | https://example.com/index\n- Gartner 报告 | 无链接";
+
 fn finalize_result(mut result: LlmWebSearchResult) -> LlmWebSearchResult {
   if result.hits.is_empty() {
     result.hits = extract_hits_from_summary(&result.summary);
   }
   result
+}
+
+pub async fn enrich_llm_web_hits(hits: Vec<LlmWebHit>) -> Vec<LlmWebHit> {
+  let mut out = Vec::with_capacity(hits.len());
+  let mut named_resolved = 0usize;
+  for hit in hits {
+    if hit.url.starts_with("llm-web-named://") && named_resolved < 3 {
+      if let Some(brief) = crate::research_web::resolve_named_web_title(&hit.title).await {
+        named_resolved += 1;
+        out.push(LlmWebHit {
+          title: hit.title,
+          url: brief.url,
+          snippet: if hit.snippet.is_empty() {
+            brief.excerpt
+          } else {
+            hit.snippet
+          },
+        });
+        continue;
+      }
+    }
+    out.push(hit);
+  }
+  out
+}
+
+pub async fn supplement_hits_from_query(query: &str) -> Vec<LlmWebHit> {
+  let briefs = crate::research_web::search_ddg_lite(query, 3)
+    .await
+    .unwrap_or_default();
+  briefs
+    .into_iter()
+    .map(|brief| LlmWebHit {
+      title: brief.title,
+      url: brief.url,
+      snippet: brief.excerpt,
+    })
+    .collect()
 }
 
 fn extract_hits_from_summary(summary: &str) -> Vec<LlmWebHit> {
@@ -317,7 +453,108 @@ fn extract_hits_from_summary(summary: &str) -> Vec<LlmWebHit> {
     }
     offset = start + id.len().max(1);
   }
+  for line in summary.lines() {
+    let line = line
+      .trim()
+      .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == '•');
+    let Some(pos) = line.find('|') else {
+      continue;
+    };
+    let title = line[..pos].trim();
+    let right = line[pos + 1..].trim();
+    if title.len() < 4 || title.len() > 120 {
+      continue;
+    }
+    if right.starts_with("http://") || right.starts_with("https://") {
+      let url = right
+        .split_whitespace()
+        .next()
+        .unwrap_or(right)
+        .trim_end_matches(|c: char| {
+          !c.is_ascii_alphanumeric()
+            && c != '/'
+            && c != '-'
+            && c != '_'
+            && c != '.'
+            && c != '?'
+            && c != '='
+            && c != '&'
+            && c != '#'
+        })
+        .to_string();
+      if url.len() > 12 && seen.insert(url.clone()) {
+        hits.push(LlmWebHit {
+          title: title.to_string(),
+          url,
+          snippet: String::new(),
+        });
+      }
+    } else if right.contains("无链接") || right.is_empty() {
+      let url = format!("llm-web-named://{title}");
+      if seen.insert(url.clone()) {
+        hits.push(LlmWebHit {
+          title: title.to_string(),
+          url,
+          snippet: String::new(),
+        });
+      }
+    }
+  }
+  for title in extract_bullet_titles_from_summary(summary) {
+    let url = format!("llm-web-named://{title}");
+    if seen.insert(url.clone()) {
+      hits.push(LlmWebHit {
+        title,
+        url,
+        snippet: String::new(),
+      });
+    }
+  }
   hits
+}
+
+fn extract_bullet_titles_from_summary(summary: &str) -> Vec<String> {
+  let mut titles = Vec::new();
+  let mut in_sources = false;
+  for line in summary.lines() {
+    let trimmed = line.trim();
+    if trimmed.starts_with("来源")
+      || trimmed.starts_with("参考")
+      || trimmed.eq_ignore_ascii_case("references")
+      || trimmed.eq_ignore_ascii_case("sources")
+    {
+      in_sources = true;
+      continue;
+    }
+    if !in_sources {
+      continue;
+    }
+    if trimmed.is_empty() {
+      continue;
+    }
+    if trimmed.contains('|') {
+      continue;
+    }
+    if let Some(title) = parse_bullet_title_line(trimmed) {
+      titles.push(title);
+    }
+  }
+  titles
+}
+
+fn parse_bullet_title_line(line: &str) -> Option<String> {
+  let mut stripped = line.trim();
+  stripped = stripped
+    .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == '•')
+    .trim();
+  stripped = stripped.trim_matches('`').trim();
+  if stripped.starts_with("**") && stripped.ends_with("**") && stripped.len() > 4 {
+    stripped = &stripped[2..stripped.len() - 2];
+  }
+  if stripped.len() < 4 || stripped.len() > 120 || stripped.starts_with("http") {
+    return None;
+  }
+  Some(stripped.to_string())
 }
 
 async fn zhipu_search(settings: &ResearchLlmSettings, key: &str, query: &str) -> Result<LlmWebSearchResult> {
@@ -328,7 +565,7 @@ async fn zhipu_search(settings: &ResearchLlmSettings, key: &str, query: &str) ->
     "temperature": 0.2,
     "max_tokens": settings.max_tokens_per_step.min(3000),
     "messages": [
-      {"role": "system", "content": "你是文献调研助手。基于联网搜索结果给出简洁中文综述。"},
+      {"role": "system", "content": LLM_WEB_SYSTEM_PROMPT},
       {"role": "user", "content": format!("请联网检索并综述：{query}")}
     ],
     "tools": [{
@@ -613,6 +850,60 @@ mod tests {
   }
 
   #[test]
+  fn extracts_named_sources_without_url_from_summary() {
+    let hits = extract_hits_from_summary(
+      "来源：\n- MIT AI Agent Index | 无链接\n- Gartner AI Agent 报告 | 无链接",
+    );
+    assert_eq!(hits.len(), 2);
+    assert!(hits[0].url.starts_with("llm-web-named://"));
+    assert_eq!(hits[0].title, "MIT AI Agent Index");
+  }
+
+  #[test]
+  fn extracts_title_url_pairs_from_summary() {
+    let hits = extract_hits_from_summary(
+      "来源：\n- Example Survey | https://example.com/survey",
+    );
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].url, "https://example.com/survey");
+  }
+
+  #[test]
+  fn extracts_bullet_titles_without_pipe_format() {
+    let hits = extract_hits_from_summary(
+      "来源：\n- Gartner AI Agent 报告\n- MIT AI Agent Index",
+    );
+    assert_eq!(hits.len(), 2);
+    assert!(hits[0].url.starts_with("llm-web-named://"));
+    assert_eq!(hits[0].title, "Gartner AI Agent 报告");
+  }
+
+  #[test]
+  fn dashscope_native_endpoint_from_compatible_base() {
+    assert_eq!(
+      dashscope_native_generation_endpoint("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    );
+  }
+
+  #[test]
+  fn parses_native_dashscope_search_info() {
+    let raw = serde_json::json!({
+      "output": {
+        "search_info": {
+          "search_results": [
+            {"title": "Native", "url": "https://example.com/native", "snippet": "x"}
+          ]
+        },
+        "choices": [{"message": {"content": "summary"}}]
+      }
+    });
+    let hits = parse_search_hits(&raw);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Native");
+  }
+
+  #[test]
   fn native_web_off_when_disabled() {
     let settings = ResearchLlmSettings {
       llm_native_web_search: "off".into(),
@@ -631,6 +922,7 @@ mod tests {
       allow_web_search: true,
       max_iterations: 8,
       max_tokens_per_step: 2000,
+      report_max_tokens: 12_000,
       research_mode: "react".into(),
       research_depth: "standard".into(),
       max_react_rounds: 0,

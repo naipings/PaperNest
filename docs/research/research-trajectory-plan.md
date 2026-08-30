@@ -285,7 +285,7 @@ research_run_session
 
 - [x] 加载 `@deepseek-ai/dsh-compaction`（Webview 类型 + Trajectory 识别 `compaction/*`）
 - [x] `research_dsh_surface`：surface fold + tool-pairing 边界
-- [x] `research_dsh_compact`：deep 模式 token 压力策略（threshold 0.8 / retain 0.16）
+- [x] `research_dsh_compact`：全深度 token 压力策略（threshold 0.8 / 多轮 0.65 / retain 0.16）；0.2.23 起取消 deep 专属门控
 - [x] ReAct 循环每轮前自动压缩；写入 `compaction/*` + checkpoint `user/message` replace
 - [x] `derive_openai_messages` 尊重 surface replace（与 `Session.deriveMessages` 对齐）
 
@@ -347,7 +347,7 @@ research_run_session
 
 - `llm_web_search` 失败：observation 提示改用 `search_web` / `search_arxiv` / `fetch_url`
 - 模型不支持联网：设置选 `off`，或换支持联网的模型/端点
-- 来源解析失败时仍返回 LLM 综述文本；百炼 OpenAI 兼容模式常不返回 `search_info`，此时从综述中的 `arXiv:` / URL 提取并登记 `llm_web` 来源
+- 来源解析失败时仍返回 LLM 综述文本；百炼 OpenAI 兼容模式常不返回 `search_info`，此时：① 回退 DashScope 原生 API 取 `search_info`；② 从综述中的 `arXiv:` / URL /「标题 | URL」/ 来源列表 bullet 提取；③ 具名来源经 DDG Lite 补链；④ 仍无条目则登记 1 条综述备忘来源
 
 ---
 

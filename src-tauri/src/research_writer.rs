@@ -1,5 +1,5 @@
 use super::*;
-use crate::research::{sources_block, write_step, ResearchLlmSettings, ResearchSession};
+use crate::research::{sources_block_for_writer, write_step, ResearchLlmSettings, ResearchSession};
 use crate::research_dsh_log::DshRecorder;
 use crate::research_llm::research_llm_completion;
 use crate::research_react::ReactFinish;
@@ -22,7 +22,7 @@ pub async fn write_research_report(
     .map(|turn| turn.answer_path.clone())
     .unwrap_or_else(|| "report.md".into());
 
-  let write_system = "你是学术文献调研写作助手（Writer）。根据大纲、研究备忘与来源撰写 Markdown 报告。每个事实性陈述标注 [src-001]；证据不足写「现有检索未覆盖」；禁止编造 DOI 与实验数字；只输出 Markdown 正文。";
+  let write_system = "你是学术文献调研写作助手（Writer）。根据大纲、研究备忘与来源撰写 Markdown 报告。每个事实性陈述标注 [src-xxx]；证据不足写「现有检索未覆盖」；禁止编造 DOI 与实验数字；按大纲充分展开各节，篇幅以用户「输出要求」为准；只输出 Markdown 正文。";
   let question_block = match current_turn.filter(|turn| turn.turn > 1) {
     Some(turn) => format!(
       "原始研究问题：{}\n本轮追问：{}\n只回答本轮追问，不要重复上一轮已写过的内容。",
@@ -36,7 +36,7 @@ pub async fn write_research_report(
     session.output_requirements,
     outline,
     finish.summary,
-    sources_block(&finish.sources)
+    sources_block_for_writer(&finish.sources)
   );
   let turn = dsh.begin_session_turn(&write_user)?;
   dsh.request_header(write_system, &[], "initial")?;
@@ -45,8 +45,8 @@ pub async fn write_research_report(
     settings,
     write_system,
     serde_json::json!(write_user),
-    Some(settings.max_tokens_per_step.max(2000)),
-    180,
+    Some(settings.report_max_tokens),
+    300,
   )
   .await?;
   dsh.assistant_message(turn, 1, Some(&report), &[])?;
