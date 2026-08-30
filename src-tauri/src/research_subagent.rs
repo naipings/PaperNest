@@ -1,5 +1,5 @@
 use super::*;
-use crate::research::{write_step, ResearchLlmSettings, ResearchSession};
+use crate::research::{write_step, ResearchLlmSettings, ResearchSession, ResearchSource};
 use crate::research_dsh_log::{DshRecorder, UserMessageKind};
 use crate::research_dsh_store;
 use crate::research_llm::{research_llm_with_tools, LlmToolCall};
@@ -11,6 +11,22 @@ const MAX_SUBTOPICS: usize = 2;
 const SUBAGENT_MAX_ROUNDS: u32 = 6;
 const SUBAGENT_MAX_TOOLS: u32 = 12;
 const SUBAGENT_PROVIDER: &str = "subagent-fork-in-process";
+
+fn compress_subagent_brief(question: &str, sources: &[ResearchSource]) -> String {
+  if sources.is_empty() {
+    return format!("子题「{question}」未检索到新来源。");
+  }
+  let mut lines = vec![format!("子题「{question}」摘要（{} 条新来源）：", sources.len())];
+  for source in sources.iter().take(12) {
+    lines.push(format!(
+      "- [{}] {}: {}",
+      source.id,
+      source.title,
+      source.excerpt.chars().take(150).collect::<String>()
+    ));
+  }
+  lines.join("\n")
+}
 
 pub async fn run_subtopics(
   library_pool: &SqlitePool,
@@ -102,7 +118,7 @@ async fn run_one_subagent(
   index: usize,
   question: &str,
 ) -> Result<String> {
-  let tools: Vec<_> = react_tool_catalog(settings.allow_web_search)
+  let tools: Vec<_> = react_tool_catalog(settings)
     .into_iter()
     .filter(|t| t.name != "research_subtopic")
     .collect();
@@ -116,6 +132,7 @@ async fn run_one_subagent(
   ];
   let mut tool_used = 0u32;
   let mut summary = String::new();
+  let sources_before = collector.sources().len();
 
   for round in 1..=SUBAGENT_MAX_ROUNDS {
     if round == 1 {
@@ -155,7 +172,7 @@ async fn run_one_subagent(
           child_dsh.tool_call(child_turn, round, &call)?;
           tool_used += 1;
           if tool_used > SUBAGENT_MAX_TOOLS {
-            summary = "子 Agent 达到 tool 上限。".into();
+            summary = compress_subagent_brief(question, &collector.sources()[sources_before..]);
             child_dsh.finish_step(child_turn, round)?;
             child_dsh.turn_end_completed(child_turn)?;
             return Ok(summary);
@@ -196,7 +213,7 @@ async fn run_one_subagent(
       child_dsh.tool_call(child_turn, round, &call)?;
       tool_used += 1;
       if tool_used > SUBAGENT_MAX_TOOLS {
-        summary = "子 Agent 达到 tool 上限。".into();
+        summary = compress_subagent_brief(question, &collector.sources()[sources_before..]);
         child_dsh.finish_step(child_turn, round)?;
         child_dsh.turn_end_completed(child_turn)?;
         return Ok(summary);
@@ -231,7 +248,7 @@ async fn run_one_subagent(
     }
   }
   if summary.is_empty() {
-    summary = format!("子题「{question}」已完成 {SUBAGENT_MAX_ROUNDS} 轮检索。");
+    summary = compress_subagent_brief(question, &collector.sources()[sources_before..]);
   }
   child_dsh.turn_end_completed(child_turn)?;
   Ok(summary)
@@ -257,6 +274,7 @@ async fn handle_subagent_call(
     library_pool,
     workspace,
     allow_web: settings.allow_web_search,
+    research_settings: Some(settings),
     collector,
     now,
     allow_subtopic: false,
@@ -288,7 +306,7 @@ async fn handle_subagent_call(
       )?;
       *step_index += 1;
       messages.push(serde_json::json!({"role": "tool", "tool_call_id": call.id, "content": observation}));
-      if call.name == "search_arxiv" {
+      if call.name == "search_arxiv" || call.name == "llm_web_search" {
         tokio::time::sleep(Duration::from_millis(1100)).await;
       }
       Ok(false)
@@ -298,7 +316,8 @@ async fn handle_subagent_call(
 }
 
 fn subagent_system_prompt() -> &'static str {
-  "你是文献调研子 Agent（fork 自父会话已完成 turn 前缀）。针对给定子问题检索本地库与 arXiv 元数据，完成后调用 finish_research。不要调用 research_subtopic。"
+  "你是文献调研子 Agent（fork 自父会话已完成 turn 前缀）。针对给定子问题检索本地库、arXiv/OpenAlex 学术元数据；\
+   博客/新闻/行业综述类子问题优先 llm_web_search（若已注册），再 finish_research。不要调用 research_subtopic。"
 }
 
 fn subagent_assistant_message(calls: &[LlmToolCall], content: Option<&str>) -> serde_json::Value {

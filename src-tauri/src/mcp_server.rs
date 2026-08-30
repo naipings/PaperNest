@@ -91,7 +91,8 @@ async fn handle_mcp_request(
       "serverInfo": { "name": "papernest", "version": "0.2.15" }
     }),
     "tools/list" => {
-      let mut tools: Vec<serde_json::Value> = react_tool_catalog(true)
+      let settings = crate::research::catalog_settings(true, "off");
+      let mut tools: Vec<serde_json::Value> = react_tool_catalog(&settings)
         .into_iter()
         .map(|spec| mcp_tool_desc(&spec))
         .collect();

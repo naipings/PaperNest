@@ -17,6 +17,19 @@ const STATUS_CLASS: Record<string, string> = {
   cancelled: "status-cancelled",
 };
 
+function formatSessionTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 16).replace("T", " ");
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 type Props = {
   sessions: ResearchSession[];
   selectedId?: string;
@@ -42,7 +55,7 @@ export function ResearchSessionList({ sessions, selectedId, onSelect, onDelete }
                   {STATUS_LABEL[item.status] ?? item.status}
                 </span>
               </span>
-              <small>{item.updatedAt.slice(0, 16).replace("T", " ")}</small>
+              <small>{formatSessionTime(item.updatedAt)}</small>
             </button>
             <button
               type="button"

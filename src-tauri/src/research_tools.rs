@@ -201,12 +201,14 @@ pub struct ToolContext<'a> {
   pub library_pool: &'a SqlitePool,
   pub workspace: &'a Path,
   pub allow_web: bool,
+  pub research_settings: Option<&'a crate::research::ResearchLlmSettings>,
   pub collector: &'a mut SourceCollector,
   pub now: &'a str,
   pub allow_subtopic: bool,
 }
 
-pub fn react_tool_catalog(allow_web: bool) -> Vec<ToolSpec> {
+pub fn react_tool_catalog(settings: &crate::research::ResearchLlmSettings) -> Vec<ToolSpec> {
+  let allow_web = settings.allow_web_search;
   let mut tools = vec![
     tool(
       "search_library",
@@ -222,7 +224,7 @@ pub fn react_tool_catalog(allow_web: bool) -> Vec<ToolSpec> {
     ),
     tool(
       "get_paper",
-      "读取本地论文元数据与摘要。paperId 为 search_library 行内 paper: 后的 ID，或传入 [src-xxx] 来源编号。",
+      "读取论文元数据与摘要。paperId 为 search_library 行内 paper: 后的 ID，或传入 [src-xxx]（本地与外网来源均可返回已登记摘要）。",
       serde_json::json!({
         "type": "object",
         "properties": {
@@ -338,6 +340,22 @@ pub fn react_tool_catalog(allow_web: bool) -> Vec<ToolSpec> {
         "required": ["url"]
       }),
     ));
+    if crate::research_llm_web::native_web_search_enabled(settings) {
+      tools.insert(
+        3,
+        tool(
+          "llm_web_search",
+          "通过调研 LLM 内置联网能力检索博客、新闻、技术综述等通用网页（与 search_web 学术元数据互补）。返回综述与可登记来源。",
+          serde_json::json!({
+            "type": "object",
+            "properties": {
+              "query": { "type": "string", "description": "检索问题或 2～6 个关键词" }
+            },
+            "required": ["query"]
+          }),
+        ),
+      );
+    }
   }
   tools
 }
@@ -413,10 +431,14 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         .trim()
         .to_string();
       if summary.is_empty() {
-        return Ok(ToolOutcome::Continue {
-          observation: "finish_research 的 summary 不能为空。请先用一段话总结关键证据与结论，再调用 finish_research 并把它写进 summary。".into(),
-          new_source_ids: vec![],
-        });
+        let brief = auto_research_brief(ctx.collector.sources());
+        if brief.is_empty() {
+          return Ok(ToolOutcome::Continue {
+            observation: "finish_research 的 summary 不能为空。请先检索来源，或写一段关键证据与结论摘要。".into(),
+            new_source_ids: vec![],
+          });
+        }
+        return Ok(ToolOutcome::Finished { summary: brief });
       }
       Ok(ToolOutcome::Finished { summary })
     }
@@ -468,36 +490,64 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
       }
       let query = arg_str(args, "query")?;
       let limit = arg_limit(args, 8);
-      let briefs = match radar::search_arxiv_briefs(&query, limit as i64).await {
-        Ok(briefs) => briefs,
-        Err(error) => {
-          return Ok(ToolOutcome::Continue {
-            observation: format!(
-              "arXiv 检索暂时不可用（{error}）。请基于本地来源继续调研，必要时调用 finish_research。"
-            ),
-            new_source_ids: vec![],
-          });
-        }
-      };
+      let from_year = arg_from_year(args);
       let mut lines = Vec::new();
       let mut new_ids = Vec::new();
-      for brief in briefs {
-        if let Some(source) = ctx.collector.add_arxiv_brief(
-          ctx.workspace,
-          ctx.now,
-          &brief.abs_url,
-          &brief.title,
-          &brief.abstract_text,
-        )? {
-          new_ids.push(source.id.clone());
-          lines.push(format!(
-            "[{}] {} | {} | {}",
-            source.id,
-            source.title,
-            brief.abs_url,
-            source.excerpt.chars().take(200).collect::<String>()
-          ));
+      match radar::search_arxiv_briefs(&query, limit as i64).await {
+        Ok(briefs) => {
+          for brief in briefs {
+            if let Some(source) = ctx.collector.add_arxiv_brief(
+              ctx.workspace,
+              ctx.now,
+              &brief.abs_url,
+              &brief.title,
+              &brief.abstract_text,
+            )? {
+              new_ids.push(source.id.clone());
+              lines.push(format!(
+                "[{}] {} | {} | {}",
+                source.id,
+                source.title,
+                brief.abs_url,
+                source.excerpt.chars().take(200).collect::<String>()
+              ));
+            }
+          }
         }
+        Err(arxiv_error) => match crate::research_web::search_web_sources(&query, limit as i64, from_year).await {
+          Ok(web_briefs) => {
+            lines.push(format!(
+              "arXiv 暂时不可用（{arxiv_error}），已改用 OpenAlex/Crossref："
+            ));
+            for brief in web_briefs {
+              if let Some(source) = ctx.collector.add_web_brief(
+                ctx.workspace,
+                ctx.now,
+                &brief.url,
+                &brief.title,
+                &brief.excerpt,
+                &brief.kind,
+              )? {
+                new_ids.push(source.id.clone());
+                lines.push(format!(
+                  "[{}] {} | {} | {}",
+                  source.id,
+                  source.title,
+                  brief.url,
+                  source.excerpt.chars().take(200).collect::<String>()
+                ));
+              }
+            }
+          }
+          Err(web_error) => {
+            return Ok(ToolOutcome::Continue {
+              observation: format!(
+                "arXiv 与外网检索均不可用（arXiv: {arxiv_error}; 外网: {web_error}）。请基于已有来源 finish_research。"
+              ),
+              new_source_ids: vec![],
+            });
+          }
+        },
       }
       let observation = if lines.is_empty() {
         format!("arXiv 未返回与「{query}」相关的结果。")
@@ -584,6 +634,60 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         new_source_ids: source.map(|s| vec![s.id]).unwrap_or_default(),
       })
     }
+    "llm_web_search" => {
+      if !ctx.allow_web {
+        return Err("未启用外网检索".into());
+      }
+      let settings = ctx.research_settings.ok_or_else(|| "llm_web_search 需要调研 LLM 设置".to_string())?;
+      let query = arg_str(args, "query")?;
+      let result = match crate::research_llm_web::llm_web_search(settings, &query).await {
+        Ok(result) => result,
+        Err(error) => {
+          return Ok(ToolOutcome::Continue {
+            observation: format!(
+              "LLM 内置联网检索失败（{error}）。请改用 search_web / search_arxiv，或对已知链接使用 fetch_url。"
+            ),
+            new_source_ids: vec![],
+          });
+        }
+      };
+      let mut lines = vec![format!(
+        "LLM 内置联网（{}）综述：\n{}",
+        crate::research_llm_web::provider_label(result.provider),
+        result.summary.chars().take(1200).collect::<String>()
+      )];
+      let mut new_ids = Vec::new();
+      for hit in result.hits.iter().take(8) {
+        if let Some(source) = ctx.collector.add_web_brief(
+          ctx.workspace,
+          ctx.now,
+          &hit.url,
+          &hit.title,
+          &hit.snippet,
+          "llm_web",
+        )? {
+          new_ids.push(source.id.clone());
+          lines.push(format!(
+            "[{}] {} | {} | {}",
+            source.id,
+            hit.title,
+            hit.url,
+            hit.snippet.chars().take(200).collect::<String>()
+          ));
+        }
+      }
+      if !result.hits.is_empty() {
+        lines.push(format!(
+          "链接 {} 条，新登记 {} 条。",
+          result.hits.len(),
+          new_ids.len()
+        ));
+      }
+      Ok(ToolOutcome::Continue {
+        observation: lines.join("\n"),
+        new_source_ids: new_ids,
+      })
+    }
     "get_paper" => {
       let raw_id = args
         .get("paperId")
@@ -608,17 +712,30 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
       {
         Some(row) => row,
         None => {
-          let hint = if raw_id.starts_with("src-") {
-            format!(
-              "来源 {raw_id} 无对应本地论文（可能为 arXiv/外网来源）。请改用 search_library 命中行内的 paper:ID，或继续用已有 [src-xxx] 引用。"
-            )
-          } else {
-            format!(
-              "本地库中不存在论文 {paper_id}。请仅使用 search_library 返回的 paper: 后 ID，勿编造编号。"
-            )
-          };
+          if raw_id.starts_with("src-") {
+            if let Some(source) = ctx.collector.sources().iter().find(|s| s.id == raw_id) {
+              let observation = serde_json::to_string_pretty(&serde_json::json!({
+                "sourceId": source.id,
+                "kind": source.kind,
+                "title": source.title,
+                "url": source.url,
+                "excerpt": source.excerpt.chars().take(800).collect::<String>(),
+              }))
+              .map_err(err)?;
+              return Ok(ToolOutcome::Continue {
+                observation,
+                new_source_ids: vec![],
+              });
+            }
+            return Ok(ToolOutcome::Continue {
+              observation: format!("来源 {raw_id} 尚未登记，请先通过 search_library / search_arxiv / search_web 检索。"),
+              new_source_ids: vec![],
+            });
+          }
           return Ok(ToolOutcome::Continue {
-            observation: hint,
+            observation: format!(
+              "本地库中不存在论文 {paper_id}。请仅使用 search_library 返回的 paper: 后 ID，勿编造编号。"
+            ),
             new_source_ids: vec![],
           });
         }
@@ -768,6 +885,15 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
       if !ctx.allow_subtopic {
         return Err("当前上下文不允许 research_subtopic".into());
       }
+      if ctx.collector.sources().len() >= 30 {
+        return Ok(ToolOutcome::Continue {
+          observation: format!(
+            "已登记 {} 条来源，足够撰写报告。请直接 finish_research，无需再委派子 Agent。",
+            ctx.collector.sources().len()
+          ),
+          new_source_ids: vec![],
+        });
+      }
       let questions: Vec<String> = args
         .get("subtopics")
         .and_then(|v| v.as_array())
@@ -791,7 +917,7 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
 pub async fn pipeline_invoke(
   library_pool: &SqlitePool,
   workspace: &Path,
-  allow_web: bool,
+  settings: &crate::research::ResearchLlmSettings,
   collector: &mut SourceCollector,
   now: &str,
   tool: &str,
@@ -800,7 +926,8 @@ pub async fn pipeline_invoke(
   let mut ctx = ToolContext {
     library_pool,
     workspace,
-    allow_web,
+    allow_web: settings.allow_web_search,
+    research_settings: Some(settings),
     collector,
     now,
     allow_subtopic: false,
@@ -842,6 +969,7 @@ pub async fn execute_mcp_tool(library_dir: &Path, name: &str, args: &serde_json:
         library_pool: &pool,
         workspace: &workspace,
         allow_web,
+        research_settings: None,
         collector: &mut collector,
         now: &now,
         allow_subtopic: false,
@@ -880,9 +1008,64 @@ fn arg_from_year(args: &serde_json::Value) -> Option<i64> {
     .filter(|year| (1900..=2100).contains(year))
 }
 
+/// finish_research 未带 summary 时，从已登记来源拼 Writer 备忘。
+fn auto_research_brief(sources: &[ResearchSource]) -> String {
+  if sources.is_empty() {
+    return String::new();
+  }
+  let lines: Vec<String> = sources
+    .iter()
+    .rev()
+    .take(20)
+    .map(|source| {
+      format!(
+        "[{}] {} — {}",
+        source.id,
+        source.title,
+        source.excerpt.chars().take(120).collect::<String>()
+      )
+    })
+    .collect();
+  format!(
+    "以下是从已登记来源自动整理的调研备忘：\n{}",
+    lines.join("\n")
+  )
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn auto_brief_lists_recent_sources() {
+    let sources = vec![
+      ResearchSource {
+        id: "src-001".into(),
+        kind: "local".into(),
+        url: None,
+        title: "Paper A".into(),
+        accessed_at: "t".into(),
+        excerpt: "abstract a".into(),
+        local_paper_id: None,
+        page: None,
+        stored_locally: true,
+      },
+      ResearchSource {
+        id: "src-002".into(),
+        kind: "arxiv".into(),
+        url: Some("https://arxiv.org/abs/1".into()),
+        title: "Paper B".into(),
+        accessed_at: "t".into(),
+        excerpt: "abstract b".into(),
+        local_paper_id: None,
+        page: None,
+        stored_locally: false,
+      },
+    ];
+    let brief = auto_research_brief(&sources);
+    assert!(brief.contains("src-002"));
+    assert!(brief.contains("Paper B"));
+  }
 
   #[test]
   fn source_ref_drops_citation_brackets() {
@@ -892,6 +1075,16 @@ mod tests {
       normalize_source_ref("0fa2f4b2-def5-4a01-95af-9521c0d15ece"),
       "0fa2f4b2-def5-4a01-95af-9521c0d15ece"
     );
+  }
+
+  #[test]
+  fn catalog_registers_llm_web_search_when_enabled() {
+    let settings = crate::research::catalog_settings(true, "auto");
+    let names: Vec<_> = react_tool_catalog(&settings).into_iter().map(|t| t.name).collect();
+    assert!(names.contains(&"llm_web_search"));
+    let off = crate::research::catalog_settings(true, "off");
+    let off_names: Vec<_> = react_tool_catalog(&off).into_iter().map(|t| t.name).collect();
+    assert!(!off_names.contains(&"llm_web_search"));
   }
 
   #[test]

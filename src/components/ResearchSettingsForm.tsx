@@ -15,6 +15,7 @@ const DEFAULT: ResearchLlmSettings = {
   researchDepth: "standard",
   maxReactRounds: 0,
   maxToolCalls: 0,
+  llmNativeWebSearch: "auto",
 };
 
 export function ResearchSettingsForm() {
@@ -69,7 +70,7 @@ export function ResearchSettingsForm() {
     <section className="settings-form research-settings">
       <h2><Search size={19} />文献调研</h2>
       <p className="settings-description">
-        默认关闭。启用后，在「文献调研」页创建任务并点击「开始调研」。默认使用 ReAct 深循环（LLM 自主选工具）；调研 LLM 与「LLM 自动整理」分开配置。外网检索包含 arXiv、OpenAlex（IEEE/ACM 等）、Crossref 与 GitHub，仅拉元数据与链接，不下载 PDF。
+        默认关闭。启用后，在「文献调研」页创建任务并点击「开始调研」。默认使用 ReAct 深循环（LLM 自主选工具）；调研 LLM 与「LLM 自动整理」分开配置。外网检索包含 arXiv、OpenAlex（IEEE/ACM 等）、Crossref、GitHub；若模型支持内置联网，还可通过 llm_web_search 检索博客与新闻（费用计入同一 LLM Key）。
       </p>
       {!isTauri() && <p className="inline-notice">浏览器预览模式不支持文献调研。</p>}
       <label className="checkbox-setting">
@@ -84,8 +85,18 @@ export function ResearchSettingsForm() {
       </label>
       <label className="checkbox-setting">
         <input type="checkbox" checked={value.allowWebSearch} onChange={e => setValue(v => ({ ...v, allowWebSearch: e.target.checked }))} />
-        允许外网检索（arXiv、OpenAlex/Crossref、GitHub；仅链接与摘要）
+        允许外网检索（arXiv、OpenAlex/Crossref、GitHub、LLM 内置联网）
       </label>
+      <label>LLM 内置联网
+        <select value={value.llmNativeWebSearch ?? "auto"} onChange={e => setValue(v => ({ ...v, llmNativeWebSearch: e.target.value }))}>
+          <option value="auto">自动检测（推荐）</option>
+          <option value="dashscope">百炼 / Qwen（enable_search）</option>
+          <option value="zhipu">智谱 GLM（web_search 工具）</option>
+          <option value="openai_responses">OpenAI Responses（web_search）</option>
+          <option value="off">关闭 llm_web_search</option>
+        </select>
+      </label>
+      <p className="settings-description"><small>llm_web_search 与 ReAct 自定义工具互斥，由独立 LLM 请求完成；auto 模式会按 API 地址尝试多种适配。不支持内置联网的模型请选「关闭」。</small></p>
       <label>调研模式
         <select value={value.researchMode} onChange={e => setValue(v => ({ ...v, researchMode: e.target.value }))}>
           <option value="react">ReAct 深循环（推荐）</option>

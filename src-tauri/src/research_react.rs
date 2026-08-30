@@ -74,7 +74,7 @@ async fn run_react_loop_inner(
   let now = Utc::now().to_rfc3339();
   let mut step_index = read_steps_count(&workspace)? + 1;
   let mut collector = SourceCollector::from_workspace(&workspace)?;
-  let tools = react_tool_catalog(settings.allow_web_search);
+  let tools = react_tool_catalog(settings);
   let (max_rounds, max_tool_calls) = effective_react_limits(settings);
   let (mut messages, react_turn, start_round, mut tool_calls_used, resuming) = match resume {
     Some(state) => (
@@ -184,6 +184,7 @@ async fn run_react_loop_inner(
         library_pool,
         workspace: &workspace,
         allow_web: settings.allow_web_search,
+        research_settings: Some(settings),
         collector: &mut collector,
         now: &now,
         allow_subtopic: true,
@@ -259,7 +260,7 @@ pub async fn run_supplementary_react(
     let outcome = pipeline_invoke(
       library_pool,
       &workspace,
-      settings.allow_web_search,
+      settings,
       &mut collector,
       &now,
       "search_library",
@@ -291,7 +292,7 @@ pub async fn run_supplementary_react(
       let arxiv = pipeline_invoke(
         library_pool,
         &workspace,
-        true,
+        settings,
         &mut collector,
         &now,
         "search_arxiv",
@@ -399,7 +400,7 @@ async fn handle_tool_outcome(
         "tool_call_id": call.id,
         "content": observation
       }));
-      if call.name == "search_arxiv" {
+      if call.name == "search_arxiv" || call.name == "llm_web_search" {
         tokio::time::sleep(Duration::from_millis(3500)).await;
       }
       Ok(false)
@@ -413,12 +414,13 @@ pub(crate) fn react_system_prompt() -> &'static str {
    1. 先 search_library（用 1～3 个短关键词，如「冷启动」「推荐系统」，不要整句长查询）\n\
    2. 本地不足时用 search_arxiv / search_web：查询词用 2～5 个英文主题词并按重要度排序（如 cold start recommendation），\
    所有词按 AND 组合；调研「最新进展」时给 search_web 传 fromYear\n\
-   3. get_paper 的 paperId 必须来自 search_library 行内 paper: 后的 ID，或传入已登记的 [src-xxx]；\
+   3. 博客、新闻、技术综述、行业动态等通用网页用 llm_web_search（若已注册）；学术元数据仍用 search_web / search_arxiv\n\
+   4. get_paper 的 paperId 来自 search_library 行内 paper: 后的 ID，或传入已登记的 [src-xxx]（本地与外网来源均可）；\
    同一篇论文只取一次，重复调用不会返回新信息\n\
-   4. 用户消息里给出链接时用 fetch_url 读取正文\n\
-   5. 可用 research_subtopic 委派 1～2 个子问题；可用 update_outline 维护章节骨架\n\
-   6. 证据足够后必须调用 finish_research(summary=给 Writer 的备忘)\n\
-   7. 引用只使用工具返回的 [src-xxx] 编号，没有来源支撑的结论不要写\n\
+   5. 用户消息里给出链接时用 fetch_url 读取正文\n\
+   6. 可用 research_subtopic 委派 1～2 个子问题（子 Agent 可侧重 llm_web_search 做联网综述）；可用 update_outline 维护章节骨架\n\
+   7. 证据足够后必须调用 finish_research(summary=给 Writer 的备忘)\n\
+   8. 引用只使用工具返回的 [src-xxx] 编号，没有来源支撑的结论不要写\n\
    若无法 function calling，只输出 JSON：{\"action\":\"tool\",\"name\":\"工具名\",\"args\":{...}} 或 {\"action\":\"finish\",\"summary\":\"...\"}"
 }
 

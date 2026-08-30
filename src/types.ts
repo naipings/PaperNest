@@ -246,6 +246,8 @@ export interface ResearchLlmSettings {
   researchDepth: "quick" | "standard" | "deep" | string;
   maxReactRounds: number;
   maxToolCalls: number;
+  /** auto | dashscope | zhipu | openai_responses | off */
+  llmNativeWebSearch: string;
 }
 
 export interface ResearchSession {

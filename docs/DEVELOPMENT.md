@@ -593,6 +593,10 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 **Phase 10 多轮追问（0.2.17）**：`turns.jsonl` 记录每轮问题/附件/答复路径，`research_continue_session` 复用既有 DSH 事件重建上下文后开新 turn 继续 ReAct+Writer（`research_dsh_derive` 以「带 tools 的 request/header」定位最后一轮 ReAct）。输入框（`ResearchComposer`）支持图片/PDF/Office/文本附件与链接 chip，前端在 `src/lib/researchAttachments.ts` 提取文本、图片走多模态；`fetch_url` 工具抓取网页正文。入库提案移至「候选论文」Tab（雷达卡片样式），报告改用 `react-markdown` + `remark-gfm`。`research_llm` 对连接/超时/发送类瞬时错误有界重试。
 
+**Phase 11 报告详度与多轮上下文（0.2.19，计划）**：不改 ReAct→Reviewer→Writer 流程；新增 `reportMaxTokens`、Writer excerpt 800、ReAct 2000；**补齐多轮压缩**：取消 deep 专属门控（11e）、多轮降阈值（11f）。详见 [deep-literature-research-assessment.md](research/deep-literature-research-assessment.md) §4.1 Phase 11。
+
+**Phase 12 外网通用检索（计划）**：新增 `search_web_pages`，**默认 DuckDuckGo Lite（零注册、零 Key，不内置开发者凭证）**；学术检索仍用 `search_web`；`fetch_url` 已在 0.2.17 上线。可选增强：用户自填 SearXNG 实例 URL 或 Tavily/Serper Key。详见 [research-trajectory-plan.md](research/research-trajectory-plan.md) §8。
+
 ---
 
 ## 16. 扩展方向

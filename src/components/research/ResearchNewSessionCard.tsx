@@ -47,6 +47,7 @@ export function ResearchNewSessionCard({
         value={query}
         attachments={attachments}
         busy={busy}
+        rows={7}
         placeholder="例如：推荐系统冷启动在 2024–2026 年的主要方法与局限"
         submitLabel="创建任务"
         onChange={onQueryChange}

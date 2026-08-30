@@ -1,7 +1,7 @@
 # PaperNest「深度文献调研」功能评估与实施计划
 
 > 调研日期：2026-08-28；修订：2026-08-28（§0 定稿：MD 交付物、项目文件夹、可追溯性、外链优先、PaperNest 作 MCP Server）。  
-> **实施状态（0.2.15）**：Phase 1～8 已落地；**Phase 9 Trajectory** 已规划（见 [research-trajectory-plan.md](research-trajectory-plan.md)）。
+> **实施状态（0.2.18）**：Phase 1～10 已落地；**Phase 11 报告详度 token 调优** 已规划（§4.1，目标 0.2.19）。
 > 对照：本仓库 PaperNest（Tauri 2 + React + SQLite 本地资料库）现有 LLM / 论文雷达 / 知识树能力。  
 > 参考开源：[GPT Researcher](https://github.com/assafelovic/gpt-researcher)、[Stanford STORM](https://github.com/stanford-oval/storm)、[LangChain Open Deep Research](https://github.com/langchain-ai/open_deep_research)、[Local Deep Research](https://github.com/LearningCircuit/local-deep-research)、[Ariadne](https://github.com/cgarryZA/Ariadne)、[research-mcp-oss](https://github.com/aylee1024/research-mcp-oss)、[Paper-Radar Phase 6](paper-radar-feature-assessment.md)。  
 > **本文档为规划产物，不含实现代码。**
@@ -19,6 +19,7 @@
 | 可追溯、真实？ | 报告每条论断绑定 `citation_id`；`sources.jsonl` + `steps/` 保留证据链；禁止无来源断言 |
 | 内置 Agent vs Codex？ | **内置 Agent 为主路径**；**PaperNest 作 MCP Server** 供 Codex/Cursor 调用本地库工具，**不做** PaperNest 内嵌调 Codex |
 | 调研 LLM 配置？ | **独立** `research_llm_settings`，与整理/翻译模型分流 |
+| 报告详度 token？ | **Phase 11**：在不动 ReAct→Reviewer→Writer 流程前提下，提高 Writer 输出上限与证据摘录；并补齐多轮追问的上下文压缩覆盖（§4.1） |
 | 对现有功能的影响？ | 独立屏幕 + `research.db`（索引）+ 文件系统交付；不改 `LibrarySnapshot` 与现有 LLM 契约 |
 
 **定稿一句话**：调研产出是一份可打开、可版本管理的 **MD 报告**；过程落在项目文件夹；证据靠引用链与链接可追溯；Codex 通过 MCP 读你的库，而不是反过来。
@@ -274,16 +275,136 @@ PaperNest MCP Server（stdio 或 HTTP，随 Tauri 或独立子命令启动）
 - [x] **7e** Reviewer 质量门控（最多 2 轮补检索）
 - [x] **8** `research_subtopic` 子 Agent（主 Agent 委派，共享 collector）
 
-### Phase 9 — Trajectory 轨迹（0.2.16，待实施）
+### Phase 9 — Trajectory 轨迹（0.2.16）
 
 详见 [research-trajectory-plan.md](research-trajectory-plan.md)。
 
-- [ ] **9a** 接入 `@deepseek-ai/dsh-session` + `session-persistence-jsonl`（`.dsh-session/`）
-- [ ] **9b** Rust ↔ JS Harness Bridge；追加 DSH `SessionEventMap` 事件
-- [ ] **9c** 嵌入 `@deepseek-ai/dsh-client-ui-trajectory`（1:1 UI，不自研组件）
-- [ ] **9d** `SessionStore.fork` + `research_resume_session`
-- [ ] **9e** `@deepseek-ai/dsh-subagent-fork-in-process`
-- [ ] **9f** `@deepseek-ai/dsh-compaction`（deep 模式）
+- [x] **9a** 接入 `@deepseek-ai/dsh-session`；Rust 写 `.dsh-session/session.jsonl`
+- [x] **9b** Rust 全链路追加 DSH `SessionEventMap` 事件
+- [x] **9c** 嵌入 `@deepseek-ai/dsh-client-ui-trajectory`（1:1 UI）
+- [x] **9d** `research_resume_session` 恢复续跑
+- [x] **9e** 分叉 + 子 Agent fork 协议（`children/`）
+- [x] **9f** `@deepseek-ai/dsh-compaction`（deep 模式）
+
+### Phase 10 — 多轮追问（0.2.17）
+
+详见 `docs/DEVELOPMENT.md` §文献调研 Phase 10：`turns.jsonl`、`research_continue_session`、附件与 `fetch_url`。
+
+### Phase 11 — 报告详度与多轮上下文（0.2.19，计划）
+
+**目标**：在**不改变** ReAct → Reviewer → Writer 单次成稿流程的前提下，（1）提高 `report.md` 可写长度与 Writer 可用证据密度；（2）让同一窗口多轮追问具备与 Cursor/Codex 同类的自动上下文压缩，避免历史爆窗。
+
+#### 11.0 上下文压缩现状审计（2026-08-30）
+
+**已有能力（Phase 9f，对齐 Cursor/Codex 思路）**：
+
+| 机制 | 实现 | 说明 |
+| --- | --- | --- |
+| 事件溯源 | `.dsh-session/session.jsonl` + `derive_openai_messages` | 追问时 `research_continue_session` **全量 DSH 重建**上下文后开新 turn |
+| 自动压缩 | `research_dsh_compact::maybe_compact_if_needed` | 估算 token ≥ 窗口 **80%** 时，用 LLM 将旧对话压成 `<compacted-summary>` checkpoint |
+| 尾部保留 | `retain_ratio=0.16`（约 20k tokens） | 最近消息**原文保留**，旧消息被 surface replace 折叠 |
+| 工具配对 | `research_dsh_surface` tool-pairing | 压缩边界不截断未闭合的 tool call |
+| 轨迹可见 | `compaction/*` 事件 + Trajectory UI | 与 `@deepseek-ai/dsh-compaction` 协议一致 |
+
+对标 [Cursor](https://forum.cursor.com/t/summarizing-chat-context-why/102842)：接近满窗时用摘要替代最旧对话，保留近期原文——PaperNest 走同一路径（DSH checkpoint + fold），不是简单截断顶部。
+
+**多轮追问数据流（Phase 10）**：
+
+```text
+turn 1: ReAct → Reviewer → Writer → report.md 写入 DSH
+turn 2+: derive_openai_messages(全部历史) → 新 user/message → ReAct → Writer → turns/NNN.md
+```
+
+每轮完整 ReAct（含 `tool/result` **全文**）与 Writer 报告均追加进 DSH，追问次数越多，重建上下文越大。
+
+**缺口（导致「多轮必爆」）**：
+
+| # | 缺口 | 影响 |
+| --- | --- | --- |
+| G1 | 压缩**仅 `research_depth=deep` 时启用**（`research_dsh_compact.rs:171`） | 默认 **standard** 多轮追问**无压缩**，历史线性膨胀 |
+| G2 | 触发阈值按 **128k 窗口 × 80% ≈ 102k** 估算 | 用户若用 32k/64k 上下文模型，API 先报错，压缩来不及触发 |
+| G3 | 压缩只在 **ReAct 每轮开头**执行 | 追问入口已 `derive` 全量历史；首轮 ReAct 内会压缩，但 G1/G2 下仍可能失败 |
+| G4 | 无会话外置记忆检索 | `sources.jsonl` / `turns.jsonl` 在磁盘，ReAct 上下文不靠按需加载（与 FS-Researcher 不同）；靠 DSH 压缩兜底 |
+| G5 | Writer 阶段不压缩 | Writer 单次 input 变大由 11b/11d 控制；产出报告进入 DSH，下轮追问由 G1–G3 处理 |
+
+**结论**：**有**类 Codex/Cursor 的压缩技术，但**默认调研深度下对多轮追问基本不生效**；Phase 11 用最小改动补齐 G1，并用 G2 的轻量缓解（11f）覆盖多轮场景。
+
+**背景（报告长度对标）**：
+
+| 项目 | 检索/推理步 | 终稿写作 |
+| --- | --- | --- |
+| GPT Researcher | FAST 3000 / SMART **6000**（长输出模型建议 8k–32k） | SMART 模型一次写报告 |
+| Open Deep Research | Research **10000** | Final Report **10000** |
+| STORM | 对话 500 | 分段 700 + 润色 **4000**（架构不同，本次不采纳） |
+
+PaperNest 现状（0.2.18）：ReAct 每步 **1200**（硬编码）；Writer 用 `max( maxTokensPerStep, 2000 )`，默认 **4000**；`sources_block` 每条 excerpt **280** 字。设置页「单步最大 tokens」**仅 Writer 生效**，与 UI 文案不符。§8.1 回归同一问题产出约 **3.9k 字**报告，与用户「尽可能详细」目标有差距。
+
+**约束**：
+
+- 流程不变：不引入按节写作、不新增 Agent 角色、不改 DSH / 轨迹 / 多轮追问协议。
+- 最小 diff：常量 + 设置字段 + Writer 输入宽度 + 一行 system prompt；不做 `finish_reason` 续写、不做按模型自动缩放。
+- `maxTokensPerStep` 保留序列化兼容，语义改为「ReAct 等中间步默认上限（fallback）」；新增专用终稿字段。
+
+**`ResearchLlmSettings` 增量（11a）**：
+
+```text
+max_tokens_per_step   # 已有；research_llm 未显式传 max_tokens 时的 fallback，默认 4000
+report_max_tokens     # 新增；仅 Writer，默认 12000
+```
+
+
+| # | 改动 | 默认值 | 触及文件 |
+| --- | --- | --- | --- |
+| 11a | 新增 `reportMaxTokens`（`report_max_tokens`） | **12000**（UI 范围 4000–32000） | `research.rs`、`types.ts`、`ResearchSettingsForm.tsx` |
+| 11a′ | 设置页文案：原「单步最大 tokens」→「中间步默认 tokens」；新增「报告最大 tokens」 | — | `ResearchSettingsForm.tsx` |
+| 11b | Writer 使用 `reportMaxTokens`；超时 180s → **300s** | — | `research_writer.rs` |
+| 11c | ReAct 主循环 `max_tokens` **1200 → 2000**（仅放宽 tool call / `finish_research` 的 JSON 输出空间） | 2000 | `research_react.rs` |
+| 11d | Writer 专用 `sources_block_for_writer`：excerpt **280 → 800** 字/条；`research.rs` 原 `sources_block` 供 pipeline / Reviewer 不变 | 800 | `research.rs`、`research_writer.rs` |
+| 11e | **去掉 `research_depth=deep` 门控**，quick / standard / deep 均启用 DSH 压缩（策略参数不变） | — | `research_dsh_compact.rs` |
+| 11f | 多轮早触发：当 `turns.jsonl` 已有 ≥2 轮时，`threshold_ratio` **0.8 → 0.65**（仅估算侧） | 0.65 | `research_dsh_compact.rs`、`research_turns.rs` |
+
+**11a–11d 之外不动**：Reviewer 800、子 Agent 900、pipeline planner 1200 / reflect 900、compaction 摘要 8192、`retain_ratio` 0.16、128k 估算窗口（G2 完整修复延后）。
+
+**Writer system prompt 增补（一行）**：
+
+> 按大纲充分展开各节；事实性陈述保留 `[src-xxx]`；篇幅以用户「输出要求」为准，避免提纲式缩写。
+
+**不纳入本 Phase（显式延后）**：
+
+- 按 `outline.md` 逐节调用 Writer（STORM / LDR 路线，需改编排）
+- `finish_reason=length` 自动续写
+- 按模型族自动填 token 上限 / 可配置 `contextWindow`（G2 完整修复）
+- 从 `steps/` 全量灌入 Writer 上下文
+- 追问前单独截断 `tool/result` 或把报告移出 DSH 表面（改事件模型）
+- Cursor 式 `/summarize` 手动触发、外部向量记忆库
+
+**权衡**：
+
+| 选择 | 收益 | 代价 |
+| --- | --- | --- |
+| 只加 `reportMaxTokens` 不拆 ReAct 限额 | 用户可调终稿长度；ReAct 成本基本不变 | 设置项从 1 个变 2 个，需改 UI 文案 |
+| ReAct 1200→2000 | `finish_research.summary` 不易被截断 | 每轮输出上限 +67%，单轮费用略升 |
+| excerpt 800 仅 Writer | 终稿论据更厚 | Writer 单次 input token 增加；多轮时靠 11e/11f 压缩 |
+| 11e 全深度启用压缩 | 默认 standard 多轮追问不再裸奔 | 更多 session 会触发压缩 LLM 调用（成本略增） |
+| 11f 多轮降阈值 | 第 2 轮起更早压缩，贴近 Cursor「快满窗就摘要」 | 摘要更频繁，极长单轮仍受 128k 估算限制（G2） |
+| 不做分段写作 | 实现量小、流程零变化 | 单次 12k 输出仍低于「万字综述」上限；更长报告靠多轮追问（Phase 10） |
+
+**成功标准**：
+
+1. §8.1 同一 query 在新默认下 `report.md` **≥ 6000 字**，且 `[src-xxx]` 引用链完整。
+2. `steps/` 中 `finish_research` 的 `summary` 无 JSON 截断。
+3. **多轮**：同一 session 连续 **3 轮追问**后 ReAct 正常结束；`standard` 深度下 DSH 出现 `compaction/*` 事件（证明 11e 生效）。
+4. ReAct 轮次、工具表、Reviewer 门控、DSH 事件类型与 Phase 9/10 行为一致；`docs/DEVELOPMENT.md` §10 回归通过。
+
+**实施顺序**：
+
+1. 11a + 11b（终稿上限）
+2. **11e + 11f**（多轮压缩，与报告详度并行）
+3. 11d（Writer 证据宽度）
+4. 11c（finish summary 空间）
+5. 单轮 §8.1 复跑 + **3 轮追问**压测
+
+**版本**：合入后发布 **0.2.19**；CHANGELOG 一条即可。
 
 ---
 
@@ -360,12 +481,26 @@ research_session_tags          -- 可选：用户标签、关联文件夹名
 
 ---
 
+## 8.1 回归验证（2026-08-30，0.2.18）
+
+查询：「推荐系统冷启动方向的研究的最新进展，截止2026年8月。」
+
+| 项 | 结果 |
+| --- | --- |
+| 本地检索 | `search_library` 命中 10 条，摘要为论文 abstract，无 `authors_json` 泄漏 |
+| 外网检索 | arXiv 34 + OpenAlex 31 + Crossref 6；`fromYear` 过滤生效 |
+| 工具自主调用 | 22 次 tool call，Agent 自行 `finish_research` 产出报告 |
+| 报告 | `report.md` 约 3.9k 字，引用 `[src-xxx]` 贯穿全文（Phase 11 目标 ≥6k 字） |
+| 轨迹 | DSH 114 事件，Trajectory 页正常渲染，无重复 step 报错 |
+| 中断恢复 | 应用重启后残留 `running` 会话标为 `failed`，可从轨迹恢复点续跑 |
+
+---
+
 ## 9. 建议的下一步
 
-1. 实现 **Phase 1**（调研 LLM 设置 + 工作区目录约定 + `research.db` 索引 + 侧栏入口）。
-2. **Phase 2** 用真实问题验证 `report.md` + 引用链闭环。
-3. **Phase 3** 接入 arXiv 元数据，严格验收「链接 only」。
-4. **Phase 6** 在内置 Agent 稳定后发布 MCP Server 与配置文档。
+1. 实施 **Phase 11**（§4.1）：报告 `reportMaxTokens` + **11e/11f 多轮压缩** + Writer excerpt。
+2. 单轮 §8.1 复跑 + **同一 session 3 轮追问**压测，确认 `compaction/*` 事件。
+3. 若单次 12k 仍不足万字级综述，再单独立项「按节 Writer」。
 
 ---
 

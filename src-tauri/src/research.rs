@@ -45,6 +45,13 @@ pub struct ResearchLlmSettings {
   pub max_react_rounds: u32,
   #[serde(default)]
   pub max_tool_calls: u32,
+  /// auto | dashscope | zhipu | openai_responses | off
+  #[serde(default = "default_llm_native_web_search")]
+  pub llm_native_web_search: String,
+}
+
+fn default_llm_native_web_search() -> String {
+  "auto".into()
 }
 
 fn default_research_mode() -> String {
@@ -76,7 +83,15 @@ fn default_research_settings() -> ResearchLlmSettings {
     research_depth: "standard".into(),
     max_react_rounds: 0,
     max_tool_calls: 0,
+    llm_native_web_search: default_llm_native_web_search(),
   }
+}
+
+pub(crate) fn catalog_settings(allow_web: bool, native_web: &str) -> ResearchLlmSettings {
+  let mut settings = default_research_settings();
+  settings.allow_web_search = allow_web;
+  settings.llm_native_web_search = native_web.to_string();
+  settings
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -711,7 +726,7 @@ async fn run_pipeline_agent(
     let outcome = crate::research_tools::pipeline_invoke(
       library_pool,
       &workspace,
-      settings.allow_web_search,
+      settings,
       &mut collector,
       &now,
       "search_library",
@@ -743,7 +758,7 @@ async fn run_pipeline_agent(
       let outcome = crate::research_tools::pipeline_invoke(
         library_pool,
         &workspace,
-        true,
+        settings,
         &mut collector,
         &now,
         "search_arxiv",
@@ -824,7 +839,7 @@ async fn run_pipeline_agent(
     let outcome = crate::research_tools::pipeline_invoke(
       library_pool,
       &workspace,
-      settings.allow_web_search,
+      settings,
       &mut collector,
       &now,
       "search_library",
@@ -853,7 +868,7 @@ async fn run_pipeline_agent(
       let arxiv = crate::research_tools::pipeline_invoke(
         library_pool,
         &workspace,
-        true,
+        settings,
         &mut collector,
         &now,
         "search_arxiv",

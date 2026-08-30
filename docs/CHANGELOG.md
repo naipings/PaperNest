@@ -1,5 +1,47 @@
 # 更新记录
 
+## 0.2.22 - 2026-08-30
+
+### 文献调研：llm_web_search 来源登记修复
+
+- 百炼 OpenAI 兼容模式常不返回 `search_info`：当结构化来源为空时，从综述文本提取 `arXiv:` 编号与 `http(s)` 链接并登记为 `llm_web` 来源。
+- `watch_research.py` 修复 Windows 控制台 UTF-8 输出。
+
+## 0.2.21 - 2026-08-30
+
+### 文献调研：LLM 内置联网（Phase 12a）
+
+- 新工具 **`llm_web_search`**：独立 LLM 请求启用平台内置联网（不与 ReAct function tools 混用），登记 `llm_web` 来源。
+- 多提供商适配：`auto`（按 baseUrl 检测 + 失败回退）、`dashscope`（百炼/Qwen）、`zhipu`（智谱 GLM）、`openai_responses`。
+- 设置项 **`llmNativeWebSearch`** + 调研设置页下拉；子 Agent 对博客/综述类子问题优先联网检索。
+- ReAct 系统提示区分学术元数据（`search_web`/`search_arxiv`）与通用网页（`llm_web_search`）。
+
+## 0.2.20 - 2026-08-30
+
+### 文献调研 UI
+
+- 新建调研输入框默认加高（5 行 + min-height 132px）。
+- 历史任务时间改为本地时区显示（修复 UTC 字符串直接截取导致与系统时间差 8 小时）。
+
+## 0.2.19 - 2026-08-30
+
+### 文献调研：工具链韧性（阶段 1 最小修复）
+
+- **arXiv**：传输层错误（连接/超时/发送失败）自动重试；`search_arxiv` 失败时自动降级 OpenAlex/Crossref，无需 Agent 手动换工具。
+- **finish_research**：模型漏填 summary 时，从已登记来源自动生成 Writer 备忘。
+- **子 Agent**：触顶退出时压缩新来源为摘要返回父 Agent；来源 ≥30 条时拒绝 `research_subtopic` 委派。
+
+## 0.2.18 - 2026-08-30
+
+### 文献调研：检索精度与工具链回归
+
+- **本地检索**：`search_library` 始终返回命中行（含已登记来源），摘要改读 `papers` 表字段，去掉 FTS 正文里的 JSON 噪声。
+- **get_paper**：`[src-xxx]` 方括号自动剥除；本地论文重复调用仍返回元数据；外网来源（arXiv/OpenAlex 等）按已登记 `sources.jsonl` 返回标题与摘要片段。
+- **外网检索**：arXiv 查询保留词序并 AND 前 5 个主题词；OpenAlex/Crossref 用 `title_and_abstract.search` + 可选 `fromYear` 时间窗。
+- **会话恢复**：应用启动时将无运行令牌的 `running` 会话标为 `failed`，避免界面卡在「调研进行中」。
+- **论文雷达**：修正 `submittedDate` 日窗 off-by-one，周末/New 流不再因 arXiv 索引滞后返回空列表。
+- 真实验证：查询「推荐系统冷启动方向的研究的最新进展，截止2026年8月。」完成调研，来源 85 条（本地 14 / arXiv 34 / OpenAlex 31 / Crossref 6），报告约 3.9k 字；轨迹页正常渲染。
+
 ## 0.2.17 - 2026-08-29
 
 ### 文献调研：单窗口多轮追问 + 附件/链接（Phase 10）

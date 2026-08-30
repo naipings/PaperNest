@@ -6,6 +6,7 @@ mod research_web;
 mod research;
 mod research_tools;
 mod research_llm;
+mod research_llm_web;
 mod research_react;
 mod research_writer;
 mod research_reviewer;

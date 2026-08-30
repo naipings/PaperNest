@@ -12,6 +12,7 @@ type Props = {
   placeholder: string;
   submitLabel: string;
   hint?: string;
+  rows?: number;
   onChange: (value: string) => void;
   onAddFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -26,6 +27,7 @@ export function ResearchComposer({
   placeholder,
   submitLabel,
   hint,
+  rows = 3,
   onChange,
   onAddFiles,
   onRemoveAttachment,
@@ -71,7 +73,7 @@ export function ResearchComposer({
       )}
       <textarea
         className="research-composer-input"
-        rows={3}
+        rows={rows}
         value={value}
         disabled={disabled}
         placeholder={placeholder}

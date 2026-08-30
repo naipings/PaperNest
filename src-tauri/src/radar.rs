@@ -578,7 +578,7 @@ fn arxiv_user_agent(mailto: Option<&str>) -> String {
 
 fn submitted_date_range(window_days: i64) -> String {
   let end = Utc::now().date_naive();
-  let start = end - chrono::Duration::days((window_days - 1).max(0));
+  let start = end - chrono::Duration::days(window_days.max(0));
   format!(
     "submittedDate:[{}0000 TO {}2359]",
     start.format("%Y%m%d"),
@@ -612,16 +612,26 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
     urlencoding_encode(search_query),
     limit.clamp(5, 200)
   );
+  let mut last_transport = String::new();
   for attempt in 0..5 {
     if attempt > 0 {
       tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
     }
-    let response = client
+    let response = match client
       .get(&url)
       .header("User-Agent", arxiv_user_agent(mailto))
       .send()
       .await
-      .map_err(err)?;
+    {
+      Ok(response) => response,
+      Err(error) => {
+        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request()) {
+          last_transport = error.to_string();
+          continue;
+        }
+        return Err(err(error));
+      }
+    };
     let status = response.status();
     let text = response.text().await.map_err(err)?;
     if status.is_success() {
@@ -631,6 +641,9 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
       continue;
     }
     return Err(format!("arXiv API 失败（{status}）"));
+  }
+  if !last_transport.is_empty() {
+    return Err(last_transport);
   }
   Err("arXiv API 失败（429 Too Many Requests）".into())
 }
