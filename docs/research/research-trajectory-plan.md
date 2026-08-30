@@ -351,7 +351,31 @@ research_run_session
 
 ---
 
-## 9. Phase 13 — 外网 SERP 兜底（可选，未启动）
+## 9. Phase 14 — 上下文用量圆环（0.2.24）✅
+
+> Phase 11 已落地 DSH 自动压缩；本节为**可视化层**，1:1 对齐 Cursor 3.3+ Context Usage 圆环与托盘。详见 [deep-literature-research-assessment.md §Phase 14](deep-literature-research-assessment.md#phase-14--上下文用量圆环024计划)。
+
+### 9.1 目标
+
+追问 composer 旁展示上下文占用圆环；单击展开分项托盘（system / tools / compacted / conversation / draft），配色用 PaperNest CSS 变量适配亮/暗主题。
+
+### 9.2 实现切片
+
+- [x] **14a** `research_context_usage.rs` + Tauri command + 单元测试
+- [x] **14b** `ResearchContextRing`（SVG dash 圆环，hint 与发送钮之间）
+- [x] **14c** `ResearchContextPanel`（composer 上方托盘：堆叠色条 + 分项列表）
+- [x] **14d** `ResearchComposer` / `ResearchConversationTab` 接入；draft debounce 300ms
+- [x] **14e** 暗主题走查；CHANGELOG 0.2.24
+
+### 9.3 边界
+
+- 固定 128k 窗口（`CompactionPolicy::deep().context_window`）；G2 可配置 `contextWindow` 延后。
+- 仅 `canFollowUp` 场景显示；新建任务卡片二期。
+- 统计与 `derive_openai_messages` 同源，不读 API `usage`。
+
+---
+
+## 10. Phase 13 — 外网 SERP 兜底（可选，未启动）
 
 > 原 Phase 12 中 DDG Lite / SearXNG 方案顺延至此，仅在用户关闭 LLM 内置联网且需零 Key 通用搜索时实现。
 

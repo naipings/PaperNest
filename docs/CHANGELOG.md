@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.2.24 - 2026-08-30
+
+### 文献调研：上下文用量圆环（Phase 14）
+
+- 追问输入框旁新增 **上下文圆环**（对齐 Cursor Context Usage）：悬停提示、单击展开分项托盘。
+- 后端 `research_context_usage`：与 `derive_openai_messages` 同源估算（chars÷4）；分项 system / tools / compacted / conversation / draft。
+- 接近 DSH 压缩阈值时圆环变橙并提示「发送后将自动摘要旧对话」。
+
 ## 0.2.23 - 2026-08-30
 
 ### 文献调研：报告详度与多轮上下文（Phase 11）

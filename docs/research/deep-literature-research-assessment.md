@@ -1,7 +1,7 @@
 # PaperNest「深度文献调研」功能评估与实施计划
 
 > 调研日期：2026-08-28；修订：2026-08-28（§0 定稿：MD 交付物、项目文件夹、可追溯性、外链优先、PaperNest 作 MCP Server）。  
-> **实施状态（0.2.23）**：Phase 1～11 已落地；Phase 12a `llm_web_search` 已上线（0.2.21～0.2.22）。
+> **实施状态（0.2.24）**：Phase 1～11 已落地；Phase 12a `llm_web_search` 已上线（0.2.21～0.2.22）；**Phase 14 上下文圆环**已上线（0.2.24）。
 > 对照：本仓库 PaperNest（Tauri 2 + React + SQLite 本地资料库）现有 LLM / 论文雷达 / 知识树能力。  
 > 参考开源：[GPT Researcher](https://github.com/assafelovic/gpt-researcher)、[Stanford STORM](https://github.com/stanford-oval/storm)、[LangChain Open Deep Research](https://github.com/langchain-ai/open_deep_research)、[Local Deep Research](https://github.com/LearningCircuit/local-deep-research)、[Ariadne](https://github.com/cgarryZA/Ariadne)、[research-mcp-oss](https://github.com/aylee1024/research-mcp-oss)、[Paper-Radar Phase 6](paper-radar-feature-assessment.md)。  
 > **本文档为规划产物，不含实现代码。**
@@ -309,6 +309,94 @@ ReAct → Reviewer → Writer 流程不变。落地项：
 **与 Phase 12 `llm_web_search` 的关系**：联网检索走独立 LLM 请求（`research_llm_web.rs`），`max_tokens` 仍用 `max_tokens_per_step.min(3000)`；与 11a 报告上限、`llm_native_web_search` 设置项互不冲突。
 
 **仍延后**：按节 Writer、`finish_reason` 续写、可配置 `contextWindow`（G2）、`tool/result` 截断、外部向量记忆。
+
+### Phase 14 — 上下文用量圆环（0.2.24）✅
+
+> **编号说明**：Phase 12 已用于 `llm_web_search`；本节为 Phase 11 压缩策略的**可视化层**，UI 1:1 对齐 Cursor 3.3+「Context Usage」圆环与托盘，配色适配 PaperNest 亮/暗主题。
+
+#### 14.0 目标
+
+在「继续追问」输入框旁展示**与 Cursor 同位置、同交互**的上下文占用圆环，单击展开分项托盘，帮助用户判断是否需要压缩、开新会话或缩短追问。
+
+统计口径：**若此刻发送追问，下一轮 ReAct 首轮 `messages` 的 token 估算**（与 `derive_openai_messages` + draft user message 同源，chars÷4，不引入 tiktoken）。
+
+#### 14.1 Cursor 参照（1:1 复刻项）
+
+| 元素 | Cursor 行为 | PaperNest 对齐 |
+| --- | --- | --- |
+| 位置 | 附件区与发送按钮之间，hint 右侧 | `ResearchComposer` actions 行：`[附件] hint … [圆环] [继续调研]` |
+| 圆环尺寸 | ~20px 外径，2px 描边 | SVG `viewBox="0 0 20 20"`，`r=8`，`stroke-width=2` |
+| 圆环轨道 | 低对比灰环 | `stroke: color-mix(in srgb, var(--muted) 35%, var(--line))` |
+| 圆环填充 | `stroke-dasharray` 按 `percentFull` 顺时针 | 同上；≥ threshold 时 `stroke: #d97706`（亮）/ `#f59e0b`（暗） |
+| 悬停 | tooltip「Show context usage」 | `title="上下文用量"`；可选轻量 CSS tooltip |
+| 单击 | composer **上方**弹出托盘 | `position: absolute; bottom: 100%` 相对 composer 容器 |
+| 托盘标题 | 「Context Usage」+ 关闭 | 「上下文用量」+ `×` |
+| 摘要行 | `79% · ~159K / 200K tokens` | `{percent}% · ~{used}K / {window}K tokens`（中文 locale） |
+| 堆叠色条 | 横向分段，高度 ~6px，圆角 | 各 bucket 宽度 = `tokens / usedTokens` |
+| 分项列表 | 色点 + 标签 + 右对齐 token | 同结构，5 类（见下表） |
+| 压缩提示 | 接近满时一行警告 | `nearCompaction` 时显示「接近压缩阈值，发送后将自动摘要旧对话」 |
+
+**首版不做**：轨迹 Tab 重复一套、按模型动态 context window（G2）、与 API `usage` 字段逐轮对齐。
+
+#### 14.2 分项（buckets）
+
+遍历 `fold_surface` 后 `derive_openai_messages` 结果，按消息归类：
+
+| id | 标签 | 归类规则 | 色条色（亮 / 暗） |
+| --- | --- | --- | --- |
+| `system` | 系统提示 | 首条 `role=system` 内容 | `--accent` / `--accent` |
+| `tools` | 工具定义 | `request/header` 序列化的 tools JSON（÷4） | `--sky` / `--sky` |
+| `compacted` | 已压缩摘要 | `user` 含 `<compacted-summary>` | `#a855f7` / `#c084fc` |
+| `conversation` | 对话与工具结果 | 其余 user / assistant / tool | `--brand` / `--brand` |
+| `draft` | 未发送追问 | 前端传入 draft 文本 + 附件估算 | `var(--muted)` |
+
+#### 14.3 后端：`research_context_usage`
+
+```text
+输入：sessionId, draftQuestion?: string, draftAttachmentChars?: number
+输出：ResearchContextUsage
+```
+
+```typescript
+interface ResearchContextUsage {
+  contextWindow: number;      // 128_000（与 CompactionPolicy 一致）
+  thresholdRatio: number;     // turns≥2 → 0.65，否则 0.8
+  usedTokens: number;
+  percentFull: number;
+  nearCompaction: boolean;    // used >= thresholdRatio * contextWindow
+  buckets: { id: string; label: string; tokens: number }[];
+}
+```
+
+- 新建 `src-tauri/src/research_context_usage.rs`，复用 `estimate_openai_message_tokens`、`CompactionPolicy::for_session(turn_count)`、`research_dsh_load_snapshot`。
+- Tauri command 注册于 `lib.rs`；单元测试覆盖：空会话、含 compaction、含 draft 预览。
+- 与 Phase 11 压缩**只读**：不触发压缩，仅报告当前 DSH 派生体积。
+
+#### 14.4 前端组件
+
+| 文件 | 职责 |
+| --- | --- |
+| `ResearchContextRing.tsx` | SVG 圆环 + 点击/悬停 |
+| `ResearchContextPanel.tsx` | 托盘：标题、摘要、堆叠条、分项列表、压缩提示 |
+| `styles.css` | `.research-context-ring`、`.research-context-panel`（托盘 `background: var(--panel)`、`border: 1px solid var(--line)`、`box-shadow` 对齐现有浮层） |
+
+**接入**：
+
+- `ResearchComposer` 新增可选 props：`sessionId?`、`showContextRing?`、`draftQuestion`（即 `value`）。
+- `ResearchConversationTab` 在 `canFollowUp` 时传 `sessionId` 并开启圆环。
+- 刷新：`sessionId` 变化、步骤轮询、`value` debounce 300ms、发送追问后。
+
+#### 14.5 实施切片（推荐顺序）
+
+| 步骤 | 内容 | 验收 |
+| --- | --- | --- |
+| 14a | `research_context_usage` + 测试 | `cargo test research_context_usage` |
+| 14b | 圆环仅总量百分比 | 追问框旁可见环，hover 有 title |
+| 14c | 单击托盘 + 分项色条 | 布局与 Cursor 截图一致（亮主题） |
+| 14d | draft 实时预览 + `nearCompaction` 文案 | 输入追问时 `draft` 分项变化 |
+| 14e | 暗主题走查 + 文档/CHANGELOG 0.2.24 | 切换 `data-theme=dark` 无色条不可读 |
+
+预估 **0.5～1 天**；与 `llm_web_search`、Phase 11 无冲突。
 
 ---
 

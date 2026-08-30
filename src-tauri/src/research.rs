@@ -1680,6 +1680,41 @@ pub async fn research_reject_proposal(
   write_proposal(workspace, proposal)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResearchContextUsageInput {
+  pub id: String,
+  pub draft_question: Option<String>,
+  pub draft_attachment_chars: Option<u64>,
+}
+
+#[tauri::command]
+pub async fn research_context_usage(
+  state: State<'_, AppState>,
+  input: ResearchContextUsageInput,
+) -> Result<research_context_usage::ResearchContextUsage> {
+  let research_pool = open_research_pool(&state.library_dir).await?;
+  let settings = load_settings(&research_pool).await?;
+  let session = get_session_row(&research_pool, &input.id).await?;
+  research_pool.close().await;
+  let workspace = Path::new(&session.workspace_path);
+  let snapshot = research_dsh_store::load_snapshot(workspace)?;
+  let turn_count = crate::research_turns::read_turns(workspace)
+    .map(|turns| turns.len())
+    .unwrap_or(0);
+  let draft_chars = input.draft_attachment_chars.unwrap_or(0);
+  let preview_followup = input.draft_question.as_deref().map(str::trim).is_some_and(|text| !text.is_empty())
+    || draft_chars > 0;
+  Ok(research_context_usage::compute_context_usage(
+    &settings,
+    &snapshot.events,
+    turn_count,
+    input.draft_question.as_deref(),
+    draft_chars,
+    preview_followup,
+  ))
+}
+
 #[tauri::command]
 pub async fn research_dsh_load_snapshot(state: State<'_, AppState>, id: String) -> Result<research_dsh_store::DshSessionSnapshot> {
   let pool = open_research_pool(&state.library_dir).await?;

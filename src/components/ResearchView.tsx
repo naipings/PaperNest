@@ -492,6 +492,7 @@ export function ResearchView() {
               )}
               {detailTab === "conversation" && (
                 <ResearchConversationTab
+                  sessionId={selectedId}
                   turns={turns}
                   sources={sources}
                   steps={steps}
@@ -500,6 +501,7 @@ export function ResearchView() {
                   followUp={followUp}
                   followUpAttachments={followUpAttachments}
                   canFollowUp={canFollowUp}
+                  contextRefreshKey={`${turns.length}-${steps.length}-${isRunning}`}
                   onToggleProcess={() => setShowProcess(v => !v)}
                   onOpenUrl={url => void backend.openExternalUrl(url)}
                   onFollowUpChange={setFollowUp}

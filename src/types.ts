@@ -312,6 +312,21 @@ export interface ResearchTurnView {
   error?: string;
 }
 
+export interface ResearchContextBucket {
+  id: string;
+  label: string;
+  tokens: number;
+}
+
+export interface ResearchContextUsage {
+  contextWindow: number;
+  thresholdRatio: number;
+  usedTokens: number;
+  percentFull: number;
+  nearCompaction: boolean;
+  buckets: ResearchContextBucket[];
+}
+
 export interface ResearchProposal {
   id: string;
   kind: string;

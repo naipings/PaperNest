@@ -13,6 +13,7 @@ const TURN_STATUS: Record<string, string> = {
 };
 
 type Props = {
+  sessionId?: string;
   turns: ResearchTurnView[];
   sources: ResearchSource[];
   steps: ResearchStepSummary[];
@@ -21,6 +22,7 @@ type Props = {
   followUp: string;
   followUpAttachments: AttachmentDraft[];
   canFollowUp: boolean;
+  contextRefreshKey?: string | number;
   onToggleProcess: () => void;
   onOpenUrl: (url: string) => void;
   onFollowUpChange: (value: string) => void;
@@ -43,7 +45,17 @@ function AttachmentChips({ items }: { items: ResearchAttachment[] }) {
   );
 }
 
+function draftAttachmentChars(attachments: AttachmentDraft[]) {
+  return attachments.reduce((sum, item) => {
+    if (item.text) return sum + item.text.length;
+    if (item.dataBase64) return sum + Math.floor((item.dataBase64.length * 3) / 4);
+    if (item.url) return sum + item.url.length;
+    return sum;
+  }, 0);
+}
+
 export function ResearchConversationTab({
+  sessionId,
   turns,
   sources,
   steps,
@@ -52,6 +64,7 @@ export function ResearchConversationTab({
   followUp,
   followUpAttachments,
   canFollowUp,
+  contextRefreshKey,
   onToggleProcess,
   onOpenUrl,
   onFollowUpChange,
@@ -96,6 +109,10 @@ export function ResearchConversationTab({
         attachments={followUpAttachments}
         busy={isRunning}
         disabled={!canFollowUp}
+        sessionId={sessionId}
+        showContextRing={canFollowUp && !!sessionId}
+        contextRefreshKey={contextRefreshKey}
+        draftAttachmentChars={draftAttachmentChars(followUpAttachments)}
         placeholder={canFollowUp ? "继续追问，例如：把冷启动与长尾推荐的关系再展开" : "完成第一轮调研后即可继续追问"}
         submitLabel="继续调研"
         onChange={onFollowUpChange}

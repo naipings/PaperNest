@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -401,6 +401,10 @@ export const backend = {
   async researchContinueSession(id: string, question: string, attachments: ResearchAttachmentInput[]): Promise<ResearchSession> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_continue_session", { input: { id, question, attachments } });
+  },
+  async researchContextUsage(input: { id: string; draftQuestion?: string; draftAttachmentChars?: number }): Promise<ResearchContextUsage> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_context_usage", { input });
   },
   async researchExportReport(id: string): Promise<string> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");

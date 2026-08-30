@@ -595,6 +595,8 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 **Phase 11 报告详度与多轮上下文（0.2.23）**：`reportMaxTokens` 默认 12000；Writer excerpt 800；ReAct 2000；DSH 压缩覆盖全部调研深度，多轮（`turns≥2`）阈值 0.65。详见 [deep-literature-research-assessment.md](research/deep-literature-research-assessment.md) §4.1。
 
+**Phase 14 上下文圆环（0.2.24）**：追问 composer 旁圆环 + `research_context_usage` 分项托盘；与 `derive_openai_messages` 同源估算。详见 assessment §Phase 14。
+
 **Phase 12 外网通用检索（计划）**：新增 `search_web_pages`，**默认 DuckDuckGo Lite（零注册、零 Key，不内置开发者凭证）**；学术检索仍用 `search_web`；`fetch_url` 已在 0.2.17 上线。可选增强：用户自填 SearXNG 实例 URL 或 Tavily/Serper Key。详见 [research-trajectory-plan.md](research/research-trajectory-plan.md) §8。
 
 ---

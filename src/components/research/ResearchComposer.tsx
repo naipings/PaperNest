@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { FileText, Image, Link2, LoaderCircle, Paperclip, Send, X } from "lucide-react";
 import { ATTACHMENT_EXTENSIONS, extractLinks, hostOf, type AttachmentDraft } from "../../lib/researchAttachments";
+import { useResearchContextUsage } from "./useResearchContextUsage";
 
 const ACCEPT = ATTACHMENT_EXTENSIONS.map(ext => `.${ext}`).join(",");
 
@@ -13,6 +14,10 @@ type Props = {
   submitLabel: string;
   hint?: string;
   rows?: number;
+  sessionId?: string;
+  showContextRing?: boolean;
+  contextRefreshKey?: string | number;
+  draftAttachmentChars?: number;
   onChange: (value: string) => void;
   onAddFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -28,6 +33,10 @@ export function ResearchComposer({
   submitLabel,
   hint,
   rows = 3,
+  sessionId,
+  showContextRing = false,
+  contextRefreshKey,
+  draftAttachmentChars = 0,
   onChange,
   onAddFiles,
   onRemoveAttachment,
@@ -36,8 +45,17 @@ export function ResearchComposer({
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const links = extractLinks(value);
+  const contextUsage = useResearchContextUsage({
+    sessionId,
+    enabled: showContextRing && !!sessionId,
+    draftQuestion: value,
+    draftAttachmentChars,
+    refreshKey: contextRefreshKey,
+  });
 
   return (
+    <div className="research-composer-wrap">
+      {contextUsage.panel}
     <div
       className={`research-composer${dragging ? " is-dragging" : ""}`}
       onDragOver={event => {
@@ -98,6 +116,7 @@ export function ResearchComposer({
           附件
         </button>
         <span className="research-composer-hint">{hint ?? "Ctrl+Enter 发送 · 可拖入或粘贴文件 · 粘贴网址即成为链接"}</span>
+        {contextUsage.ring}
         <button type="button" className="primary" disabled={busy || disabled} onClick={onSubmit}>
           {busy ? <LoaderCircle className="spin" size={15} /> : <Send size={15} />}
           {submitLabel}
@@ -114,6 +133,7 @@ export function ResearchComposer({
           event.target.value = "";
         }}
       />
+    </div>
     </div>
   );
 }
