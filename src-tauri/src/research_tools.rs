@@ -551,10 +551,10 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
             }
           }
         }
-        Err(arxiv_error) => match crate::research_web::search_web_sources(&query, limit as i64, from_year).await {
+        Err(arxiv_error) => match crate::research_web::search_openalex_sources(&query, limit as i64, from_year).await {
           Ok(web_briefs) => {
             lines.push(format!(
-              "arXiv 暂时不可用（{arxiv_error}），已改用 OpenAlex/Crossref："
+              "arXiv 暂时不可用（{arxiv_error}），已改用 OpenAlex 学术元数据："
             ));
             for brief in web_briefs {
               if let Some(source) = ctx.collector.add_web_brief(

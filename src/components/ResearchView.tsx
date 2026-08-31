@@ -42,6 +42,8 @@ export function ResearchView() {
   const [queryAttachments, setQueryAttachments] = useState<AttachmentDraft[]>([]);
   const [followUp, setFollowUp] = useState("");
   const [followUpAttachments, setFollowUpAttachments] = useState<AttachmentDraft[]>([]);
+  const [runPending, setRunPending] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [steps, setSteps] = useState<ResearchStepSummary[]>([]);
   const [proposals, setProposals] = useState<ResearchProposal[]>([]);
@@ -50,7 +52,15 @@ export function ResearchView() {
   const [detailTab, setDetailTab] = useState<DetailTab>("trajectory");
 
   const selected = sessions.find(item => item.id === selectedId);
-  const isRunning = selected?.status === "running" || !!researchBusy;
+  const isRunning = selected?.status === "running" || runPending;
+
+  const markSessionRunning = useCallback((id: string) => {
+    setSessions(current =>
+      current.map(session =>
+        session.id === id ? { ...session, status: "running", error: undefined } : session,
+      ),
+    );
+  }, []);
   const pendingProposals = proposals.filter(item => item.status === "pending").length;
   const trajectoryActive = detailTab === "trajectory" && !!selected;
   const hasResumeBar =
@@ -174,6 +184,8 @@ export function ResearchView() {
 
   const runSession = async () => {
     if (!selectedId) return;
+    setRunPending(true);
+    markSessionRunning(selectedId);
     setResearchBusy("调研进行中，请稍候…");
     setResearchNotice("");
     setShowProcess(true);
@@ -192,6 +204,7 @@ export function ResearchView() {
       setNotice(error instanceof Error ? error.message : String(error));
       await refreshSelected();
     } finally {
+      setRunPending(false);
       setResearchBusy("");
     }
   };
@@ -204,6 +217,8 @@ export function ResearchView() {
     }
     const question = followUp.trim();
     const attachments = toAttachmentInputs(followUpAttachments, followUp);
+    setRunPending(true);
+    markSessionRunning(selectedId);
     setResearchBusy("正在继续调研…");
     setResearchNotice("");
     setDetailTab("conversation");
@@ -219,6 +234,7 @@ export function ResearchView() {
       setNotice(error instanceof Error ? error.message : String(error));
       await refreshSelected();
     } finally {
+      setRunPending(false);
       setResearchBusy("");
     }
   };
@@ -235,6 +251,8 @@ export function ResearchView() {
 
   const resumeSession = async (boundarySeq?: number) => {
     if (!selectedId) return;
+    setRunPending(true);
+    markSessionRunning(selectedId);
     setResearchBusy("正在从轨迹恢复点续跑…");
     setResearchNotice("");
     setShowProcess(true);
@@ -246,6 +264,8 @@ export function ResearchView() {
       await reloadHarness(selectedId);
       if (session.status === "failed") {
         setNotice(session.error || "恢复后续跑失败");
+      } else if (session.status === "cancelled") {
+        setNotice("调研已停止，可从轨迹恢复点继续。");
       } else {
         setNotice("已从选定事件点恢复并完成调研。");
       }
@@ -253,6 +273,7 @@ export function ResearchView() {
       setNotice(error instanceof Error ? error.message : String(error));
       await refreshSelected();
     } finally {
+      setRunPending(false);
       setResearchBusy("");
     }
   };
@@ -277,8 +298,8 @@ export function ResearchView() {
   };
 
   const cancelSession = async () => {
-    if (!selectedId) return;
-    setResearchBusy("正在停止调研…");
+    if (!selectedId || cancelling) return;
+    setCancelling(true);
     try {
       const session = await backend.researchCancelSession(selectedId);
       await loadSessions();
@@ -289,7 +310,7 @@ export function ResearchView() {
       setNotice(error instanceof Error ? error.message : String(error));
       await refreshSelected();
     } finally {
-      setResearchBusy("");
+      setCancelling(false);
     }
   };
 
@@ -411,9 +432,9 @@ export function ResearchView() {
                 </div>
                 <div className="research-detail-actions">
                   {isRunning ? (
-                    <button type="button" className="secondary" disabled={!!researchBusy} onClick={() => void cancelSession()}>
+                    <button type="button" className="secondary" disabled={cancelling} onClick={() => void cancelSession()}>
                       <Square size={16} />
-                      停止调研
+                      {cancelling ? "正在停止…" : "停止调研"}
                     </button>
                   ) : (
                     <button type="button" className="primary" disabled={!!researchBusy || !settingsEnabled} onClick={() => void runSession()}>
@@ -441,7 +462,7 @@ export function ResearchView() {
                         ? `已记录 ${steps.length} 个步骤${steps[steps.length - 1]?.label ? ` · 最新：${steps[steps.length - 1].label}` : ""}`
                         : "正在启动 Agent…"}
                       {eventCount > 0 ? ` · DSH 事件 ${eventCount}` : dshLoading ? " · 加载轨迹…" : ""}
-                      {" · 可随时点击「停止调研」"}
+                      {" · 可随时点击「停止调研」（当前 LLM/工具步骤完成后生效）"}
                     </p>
                   </div>
                 </div>

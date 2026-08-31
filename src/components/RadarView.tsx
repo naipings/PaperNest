@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Eye,
   EyeOff,
@@ -34,6 +36,107 @@ const STRATEGY_LABEL: Record<string, string> = {
 };
 
 const FLASH_MS = 3200;
+
+const isoDate = (value: Date) =>
+  value.getFullYear() + "-" + String(value.getMonth() + 1).padStart(2, "0") + "-" + String(value.getDate()).padStart(2, "0");
+
+const RADAR_WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
+
+function RadarSnapshotCalendar({
+  dates,
+  selected,
+  onSelect,
+}: {
+  dates: string[];
+  selected: string;
+  onSelect(date: string): void;
+}) {
+  const snapshotSet = useMemo(() => new Set(dates), [dates]);
+  const anchor = selected || dates[0] || isoDate(new Date());
+  const [viewMonth, setViewMonth] = useState(() => {
+    const [year, month] = anchor.split("-").map(Number);
+    return new Date(year, month - 1, 1);
+  });
+
+  useEffect(() => {
+    if (!selected) return;
+    const [year, month] = selected.split("-").map(Number);
+    setViewMonth(current =>
+      current.getFullYear() === year && current.getMonth() === month - 1
+        ? current
+        : new Date(year, month - 1, 1),
+    );
+  }, [selected]);
+
+  const gridDays = useMemo(() => {
+    const start = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+    return Array.from({ length: 42 }, (_, index) => {
+      const value = new Date(start);
+      value.setDate(start.getDate() + index);
+      return value;
+    });
+  }, [viewMonth]);
+
+  return (
+    <>
+      <div className="radar-calendar-head">
+        <span className="radar-calendar-month">
+          {viewMonth.toLocaleDateString("zh-CN", { year: "numeric", month: "long" })}
+        </span>
+        <div className="radar-calendar-nav">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="上个月"
+            onClick={() => setViewMonth(value => new Date(value.getFullYear(), value.getMonth() - 1, 1))}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="下个月"
+            onClick={() => setViewMonth(value => new Date(value.getFullYear(), value.getMonth() + 1, 1))}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="radar-calendar-weekdays" aria-hidden="true">
+        {RADAR_WEEKDAYS.map(day => <span key={day}>{day}</span>)}
+      </div>
+      <div className="radar-calendar-grid">
+        {gridDays.map((day, index) => {
+          const dateKey = isoDate(day);
+          const hasSnapshot = snapshotSet.has(dateKey);
+          const otherMonth = day.getMonth() !== viewMonth.getMonth();
+          const classes = [
+            "radar-calendar-day",
+            otherMonth ? "other-month" : "",
+            hasSnapshot ? "has-snapshot" : "",
+            dateKey === selected ? "selected" : "",
+          ].filter(Boolean).join(" ");
+          return (
+            <button
+              key={`${dateKey}-${index}`}
+              type="button"
+              className={classes}
+              disabled={!hasSnapshot}
+              aria-label={dateKey}
+              aria-pressed={dateKey === selected}
+              onClick={() => onSelect(dateKey)}
+            >
+              <time dateTime={dateKey}>{day.getDate()}</time>
+              {hasSnapshot && <span className="radar-calendar-dot" aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="radar-calendar-foot">{dates.length} 天有快照，带圆点的日期可查看</p>
+    </>
+  );
+}
 
 export function RadarView({ onImported }: { onImported?(paperId: string): void }) {
   const {
@@ -415,13 +518,11 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
 
       <div className="radar-layout">
         <aside className="radar-calendar">
-          <h3><CalendarDays size={15} />有快照的日期</h3>
+          <h3><CalendarDays size={15} />日历</h3>
           {dates.length === 0 && <p className="radar-empty">尚无采集记录。点击右上角「推荐今日论文」开始。</p>}
-          <div className="radar-date-list">
-            {dates.map(item => (
-              <button key={item} type="button" className={item === date ? "active" : ""} onClick={() => setDate(item)}>{item}</button>
-            ))}
-          </div>
+          {dates.length > 0 && (
+            <RadarSnapshotCalendar dates={dates} selected={date} onSelect={setDate} />
+          )}
         </aside>
 
         <section className="radar-main">

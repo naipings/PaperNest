@@ -809,8 +809,8 @@ button.reading-heat-dot { cursor: default; }
   .reading-heatmap-stats article:nth-child(2) { border-bottom: 1px solid var(--line); }
 }
 
-.radar-page .radar-layout { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; align-items: start; }
-.radar-page .radar-layout:has(.radar-explain) { grid-template-columns: 180px minmax(0, 1fr) 340px; }
+.radar-page .radar-layout { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+.radar-page .radar-layout:has(.radar-explain) { grid-template-columns: 220px minmax(0, 1fr) 340px; }
 .radar-calendar, .radar-explain { border: 1px solid var(--line); background: var(--panel); border-radius: 18px; padding: 14px; box-shadow: 0 6px 18px rgba(40,70,120,.05); }
 .radar-explain {
   position: sticky;
@@ -832,10 +832,50 @@ button.reading-heat-dot { cursor: default; }
   background: color-mix(in srgb, var(--accent-soft) 88%, var(--panel));
 }
 .radar-btn-explaining { opacity: .78; }
-.radar-date-list { display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow: auto; }
-.radar-date-list button { text-align: left; border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 8px 10px; color: var(--text); }
-.radar-date-list button.active, .radar-tabs-list button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.radar-calendar-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.radar-calendar-month { font-size: 13px; font-weight: 650; color: var(--text); white-space: nowrap; }
+.radar-calendar-nav { display: flex; gap: 2px; flex-shrink: 0; }
+.radar-calendar-nav .icon-button { width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.radar-calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.radar-calendar-weekdays span { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); line-height: 1.2; }
+.radar-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.radar-calendar-day {
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 3px 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--text);
+  font: inherit;
+  cursor: default;
+}
+.radar-calendar-day time { font-size: 12px; font-weight: 600; line-height: 1; }
+.radar-calendar-day.other-month { color: var(--muted); opacity: .42; }
+.radar-calendar-day:disabled { opacity: .35; }
+.radar-calendar-day.other-month:disabled { opacity: .22; }
+.radar-calendar-day.has-snapshot:not(:disabled) { cursor: pointer; }
+.radar-calendar-day.has-snapshot:not(:disabled):hover { background: var(--soft); }
+.radar-calendar-day.selected {
+  background: var(--accent);
+  color: var(--panel);
+}
+.radar-calendar-day.selected:disabled { opacity: 1; }
+.radar-calendar-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--sky);
+  flex-shrink: 0;
+}
+.radar-calendar-day.selected .radar-calendar-dot { background: currentColor; opacity: .88; }
+.radar-calendar-foot { margin: 10px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
 .radar-tabs-list button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px; font-size: 12px; }
+.radar-tabs-list button.active { background: var(--accent); color: var(--panel); border-color: var(--accent); }
 .radar-card-list { display: grid; gap: 12px; }
 .radar-card { border: 1px solid var(--line); background: var(--panel); border-radius: 16px; padding: 14px 16px; box-shadow: 0 6px 18px rgba(40,70,120,.04); }
 .radar-card.in-library { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }

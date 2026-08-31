@@ -1,5 +1,23 @@
 # 更新记录
 
+## 0.2.26 - 2026-08-31
+
+### 文献调研：中途停止与轨迹恢复
+
+- 修复「停止调研」按钮在运行中被 `researchBusy` 禁用的问题；运行期间可随时请求停止。
+- 后端取消信号在 ReAct 每轮与每个 tool 调用前检查；pipeline 模式在主要步骤间检查。
+- 用户取消后自动为未闭合 DSH `step/start` 补写 `step/end`，便于从轨迹边界恢复续跑。
+- 修复 `ResearchRunControl.begin` 重复注册导致取消信号丢失的问题。
+
+## 0.2.25 - 2026-08-31
+
+### arXiv 限流修复 + 外网检索降噪
+
+- 新增全局 `arxiv_client` 闸门（雷达与调研共用，≥3.5s/次），缓解 429 Too Many Requests。
+- `search_arxiv` 失败时仅兜底 **OpenAlex**，不再回退 Crossref bibliographic（避免混凝土/地质等无关元数据进入引用来源）。
+- Crossref 改为 `query.title` 并过滤标题不含检索词的结果。
+- 候选论文：凡 URL 含 arXiv 编号即生成 import 提议（不限 `kind=arxiv`）。
+
 ## 0.2.24 - 2026-08-30
 
 ### 文献调研：上下文用量圆环（Phase 14）

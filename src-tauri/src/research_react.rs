@@ -173,6 +173,7 @@ async fn run_react_loop_inner(
     messages.push(assistant_tool_message(&response.tool_calls, response.content.as_deref()));
 
     for call in response.tool_calls {
+      ensure_not_cancelled(&session.id).await?;
       dsh.tool_call(react_turn, round, &call)?;
       tool_calls_used += 1;
       if tool_calls_used > max_tool_calls {

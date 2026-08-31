@@ -569,11 +569,55 @@ fn urlencoding_encode(value: &str) -> String {
 
 type ArxivEntry = (String, String, String, Vec<String>, Vec<String>, Option<String>, Option<String>);
 
-fn arxiv_user_agent(mailto: Option<&str>) -> String {
-  match mailto {
-    Some(mail) => format!("PaperNest-Radar/0.2.4 (mailto:{mail})"),
-    None => "PaperNest-Radar/0.2.4".into(),
+async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
+  let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
+  let url = format!(
+    "https://export.arxiv.org/api/query?search_query={}&sortBy=submittedDate&sortOrder=descending&max_results={}",
+    urlencoding_encode(search_query),
+    limit.clamp(5, 200)
+  );
+  let mut last_transport = String::new();
+  for attempt in 0..5 {
+    if attempt > 0 {
+      tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
+    }
+    let response = crate::arxiv_client::with_arxiv_throttle(|| {
+      let client = client.clone();
+      let url = url.clone();
+      let mailto = mailto.map(str::to_string);
+      async move {
+        client
+          .get(&url)
+          .header("User-Agent", crate::arxiv_client::arxiv_user_agent(mailto.as_deref()))
+          .send()
+          .await
+      }
+    })
+    .await;
+    let response = match response {
+      Ok(response) => response,
+      Err(error) => {
+        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request()) {
+          last_transport = error.to_string();
+          continue;
+        }
+        return Err(err(error));
+      }
+    };
+    let status = response.status();
+    let text = response.text().await.map_err(err)?;
+    if status.is_success() {
+      return Ok(parse_arxiv_atom(&text));
+    }
+    if status.as_u16() == 429 && attempt < 4 {
+      continue;
+    }
+    return Err(format!("arXiv API 失败（{status}）"));
   }
+  if !last_transport.is_empty() {
+    return Err(last_transport);
+  }
+  Err("arXiv API 失败（429 Too Many Requests）".into())
 }
 
 fn submitted_date_range(window_days: i64) -> String {
@@ -603,49 +647,6 @@ fn build_interest_query(keyword: &str, categories: &[String], window_days: i64) 
   }
   parts.push(submitted_date_range(window_days));
   parts.join(" AND ")
-}
-
-async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
-  let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
-  let url = format!(
-    "https://export.arxiv.org/api/query?search_query={}&sortBy=submittedDate&sortOrder=descending&max_results={}",
-    urlencoding_encode(search_query),
-    limit.clamp(5, 200)
-  );
-  let mut last_transport = String::new();
-  for attempt in 0..5 {
-    if attempt > 0 {
-      tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
-    }
-    let response = match client
-      .get(&url)
-      .header("User-Agent", arxiv_user_agent(mailto))
-      .send()
-      .await
-    {
-      Ok(response) => response,
-      Err(error) => {
-        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request()) {
-          last_transport = error.to_string();
-          continue;
-        }
-        return Err(err(error));
-      }
-    };
-    let status = response.status();
-    let text = response.text().await.map_err(err)?;
-    if status.is_success() {
-      return Ok(parse_arxiv_atom(&text));
-    }
-    if status.as_u16() == 429 && attempt < 4 {
-      continue;
-    }
-    return Err(format!("arXiv API 失败（{status}）"));
-  }
-  if !last_transport.is_empty() {
-    return Err(last_transport);
-  }
-  Err("arXiv API 失败（429 Too Many Requests）".into())
 }
 
 async fn fetch_arxiv_new(categories: &[String], limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
@@ -1120,13 +1121,35 @@ async fn enrich_arxiv_ids(pool: &SqlitePool, ids: &[String], mailto: Option<&str
       urlencoding_encode(&id_list),
       chunk.len()
     );
-    let response = client
-      .get(&url)
-      .header("User-Agent", arxiv_user_agent(mailto))
-      .send()
-      .await
-      .map_err(err)?;
-    let text = response.text().await.map_err(err)?;
+    let text = crate::arxiv_client::with_arxiv_throttle(|| {
+      let client = client.clone();
+      let url = url.clone();
+      let mailto = mailto.map(str::to_string);
+      async move {
+        for attempt in 0..5 {
+          if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
+          }
+          let response = client
+            .get(&url)
+            .header("User-Agent", crate::arxiv_client::arxiv_user_agent(mailto.as_deref()))
+            .send()
+            .await
+            .map_err(err)?;
+          let status = response.status();
+          let text = response.text().await.map_err(err)?;
+          if status.is_success() {
+            return Ok(text);
+          }
+          if status.as_u16() == 429 && attempt < 4 {
+            continue;
+          }
+          return Err(format!("arXiv API 失败（{status}）"));
+        }
+        Err("arXiv API 失败（429 Too Many Requests）".into())
+      }
+    })
+    .await?;
     for (arxiv_id, title, summary, authors, categories, primary, published) in parse_arxiv_atom(&text) {
       upsert_paper_meta(
         pool,
@@ -1140,7 +1163,6 @@ async fn enrich_arxiv_ids(pool: &SqlitePool, ids: &[String], mailto: Option<&str
       )
       .await?;
     }
-    tokio::time::sleep(Duration::from_millis(3100)).await;
   }
   Ok(())
 }

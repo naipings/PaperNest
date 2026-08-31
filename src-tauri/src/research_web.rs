@@ -47,6 +47,11 @@ pub async fn search_web_sources(query: &str, limit: i64, from_year: Option<i64>)
   Ok(out)
 }
 
+/// arXiv 不可用时的兜底：仅 OpenAlex（标题+摘要语义检索），避免 Crossref bibliographic 噪声。
+pub async fn search_openalex_sources(query: &str, limit: i64, from_year: Option<i64>) -> Result<Vec<WebBrief>> {
+  search_openalex(query, limit.clamp(3, 12), from_year).await
+}
+
 /// DuckDuckGo Lite SERP，用于具名来源补链与 llm_web 兜底。
 pub async fn search_ddg_lite(query: &str, limit: usize) -> Result<Vec<WebBrief>> {
   let compact = query.trim();
@@ -169,6 +174,20 @@ fn academic_terms(query: &str) -> String {
     .join(" ")
 }
 
+fn title_matches_query(title: &str, query: &str) -> bool {
+  let tokens = search_tokenize(query);
+  if tokens.is_empty() {
+    return true;
+  }
+  let title_lower = title.to_lowercase();
+  tokens.iter().any(|token| {
+    if token.chars().count() >= 2 && token.chars().any(|c| !c.is_ascii()) {
+      return title.contains(token.as_str());
+    }
+    token.len() >= 3 && title_lower.contains(&token.to_lowercase())
+  })
+}
+
 async fn search_openalex(query: &str, limit: i64, from_year: Option<i64>) -> Result<Vec<WebBrief>> {
   let compact = academic_terms(query);
   if compact.trim().len() < 2 {
@@ -259,7 +278,7 @@ async fn search_crossref(query: &str, limit: i64, from_year: Option<i64>) -> Res
   }
   let client = http_client()?;
   let mut url = format!(
-    "https://api.crossref.org/works?query.bibliographic={}&rows={}",
+    "https://api.crossref.org/works?query.title={}&rows={}",
     url_encode(&compact),
     limit.clamp(2, 8)
   );
@@ -290,7 +309,7 @@ async fn search_crossref(query: &str, limit: i64, from_year: Option<i64>) -> Res
         .and_then(|v| v.as_str())
         .or_else(|| item.get("title").and_then(|v| v.as_str()))?
         .trim();
-      if title.is_empty() {
+      if title.is_empty() || !title_matches_query(title, query) {
         return None;
       }
       let url = item

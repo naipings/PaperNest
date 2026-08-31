@@ -466,7 +466,7 @@ async fn write_import_proposals(
   sources: &[ResearchSource],
   library_pool: &SqlitePool,
 ) -> Result<()> {
-  for source in sources.iter().filter(|s| s.kind == "arxiv") {
+  for source in sources {
     let arxiv_id = source
       .url
       .as_deref()
@@ -696,6 +696,7 @@ async fn run_pipeline_agent(
       session.output_requirements.clone()
     }
   );
+  ensure_not_cancelled(&session.id).await?;
   let plan_raw = crate::research_llm::research_llm_completion(settings, plan_system, serde_json::json!(plan_user), Some(1200), 120).await?;
   let planner_turn = 1u32;
   dsh.request_header(plan_system, &[], "initial")?;
@@ -731,6 +732,7 @@ async fn run_pipeline_agent(
 
   let mut pipeline_step = 2u32;
   for query in queries.iter().take(settings.max_iterations.max(2) as usize) {
+    ensure_not_cancelled(&session.id).await?;
     let call = crate::research_llm::LlmToolCall {
       id: format!("pipeline-lib-{pipeline_step}"),
       name: "search_library".into(),
@@ -763,6 +765,7 @@ async fn run_pipeline_agent(
 
   if settings.allow_web_search {
     for query in queries.iter().take(2) {
+      ensure_not_cancelled(&session.id).await?;
       let call = crate::research_llm::LlmToolCall {
         id: format!("pipeline-arxiv-{pipeline_step}"),
         name: "search_arxiv".into(),
@@ -803,6 +806,7 @@ async fn run_pipeline_agent(
     outline,
     sources_block(&collected)
   );
+  ensure_not_cancelled(&session.id).await?;
   let reflect_raw = crate::research_llm::research_llm_completion(
     settings,
     reflect_system,
@@ -844,6 +848,7 @@ async fn run_pipeline_agent(
   step_index += 1;
 
   for query in follow_ups {
+    ensure_not_cancelled(&session.id).await?;
     let call = crate::research_llm::LlmToolCall {
       id: format!("pipeline-follow-{pipeline_step}"),
       name: "search_library".into(),
@@ -1169,7 +1174,7 @@ pub async fn research_continue_session(
   ResearchRunControl::global().end(&input.id).await;
   let research_pool = open_research_pool(&state.library_dir).await?;
   let mut session = get_session_row(&research_pool, &input.id).await?;
-  finalize_research_run(&mut session, run)?;
+  finalize_research_run(&mut session, run, &settings.model)?;
   upsert_session(&research_pool, &session).await?;
   research_pool.close().await;
   Ok(session)
@@ -1412,7 +1417,7 @@ pub async fn research_resume_session(
   ResearchRunControl::global().end(&input.id).await;
   let research_pool = open_research_pool(&state.library_dir).await?;
   let mut session = get_session_row(&research_pool, &input.id).await?;
-  finalize_research_run(&mut session, run)?;
+  finalize_research_run(&mut session, run, &settings.model)?;
   upsert_session(&research_pool, &session).await?;
   research_pool.close().await;
   Ok(session)
@@ -1452,11 +1457,12 @@ impl ResearchRunControl {
   }
 
   async fn begin(&self, session_id: &str) {
-    self
-      .tokens
-      .lock()
-      .await
-      .insert(session_id.to_string(), Arc::new(AtomicBool::new(false)));
+    let mut map = self.tokens.lock().await;
+    if let Some(token) = map.get(session_id) {
+      token.store(false, Ordering::SeqCst);
+    } else {
+      map.insert(session_id.to_string(), Arc::new(AtomicBool::new(false)));
+    }
   }
 
   async fn end(&self, session_id: &str) {
@@ -1483,7 +1489,21 @@ pub(crate) async fn ensure_not_cancelled(session_id: &str) -> Result<()> {
   Ok(())
 }
 
-fn finalize_research_run(session: &mut ResearchSession, run: Result<String>) -> Result<()> {
+fn seal_dsh_on_interrupt(workspace: &Path, model: &str) -> Result<()> {
+  let snapshot = research_dsh_store::load_snapshot(workspace)?;
+  if snapshot.events.is_empty() {
+    return Ok(());
+  }
+  let mut dsh = crate::research_dsh_log::DshRecorder::open(workspace, "openai-compatible", model)?;
+  crate::research_dsh_derive::close_orphan_react_steps(&mut dsh, &snapshot.events)?;
+  Ok(())
+}
+
+fn finalize_research_run(session: &mut ResearchSession, run: Result<String>, model: &str) -> Result<()> {
+  let cancelled = matches!(&run, Err(error) if error.contains("调研已取消"));
+  if cancelled {
+    seal_dsh_on_interrupt(Path::new(&session.workspace_path), model)?;
+  }
   match run {
     Ok(report) => {
       session.status = "completed".into();
@@ -1557,7 +1577,7 @@ pub async fn research_run_session(state: State<'_, AppState>, id: String) -> Res
   ResearchRunControl::global().end(&id).await;
   let research_pool = open_research_pool(&state.library_dir).await?;
   let mut session = get_session_row(&research_pool, &id).await?;
-  finalize_research_run(&mut session, run)?;
+  finalize_research_run(&mut session, run, &settings.model)?;
   upsert_session(&research_pool, &session).await?;
   research_pool.close().await;
   Ok(session)

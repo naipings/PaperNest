@@ -1,5 +1,6 @@
 mod online_metadata;
 mod custom_fields;
+mod arxiv_client;
 mod radar;
 mod search_query;
 mod research_web;
