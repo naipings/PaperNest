@@ -11,3 +11,11 @@ export function findOverlappingAnnotation(annotations: Annotation[], page: numbe
     && item.geometry.rects?.some(existing => rects.some(rect => rectsOverlap(existing, rect)))
   );
 }
+
+export function findOverlappingNote(annotations: Annotation[], page: number, rects: Rect[]) {
+  return annotations.find(item =>
+    item.page === page
+    && (item.type === "sticky" || item.type === "text")
+    && item.geometry.rects?.some(existing => rects.some(rect => rectsOverlap(existing, rect)))
+  );
+}

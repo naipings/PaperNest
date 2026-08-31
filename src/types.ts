@@ -1,6 +1,6 @@
 export type Id = string;
 export type PaperStatus = "unread" | "reading" | "read" | "archived";
-export type AnnotationType = "highlight" | "underline" | "text" | "ink";
+export type AnnotationType = "highlight" | "underline" | "text" | "sticky" | "ink";
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type TaskPriority = "low" | "medium" | "high";
 
@@ -53,7 +53,8 @@ export interface Paper {
 
 export interface Rect { x: number; y: number; width: number; height: number; }
 export interface Point { x: number; y: number; }
-export interface NormalizedPageGeometry { rects?: Rect[]; points?: Point[]; rotation?: number; }
+export type NoteFontSize = "sm" | "md" | "lg";
+export interface NormalizedPageGeometry { rects?: Rect[]; points?: Point[]; anchor?: Point; fontSize?: NoteFontSize; rotation?: number; }
 
 export interface Annotation {
   id: Id;

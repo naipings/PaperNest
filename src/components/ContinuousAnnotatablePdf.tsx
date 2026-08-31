@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { EventBus, PDFPageView } from "pdfjs-dist/web/pdf_viewer.mjs";
 import "pdfjs-dist/web/pdf_viewer.css";
-import type { Annotation, Point, Rect } from "../types";
+import type { Annotation, NoteFontSize, Point, Rect } from "../types";
 import type { ReaderTool } from "../lib/readerTools";
 import { pageCssSize } from "../lib/pdfRenderScale";
+import { mergeSelectionRects } from "../lib/mergeSelectionRects";
+import { isStickyAnnotation } from "../lib/stickyNoteAnchor";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { StickyNote } from "./StickyNote";
 
 export type CapturedSelection = { text: string; rects: Rect[]; x: number; y: number; page: number; highlightId?: string; underlineId?: string; noteId?: string };
 
@@ -32,6 +35,7 @@ export function AnnotationOverlay({ annotation, selected, onSelect }: {
   selected?: boolean;
   onSelect?(event: React.MouseEvent, annotation: Annotation): void;
 }) {
+  if (isStickyAnnotation(annotation)) return null;
   return <>
     {annotation.geometry.rects?.map((rect, index) => (
       <div
@@ -56,7 +60,7 @@ export function AnnotationOverlay({ annotation, selected, onSelect }: {
   </>;
 }
 
-export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
+export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf?: PDFDocumentProxy;
   scale: number;
   pageWidth: number;
@@ -65,11 +69,18 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
   annotations: Annotation[];
   captured?: CapturedSelection;
   selectedAnnotation?: { id: string; page: number; x: number; y: number };
+  editingNoteId?: string;
   highlightColor: string;
   onCapture(selection: CapturedSelection): void;
   onAnnotate(type: "highlight" | "underline"): void;
   onRemoveAnnotation(id: string): void;
   onNote?(selection: CapturedSelection): void;
+  onPlaceNote?(page: number, anchor: Point): void;
+  onNoteMove?(id: string, anchor: Point): void;
+  onNoteSave?(id: string, comment: string, color: string, fontSize: NoteFontSize): void;
+  onNoteEdit?(id: string): void;
+  onNoteCopy?(id: string): void;
+  onNoteDuplicate?(id: string): void;
   onInkStroke?(page: number, points: Point[]): void;
   onSelectAnnotation(id: string | undefined, anchor?: { page: number; x: number; y: number }): void;
   onHighlightColor(color: string): void;
@@ -92,11 +103,18 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
         annotations={annotations.filter(item => item.page === index + 1)}
         captured={captured?.page === index + 1 ? captured : undefined}
         selectedAnnotation={selectedAnnotation?.page === index + 1 ? selectedAnnotation : undefined}
+        editingNoteId={editingNoteId}
         highlightColor={highlightColor}
         onCapture={onCapture}
         onAnnotate={onAnnotate}
         onRemoveAnnotation={onRemoveAnnotation}
         onNote={onNote}
+        onPlaceNote={onPlaceNote}
+        onNoteMove={onNoteMove}
+        onNoteSave={onNoteSave}
+        onNoteEdit={onNoteEdit}
+        onNoteCopy={onNoteCopy}
+        onNoteDuplicate={onNoteDuplicate}
         onInkStroke={onInkStroke}
         onSelectAnnotation={onSelectAnnotation}
         onHighlightColor={onHighlightColor}
@@ -109,7 +127,7 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
   </div>;
 }
 
-function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
+function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf: PDFDocumentProxy;
   page: number;
   scale: number;
@@ -119,11 +137,18 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   annotations: Annotation[];
   captured?: CapturedSelection;
   selectedAnnotation?: { id: string; page: number; x: number; y: number };
+  editingNoteId?: string;
   highlightColor: string;
   onCapture(selection: CapturedSelection): void;
   onAnnotate(type: "highlight" | "underline"): void;
   onRemoveAnnotation(id: string): void;
   onNote?(selection: CapturedSelection): void;
+  onPlaceNote?(page: number, anchor: Point): void;
+  onNoteMove?(id: string, anchor: Point): void;
+  onNoteSave?(id: string, comment: string, color: string, fontSize: NoteFontSize): void;
+  onNoteEdit?(id: string): void;
+  onNoteCopy?(id: string): void;
+  onNoteDuplicate?(id: string): void;
   onInkStroke?(page: number, points: Point[]): void;
   onSelectAnnotation(id: string | undefined, anchor?: { page: number; x: number; y: number }): void;
   onHighlightColor(color: string): void;
@@ -137,11 +162,13 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   const pageViewRef = useRef<PDFPageView | undefined>(undefined);
   const scaleRef = useRef(scale);
   const inkPoints = useRef<Point[]>([]);
+  const notePointer = useRef<{ x: number; y: number }>();
   const [draftPoints, setDraftPoints] = useState<Point[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string }>();
   const css = pageCssSize(pageWidth, pageHeight, scale);
   scaleRef.current = scale;
   const selected = selectedAnnotation && annotations.find(item => item.id === selectedAnnotation.id);
+  const stickyNotes = annotations.filter(isStickyAnnotation);
 
   const copyText = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -212,14 +239,13 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
       if (!selection.anchorNode || !target.contains(selection.anchorNode)) return;
       const pageRect = target.getBoundingClientRect();
       const clientRects = Array.from(selection.getRangeAt(0).getClientRects());
-      const rects: Rect[] = clientRects
+      const rects = mergeSelectionRects(clientRects
         .map(rect => ({
           x: (rect.left - pageRect.left) / pageRect.width,
           y: (rect.top - pageRect.top) / pageRect.height,
           width: rect.width / pageRect.width,
           height: rect.height / pageRect.height,
-        }))
-        .filter(rect => rect.width > 0 && rect.height > 0);
+        })));
       if (!rects.length) return;
       const first = clientRects[0];
       onCapture({
@@ -234,7 +260,7 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
     return () => target.removeEventListener("mouseup", capture);
   }, [onCapture, page]);
 
-  const norm = (event: React.PointerEvent): Point => {
+  const norm = (event: React.PointerEvent | PointerEvent): Point => {
     const rect = host.current!.getBoundingClientRect();
     return {
       x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
@@ -262,6 +288,9 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
         const point = norm(event);
         inkPoints.current = [point];
         setDraftPoints([point]);
+      } : tool === "note" ? event => {
+        if (event.button !== 0 || (event.target as Element).closest(".sticky-note-root")) return;
+        notePointer.current = { x: event.clientX, y: event.clientY };
       } : undefined}
       onPointerMove={tool === "ink" ? event => {
         if (!inkPoints.current.length) return;
@@ -278,6 +307,14 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
         onInkStroke?.(page, inkPoints.current);
         inkPoints.current = [];
         setDraftPoints([]);
+      } : tool === "note" ? event => {
+        if (!notePointer.current || (event.target as Element).closest(".sticky-note-root")) return;
+        const dx = event.clientX - notePointer.current.x;
+        const dy = event.clientY - notePointer.current.y;
+        notePointer.current = undefined;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return;
+        window.getSelection()?.removeAllRanges();
+        onPlaceNote?.(page, norm(event));
       } : undefined}
     >
       {annotations.map(annotation => (
@@ -286,11 +323,30 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
           annotation={annotation}
           selected={selectedAnnotation?.id === annotation.id}
           onSelect={(event, item) => {
-            if (tool === "ink") return;
+            if (tool === "ink" || tool === "note") return;
             event.stopPropagation();
             const pageRect = host.current!.getBoundingClientRect();
             onSelectAnnotation(item.id, { page, x: event.clientX - pageRect.left, y: event.clientY - pageRect.top - 42 });
           }}
+        />
+      ))}
+      {stickyNotes.map(annotation => (
+        <StickyNote
+          key={annotation.id}
+          annotation={annotation}
+          selected={selectedAnnotation?.id === annotation.id}
+          editing={editingNoteId === annotation.id}
+          onSelect={event => {
+            event.stopPropagation();
+            const pageRect = host.current!.getBoundingClientRect();
+            onSelectAnnotation(annotation.id, { page, x: event.clientX - pageRect.left, y: event.clientY - pageRect.top - 42 });
+          }}
+          onEdit={() => onNoteEdit?.(annotation.id)}
+          onMove={anchor => onNoteMove?.(annotation.id, anchor)}
+          onSave={(comment, color, fontSize) => onNoteSave?.(annotation.id, comment, color, fontSize)}
+          onDelete={() => onRemoveAnnotation(annotation.id)}
+          onCopy={() => onNoteCopy?.(annotation.id)}
+          onDuplicate={() => onNoteDuplicate?.(annotation.id)}
         />
       ))}
       {tool === "ink" && draftPoints.length > 1 && (
@@ -316,17 +372,15 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
           onClose={onClearSelection}
         />
       )}
-      {selected && selectedAnnotation && !captured && (
+      {selected && selectedAnnotation && !captured && !isStickyAnnotation(selected) && (
         <SelectionToolbar
           mode="annotation"
           x={selectedAnnotation.x}
           y={selectedAnnotation.y}
           highlightAction={selected.type === "highlight" ? "remove" : undefined}
           underlineAction={selected.type === "underline" ? "remove" : undefined}
-          noteAction={selected.type === "text" ? "remove" : undefined}
           onHighlight={() => onRemoveAnnotation(selected.id)}
           onUnderline={() => onRemoveAnnotation(selected.id)}
-          onNote={() => onRemoveAnnotation(selected.id)}
           onDelete={selected.type === "ink" ? () => onRemoveAnnotation(selected.id) : undefined}
           onClose={() => onSelectAnnotation(undefined)}
         />

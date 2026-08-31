@@ -9,10 +9,11 @@ import { useLibrary } from "../state/LibraryContext";
 import type { Annotation, Paper, Point, VocabularyEntry, WritingExcerpt } from "../types";
 import { now, uuid } from "../types";
 import { ContinuousAnnotatablePdf, pageNumberAtStageTop, type CapturedSelection } from "./ContinuousAnnotatablePdf";
+import { NOTE_COLORS } from "./StickyNote";
 import { AnnotationHistory } from "../lib/annotationHistory";
 import type { ReaderTool } from "../lib/readerTools";
 import { readerToolLabel } from "../lib/readerTools";
-import { findOverlappingAnnotation } from "../lib/annotationHit";
+import { findOverlappingAnnotation, findOverlappingNote } from "../lib/annotationHit";
 import { fitPdfScale } from "../lib/pdfRenderScale";
 import { PurposePickerDialog } from "./PurposePickerDialog";
 import { StudyClipPanel } from "./StudyClipPanel";
@@ -51,6 +52,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   const [toolHint, setToolHint] = useState("");
   const [captured, setCaptured] = useState<CapturedSelection>();
   const [selectedAnnotation, setSelectedAnnotation] = useState<{ id: string; page: number; x: number; y: number }>();
+  const [editingNoteId, setEditingNoteId] = useState<string>();
   const [highlightColor, setHighlightColor] = useState("#f2ce67");
   const [canUndo, setCanUndo] = useState(false);
   const [purposeAsk, setPurposeAsk] = useState<{ resolve(value: string | null): void }>();
@@ -284,7 +286,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
 
   const setReaderTool = useCallback((tool: ReaderTool) => {
     setReaderToolState(tool);
-    if (tool !== "select") setToolHint(`已切换到「${readerToolLabel(tool)}」模式：拖选文字即可标注`);
+    if (tool === "note") setToolHint("已切换到「批注」模式：单击页面放置一条批注");
+    else if (tool !== "select") setToolHint(`已切换到「${readerToolLabel(tool)}」模式：拖选文字即可标注`);
     else setToolHint("");
   }, []);
 
@@ -296,6 +299,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     window.getSelection()?.removeAllRanges();
     setCaptured(undefined);
     setSelectedAnnotation(undefined);
+    setEditingNoteId(undefined);
   };
 
   const trackAdd = async (annotation: Annotation) => {
@@ -309,6 +313,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     if (!historyLock.current) history.current.push({ kind: "delete", annotation });
     touchHistory();
     if (selectedAnnotation?.id === annotation.id) setSelectedAnnotation(undefined);
+    if (editingNoteId === annotation.id) setEditingNoteId(undefined);
   };
 
   const addTextAnnotation = async (type: "highlight" | "underline", selection: CapturedSelection) => {
@@ -328,24 +333,56 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     setCaptured(undefined);
   };
 
-  const addTextNote = async (selection: CapturedSelection) => {
-    if (findOverlappingAnnotation(annotations, selection.page, "text", selection.rects)) return;
-    const comment = window.prompt("输入批注内容", selection.text.slice(0, 120));
-    if (comment === null) return;
-    await trackAdd({
+  const addStickyNote = async (pageNumber: number, anchor: Point, selection?: CapturedSelection) => {
+    const mergedRects = selection?.rects;
+    if (mergedRects?.length && findOverlappingNote(annotations, pageNumber, mergedRects)) return;
+    const annotation: Annotation = {
       id: uuid(),
       paperId: paper.id,
-      page: selection.page,
-      type: "text",
-      geometry: { rects: selection.rects },
-      quote: selection.text,
-      comment,
-      color: "#7867c6",
+      page: pageNumber,
+      type: "sticky",
+      geometry: {
+        anchor,
+        rects: mergedRects,
+        fontSize: "md",
+      },
+      quote: selection?.text,
+      comment: "",
+      color: NOTE_COLORS[2],
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    await trackAdd(annotation);
+    setEditingNoteId(annotation.id);
+    setSelectedAnnotation({ id: annotation.id, page: pageNumber, x: anchor.x, y: anchor.y });
+    window.getSelection()?.removeAllRanges();
+    setCaptured(undefined);
+    if (readerTool === "note") {
+      setReaderToolState("select");
+      setToolHint("");
+    }
+  };
+
+  const duplicateStickyNote = async (id: string) => {
+    const source = annotations.find(item => item.id === id);
+    if (!source) return;
+    const anchor = source.geometry.anchor ?? { x: 0.5, y: 0.5 };
+    await trackAdd({
+      ...source,
+      id: uuid(),
+      geometry: {
+        ...source.geometry,
+        anchor: { x: Math.min(0.95, anchor.x + 0.03), y: Math.min(0.95, anchor.y + 0.03) },
+      },
       createdAt: now(),
       updatedAt: now(),
     });
-    window.getSelection()?.removeAllRanges();
-    setCaptured(undefined);
+  };
+
+  const updateStickyNote = async (id: string, patch: Partial<Pick<Annotation, "comment" | "geometry" | "color">>) => {
+    const current = annotations.find(item => item.id === id);
+    if (!current) return;
+    await saveAnnotation({ ...current, ...patch, geometry: { ...current.geometry, ...patch.geometry }, updatedAt: now() });
   };
 
   const handleCapture = (selection: CapturedSelection) => {
@@ -353,7 +390,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       ...selection,
       highlightId: findOverlappingAnnotation(annotations, selection.page, "highlight", selection.rects)?.id,
       underlineId: findOverlappingAnnotation(annotations, selection.page, "underline", selection.rects)?.id,
-      noteId: findOverlappingAnnotation(annotations, selection.page, "text", selection.rects)?.id,
+      noteId: findOverlappingNote(annotations, selection.page, selection.rects)?.id,
     };
     setSelectedAnnotation(undefined);
     if (readerTool === "highlight") {
@@ -368,7 +405,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     }
     if (readerTool === "note") {
       if (next.noteId) { setCaptured(next); return; }
-      void addTextNote(next);
+      const anchor = { x: next.rects[0].x, y: Math.max(0, next.rects[0].y - 0.02) };
+      void addStickyNote(next.page, anchor, next);
       return;
     }
     if (readerTool !== "select") return;
@@ -446,12 +484,20 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       if (
         target.closest(".selection-toolbar")
         || target.closest(".annotation-shape")
+        ||         target.closest(".sticky-note-root")
+        || target.closest(".sticky-note-marker")
+        || target.closest(".sticky-note-preview")
+        || target.closest(".sticky-note-card")
         || target.closest(".study-sidebar")
         || target.closest(".pdf-context-menu")
+        || target.closest(".sticky-note-menu")
       ) return;
       window.getSelection()?.removeAllRanges();
       setCaptured(undefined);
-      setSelectedAnnotation(undefined);
+      if (!(target instanceof Element) || !target.closest(".sticky-note-root, .sticky-note-card")) {
+        setSelectedAnnotation(undefined);
+        setEditingNoteId(undefined);
+      }
     };
     document.addEventListener("selectionchange", dismissIfIdle);
     document.addEventListener("pointerdown", onPointerDown);
@@ -591,9 +637,14 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           const h = rect.height * height;
           if (annotation.type === "highlight") target.drawRectangle({ x, y, width: w, height: h, color, opacity: 0.32 });
           else if (annotation.type === "underline") target.drawLine({ start: { x, y }, end: { x: x + w, y }, color, thickness: 1.6 });
-          else if (annotation.type === "text") {
-            target.drawRectangle({ x, y, width: Math.max(14, w), height: Math.max(14, h), color, opacity: 0.85 });
-            if (annotation.comment) target.drawText(annotation.comment.slice(0, 80), { x: x + 18, y, size: 8, color });
+          else if (annotation.type === "text" || annotation.type === "sticky") {
+            const anchor = annotation.geometry.anchor ?? (annotation.geometry.rects?.[0]
+              ? { x: annotation.geometry.rects[0].x, y: annotation.geometry.rects[0].y }
+              : { x: 0.1, y: 0.1 });
+            const ax = anchor.x * width;
+            const ay = height - anchor.y * height;
+            target.drawCircle({ x: ax + 6, y: ay - 6, size: 4, color, opacity: 0.9 });
+            if (annotation.comment) target.drawText(annotation.comment.slice(0, 120), { x: ax + 14, y: ay - 8, size: 8, color, maxWidth: 180 });
           }
         }
         const points = annotation.geometry.points ?? [];
@@ -646,7 +697,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
         <button className={readerTool === "select" ? "active" : ""} title="选择文本（V）" onClick={() => setReaderTool("select")}><MousePointer2 size={16} /><span>选择</span></button>
         <button className={readerTool === "highlight" ? "active" : ""} title="高亮模式：拖选文字（H）" onClick={() => toggleReaderTool("highlight")}><Highlighter size={16} /><span>高亮</span></button>
         <button className={readerTool === "underline" ? "active" : ""} title="下划线模式：拖选文字（U）" onClick={() => toggleReaderTool("underline")}><Underline size={16} /><span>下划线</span></button>
-        <button className={readerTool === "note" ? "active" : ""} title="文本批注：拖选文字后输入内容（N）" onClick={() => toggleReaderTool("note")}><MessageSquarePlus size={16} /><span>批注</span></button>
+        <button className={readerTool === "note" ? "active" : ""} title="批注：单击放置或拖选文字（N）" onClick={() => toggleReaderTool("note")}><MessageSquarePlus size={16} /><span>批注</span></button>
         <button className={readerTool === "ink" ? "active" : ""} title="手绘批注（D）" onClick={() => setReaderTool("ink")}><Pencil size={16} /><span>手绘</span></button>
         <button title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={() => void undoAnnotation()}><Undo2 size={16} /></button>
         <button title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={() => void redoAnnotation()}><Redo2 size={16} /></button>
@@ -670,11 +721,32 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           annotations={annotations}
           captured={captured}
           selectedAnnotation={selectedAnnotation}
+          editingNoteId={editingNoteId}
           highlightColor={highlightColor}
           onCapture={handleCapture}
           onAnnotate={annotateCaptured}
           onRemoveAnnotation={id => void removeAnnotation(id)}
-          onNote={selection => void addTextNote(selection)}
+          onNote={selection => {
+            const anchor = { x: selection.rects[0].x, y: Math.max(0, selection.rects[0].y - 0.02) };
+            void addStickyNote(selection.page, anchor, selection);
+          }}
+          onPlaceNote={(pageNumber, anchor) => void addStickyNote(pageNumber, anchor)}
+          onNoteMove={(id, anchor) => void updateStickyNote(id, { geometry: { anchor } })}
+          onNoteSave={(id, comment, color, fontSize) => {
+            const current = annotations.find(item => item.id === id);
+            void updateStickyNote(id, {
+              comment,
+              color,
+              geometry: { ...current?.geometry, fontSize },
+            });
+            setEditingNoteId(undefined);
+          }}
+          onNoteEdit={id => setEditingNoteId(id)}
+          onNoteCopy={async id => {
+            const item = annotations.find(entry => entry.id === id);
+            if (item?.comment) await navigator.clipboard.writeText(item.comment);
+          }}
+          onNoteDuplicate={id => void duplicateStickyNote(id)}
           onInkStroke={(pageNumber, points) => void handleInkStroke(pageNumber, points)}
           onSelectAnnotation={(id, anchor) => {
             window.getSelection()?.removeAllRanges();
@@ -701,16 +773,19 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           </>}
           {tab === "annotations" && <>
             {annotations.sort((a, b) => a.page - b.page).map(annotation => (
-              <article className="annotation-card" key={annotation.id} onClick={() => setPage(annotation.page)}>
+              <article className="annotation-card" key={annotation.id} onClick={() => {
+                setPage(annotation.page);
+                if (annotation.type === "sticky" || annotation.type === "text") setEditingNoteId(annotation.id);
+              }}>
                 <span style={{ background: annotation.color }} />
                 <div>
-                  <strong>{annotation.type === "highlight" ? "高亮" : annotation.type === "underline" ? "下划线" : annotation.type === "text" ? "文本批注" : "手绘"} · P{annotation.page}</strong>
+                  <strong>{annotation.type === "highlight" ? "高亮" : annotation.type === "underline" ? "下划线" : annotation.type === "sticky" || annotation.type === "text" ? "批注" : "手绘"} · P{annotation.page}</strong>
                   <p>{annotation.comment || annotation.quote || "无附加文字"}</p>
                 </div>
                 <button className="annotation-delete" title="删除批注" onClick={event => { event.stopPropagation(); if (confirm("删除这条批注？")) void trackDelete(annotation); }}><Trash2 size={14} /></button>
               </article>
             ))}
-            {!annotations.length && <p className="muted centered">点顶栏「高亮/下划线/批注」后拖选文字；或先「选择」拖选，再用浮动条操作。扫描版需先 OCR。</p>}
+            {!annotations.length && <p className="muted centered">点顶栏「批注」后单击页面放置批注，或拖选文字后标注；扫描版需先 OCR。</p>}
           </>}
           {tab === "vocabulary" && <>
             {vocab.map(item => (
