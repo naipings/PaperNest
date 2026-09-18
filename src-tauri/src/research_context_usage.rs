@@ -214,6 +214,6 @@ mod tests {
   fn draft_question_adds_draft_bucket() {
     let usage = compute_context_usage(&default_settings(), &[], 1, Some("继续展开"), 0, true);
     assert!(usage.buckets.iter().find(|b| b.id == "draft").unwrap().tokens > 0);
-    assert_eq!(usage.threshold_ratio, 0.65);
+    assert_eq!(usage.threshold_ratio, 0.45);
   }
 }

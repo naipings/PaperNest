@@ -129,6 +129,7 @@ fn llm_client(timeout_secs: u64) -> Result<Client> {
   Client::builder()
     .connect_timeout(Duration::from_secs(30))
     .timeout(Duration::from_secs(timeout_secs.max(90)))
+    .tcp_keepalive(Duration::from_secs(30))
     .pool_max_idle_per_host(0)
     .build()
     .map_err(err)
@@ -147,7 +148,6 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
   );
   let mut body = serde_json::json!({
     "model": settings.model,
-    "temperature": 0.2,
     "max_tokens": settings.max_tokens_per_step.min(3000),
     "messages": [
       {"role": "system", "content": LLM_WEB_SYSTEM_PROMPT},
@@ -160,6 +160,7 @@ async fn dashscope_search(settings: &ResearchLlmSettings, key: &str, query: &str
       "search_strategy": "agent"
     }
   });
+  crate::research_llm::attach_temperature(&mut body, &settings.model, 0.2);
   if dashscope_needs_stream(&settings.model) {
     body["stream"] = serde_json::json!(true);
     let (mut summary, mut hits, raw) = dashscope_stream_request(&client, &endpoint, key, &body).await?;
@@ -257,6 +258,17 @@ async fn dashscope_native_search(
 ) -> Result<LlmWebSearchResult> {
   let endpoint = dashscope_native_generation_endpoint(&settings.base_url);
   let client = llm_client(120)?;
+  let mut parameters = serde_json::json!({
+    "max_tokens": settings.max_tokens_per_step.min(3000),
+    "enable_search": true,
+    "search_options": {
+      "forced_search": true,
+      "enable_source": true,
+      "search_strategy": "agent"
+    },
+    "result_format": "message"
+  });
+  crate::research_llm::attach_temperature(&mut parameters, &settings.model, 0.2);
   let body = serde_json::json!({
     "model": settings.model,
     "input": {
@@ -265,17 +277,7 @@ async fn dashscope_native_search(
         {"role": "user", "content": format!("请联网检索并简要综述：{query}")}
       ]
     },
-    "parameters": {
-      "temperature": 0.2,
-      "max_tokens": settings.max_tokens_per_step.min(3000),
-      "enable_search": true,
-      "search_options": {
-        "forced_search": true,
-        "enable_source": true,
-        "search_strategy": "agent"
-      },
-      "result_format": "message"
-    }
+    "parameters": parameters
   });
   let response = client
     .post(&endpoint)
@@ -560,9 +562,8 @@ fn parse_bullet_title_line(line: &str) -> Option<String> {
 async fn zhipu_search(settings: &ResearchLlmSettings, key: &str, query: &str) -> Result<LlmWebSearchResult> {
   let endpoint = research_endpoint(&settings.base_url);
   let client = llm_client(120)?;
-  let body = serde_json::json!({
+  let mut body = serde_json::json!({
     "model": settings.model,
-    "temperature": 0.2,
     "max_tokens": settings.max_tokens_per_step.min(3000),
     "messages": [
       {"role": "system", "content": LLM_WEB_SYSTEM_PROMPT},
@@ -578,6 +579,7 @@ async fn zhipu_search(settings: &ResearchLlmSettings, key: &str, query: &str) ->
       }
     }]
   });
+  crate::research_llm::attach_temperature(&mut body, &settings.model, 0.2);
   let response = client
     .post(&endpoint)
     .bearer_auth(key)

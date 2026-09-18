@@ -1,6 +1,6 @@
-import { FileText, Image, Link2, LoaderCircle } from "lucide-react";
+import { BookOpen, FileText, Image, Link2, LoaderCircle } from "lucide-react";
 import { ResearchComposer } from "./ResearchComposer";
-import { ResearchMarkdown } from "./ResearchMarkdown";
+import { reportCardPreview, reportCardTitle } from "./ResearchReportTab";
 import type { AttachmentDraft } from "../../lib/researchAttachments";
 import type { ResearchAttachment, ResearchSource, ResearchStepSummary, ResearchTurnView } from "../../types";
 
@@ -29,6 +29,7 @@ type Props = {
   onAddFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
   onSendFollowUp: () => void;
+  onOpenReport: (turn: number) => void;
 };
 
 function AttachmentChips({ items }: { items: ResearchAttachment[] }) {
@@ -71,6 +72,7 @@ export function ResearchConversationTab({
   onAddFiles,
   onRemoveAttachment,
   onSendFollowUp,
+  onOpenReport,
 }: Props) {
   return (
     <div className="research-conversation">
@@ -86,9 +88,23 @@ export function ResearchConversationTab({
               <AttachmentChips items={turn.attachments} />
             </div>
             {turn.answer.trim() ? (
-              <div className="research-turn-answer">
-                <ResearchMarkdown text={turn.answer} />
-              </div>
+              <button
+                type="button"
+                className="research-report-card"
+                onClick={() => onOpenReport(turn.turn)}
+              >
+                <span className="research-report-card-icon" aria-hidden>
+                  <BookOpen size={18} />
+                </span>
+                <span className="research-report-card-body">
+                  <span className="research-report-card-label">调研报告</span>
+                  <strong>{reportCardTitle(turn.answer, turn.turn)}</strong>
+                  <span className="research-report-card-preview">{reportCardPreview(turn.answer)}</span>
+                  <span className="research-report-card-meta">
+                    {turn.answer.length.toLocaleString()} 字 · 点击在「报告」页全文阅读
+                  </span>
+                </span>
+              </button>
             ) : turn.status === "running" ? (
               <p className="muted research-turn-pending">
                 <LoaderCircle className="spin" size={14} />

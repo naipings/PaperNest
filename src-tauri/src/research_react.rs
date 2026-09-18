@@ -128,7 +128,11 @@ async fn run_react_loop_inner(
     }
     dsh.step_start(react_turn, round)?;
 
-    let mut response = research_llm_with_tools(settings, &messages, &tools, Some(2000), 120).await?;
+    let msg_tokens = crate::research_dsh_compact::estimate_openai_message_tokens(&messages) as u32;
+    let react_timeout = crate::research_llm::adaptive_timeout_secs(2_000, 120)
+      .max(90 + (msg_tokens as u64) / 80)
+      .min(600);
+    let mut response = research_llm_with_tools(settings, &messages, &tools, Some(2000), react_timeout).await?;
 
     if response.tool_calls.is_empty() {
       if let Some(content) = &response.content {
@@ -374,7 +378,7 @@ async fn handle_tool_outcome(
       messages.push(serde_json::json!({
         "role": "tool",
         "tool_call_id": call.id,
-        "content": observation
+        "content": truncate_tool_observation(&observation)
       }));
       Ok(false)
     }
@@ -399,7 +403,7 @@ async fn handle_tool_outcome(
       messages.push(serde_json::json!({
         "role": "tool",
         "tool_call_id": call.id,
-        "content": observation
+        "content": truncate_tool_observation(&observation)
       }));
       if call.name == "search_arxiv" || call.name == "llm_web_search" {
         tokio::time::sleep(Duration::from_millis(3500)).await;
@@ -407,6 +411,15 @@ async fn handle_tool_outcome(
       Ok(false)
     }
   }
+}
+
+fn truncate_tool_observation(observation: &str) -> String {
+  const MAX_CHARS: usize = 3_500;
+  if observation.chars().count() <= MAX_CHARS {
+    return observation.to_string();
+  }
+  let head: String = observation.chars().take(MAX_CHARS).collect();
+  format!("{head}\n…(观察已截断，完整结果已写入 steps)")
 }
 
 pub(crate) fn react_system_prompt() -> &'static str {

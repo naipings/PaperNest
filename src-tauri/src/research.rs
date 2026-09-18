@@ -520,8 +520,14 @@ pub(crate) fn sources_block(collected: &[ResearchSource]) -> String {
   sources_block_with_excerpt(collected, 280)
 }
 
+/// deep 调研可达数百条来源；按总量预算收缩摘录，避免 Writer 提示膨胀。
+pub(crate) fn writer_excerpt_chars(source_count: usize) -> usize {
+  let n = source_count.max(1);
+  (40_000 / n).clamp(80, 800)
+}
+
 pub(crate) fn sources_block_for_writer(collected: &[ResearchSource]) -> String {
-  sources_block_with_excerpt(collected, 800)
+  sources_block_with_excerpt(collected, writer_excerpt_chars(collected.len()))
 }
 
 fn sources_block_with_excerpt(collected: &[ResearchSource], excerpt_chars: usize) -> String {
@@ -1763,5 +1769,32 @@ mod tests {
   fn report_preview_truncates() {
     let text = "a".repeat(600);
     assert_eq!(report_preview(&text).len(), 500);
+  }
+
+  #[test]
+  fn writer_excerpt_shrinks_for_large_source_sets() {
+    assert_eq!(writer_excerpt_chars(1), 800);
+    assert_eq!(writer_excerpt_chars(50), 800);
+    assert_eq!(writer_excerpt_chars(275), 145);
+    assert_eq!(writer_excerpt_chars(1000), 80);
+  }
+
+  #[test]
+  fn writer_sources_block_stays_bounded() {
+    let sources: Vec<ResearchSource> = (0..275)
+      .map(|i| ResearchSource {
+        id: format!("src-{i}"),
+        kind: "arxiv".into(),
+        url: Some(format!("https://arxiv.org/abs/{i}")),
+        title: format!("Title {i} {}", "t".repeat(40)),
+        accessed_at: "2026-09-18T00:00:00Z".into(),
+        excerpt: "e".repeat(2000),
+        local_paper_id: None,
+        page: None,
+        stored_locally: false,
+      })
+      .collect();
+    let block = sources_block_for_writer(&sources);
+    assert!(block.len() < 90_000, "writer sources block too large: {}", block.len());
   }
 }

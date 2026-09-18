@@ -144,7 +144,7 @@ export function ResearchTrajectoryPanel({
         <div className="research-trajectory-resume-bar">
           <div className="research-resume-field">
             <span className="research-resume-label">恢复边界</span>
-            <span className="research-resume-hint">事件序号（seq）</span>
+            <span className="research-resume-hint">已闭合 turn 的结束序号；选到中间会自动对齐到上一 turn/end</span>
             <div className="research-resume-input-wrap">
               <input
                 type="number"

@@ -16,6 +16,7 @@ import { useResearchPageLayout } from "../research-harness/useResearchPageLayout
 import { ResearchConversationTab } from "./research/ResearchConversationTab";
 import { ResearchNewSessionCard } from "./research/ResearchNewSessionCard";
 import { ResearchProposalsTab } from "./research/ResearchProposalsTab";
+import { ResearchReportTab } from "./research/ResearchReportTab";
 import { ResearchSessionList } from "./research/ResearchSessionList";
 import { useLibrary } from "../state/LibraryContext";
 import type {
@@ -27,7 +28,7 @@ import type {
   ResearchTurnView,
 } from "../types";
 
-type DetailTab = "conversation" | "trajectory" | "proposals";
+type DetailTab = "conversation" | "report" | "trajectory" | "proposals";
 
 export function ResearchView() {
   const { researchBusy, setResearchBusy, setResearchNotice } = useLibrary();
@@ -50,9 +51,11 @@ export function ResearchView() {
   const [notice, setNotice] = useState("");
   const [showProcess, setShowProcess] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>("trajectory");
+  const [reportFocusTurn, setReportFocusTurn] = useState<number>();
 
   const selected = sessions.find(item => item.id === selectedId);
   const isRunning = selected?.status === "running" || runPending;
+  const answeredTurns = turns.filter(turn => turn.answer.trim().length > 0).length;
 
   const markSessionRunning = useCallback((id: string) => {
     setSessions(current =>
@@ -63,6 +66,7 @@ export function ResearchView() {
   }, []);
   const pendingProposals = proposals.filter(item => item.status === "pending").length;
   const trajectoryActive = detailTab === "trajectory" && !!selected;
+  const reportActive = detailTab === "report" && !!selected;
   const hasResumeBar =
     trajectoryActive &&
     !isRunning &&
@@ -70,7 +74,12 @@ export function ResearchView() {
     !!selected &&
     (selected.status === "failed" || selected.status === "completed" || selected.status === "cancelled");
   const pageRef = useRef<HTMLElement>(null);
-  useResearchPageLayout(pageRef, { trajectoryActive, hasResumeBar });
+  useResearchPageLayout(pageRef, { trajectoryActive, reportActive, hasResumeBar });
+
+  const openReport = useCallback((turn?: number) => {
+    setReportFocusTurn(turn);
+    setDetailTab("report");
+  }, []);
 
   const loadSessions = useCallback(async () => {
     if (!isTauri()) return;
@@ -111,6 +120,7 @@ export function ResearchView() {
     }
     setFollowUp("");
     setFollowUpAttachments([]);
+    setReportFocusTurn(undefined);
     void loadDetail(selectedId).catch(error => setNotice(error instanceof Error ? error.message : String(error)));
     void reloadHarness(selectedId).catch(() => undefined);
   }, [selectedId, loadDetail, reloadHarness]);
@@ -198,7 +208,8 @@ export function ResearchView() {
       } else if (session.status === "cancelled") {
         setNotice("调研已停止，可从轨迹恢复点继续。");
       } else {
-        setNotice("调研完成，报告已写入 report.md。");
+        setNotice("调研完成，可在「报告」页全文阅读。");
+        openReport();
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -221,7 +232,7 @@ export function ResearchView() {
     markSessionRunning(selectedId);
     setResearchBusy("正在继续调研…");
     setResearchNotice("");
-    setDetailTab("conversation");
+    setDetailTab("trajectory");
     try {
       setFollowUp("");
       setFollowUpAttachments([]);
@@ -229,7 +240,12 @@ export function ResearchView() {
       await loadSessions();
       await loadDetail(selectedId);
       await reloadHarness(selectedId);
-      setNotice(session.status === "failed" ? session.error || "追问失败" : "本轮追问已完成。");
+      if (session.status === "failed") {
+        setNotice(session.error || "追问失败");
+      } else {
+        setNotice("本轮追问已完成，可在「报告」页阅读最新答复。");
+        openReport();
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
       await refreshSelected();
@@ -362,7 +378,7 @@ export function ResearchView() {
   return (
     <main
       ref={pageRef}
-      className={`content-page research-page${trajectoryActive ? " research-page--trajectory" : ""}`}
+      className={`content-page research-page${trajectoryActive || reportActive ? " research-page--expanded" : ""}`}
     >
       <div className="research-layout">
         <header className="research-page-header research-page-header-left page-heading">
@@ -422,7 +438,7 @@ export function ResearchView() {
           />
         </aside>
 
-        <section className={`research-main${detailTab === "trajectory" ? " research-main--trajectory" : ""}`}>
+        <section className={`research-main${trajectoryActive || reportActive ? " research-main--expanded" : ""}`}>
           {selected ? (
             <>
               <header className="research-detail-header">
@@ -481,6 +497,16 @@ export function ResearchView() {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={detailTab === "report"}
+                  className={detailTab === "report" ? "active" : ""}
+                  onClick={() => openReport()}
+                >
+                  报告
+                  {answeredTurns > 0 && <span className="research-tab-badge">{answeredTurns}</span>}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={detailTab === "trajectory"}
                   className={detailTab === "trajectory" ? "active" : ""}
                   onClick={() => setDetailTab("trajectory")}
@@ -511,6 +537,13 @@ export function ResearchView() {
                   onFork={forkSession}
                 />
               )}
+              {detailTab === "report" && (
+                <ResearchReportTab
+                  turns={turns}
+                  focusTurn={reportFocusTurn}
+                  onOpenConversation={() => setDetailTab("conversation")}
+                />
+              )}
               {detailTab === "conversation" && (
                 <ResearchConversationTab
                   sessionId={selectedId}
@@ -529,6 +562,7 @@ export function ResearchView() {
                   onAddFiles={files => void collectFiles(files, setFollowUpAttachments)}
                   onRemoveAttachment={id => setFollowUpAttachments(current => current.filter(item => item.id !== id))}
                   onSendFollowUp={() => void sendFollowUp()}
+                  onOpenReport={openReport}
                 />
               )}
               {detailTab === "proposals" && (

@@ -37,8 +37,8 @@ impl CompactionPolicy {
   pub fn deep() -> Self {
     Self {
       context_window: 128_000,
-      threshold_ratio: 0.8,
-      retain_ratio: 0.16,
+      threshold_ratio: 0.55,
+      retain_ratio: 0.12,
       max_summary_tokens: 8192,
     }
   }
@@ -46,7 +46,7 @@ impl CompactionPolicy {
   pub fn for_session(turn_count: usize) -> Self {
     let mut policy = Self::deep();
     if turn_count >= 2 {
-      policy.threshold_ratio = 0.65;
+      policy.threshold_ratio = 0.45;
     }
     policy
   }
@@ -156,7 +156,7 @@ async fn summarize_range(
     &messages,
     &[],
     Some(CompactionPolicy::deep().max_summary_tokens),
-    180,
+    crate::research_llm::adaptive_timeout_secs(CompactionPolicy::deep().max_summary_tokens, 180),
   )
   .await?;
   let trimmed = response
@@ -224,14 +224,14 @@ mod tests {
   #[test]
   fn deep_policy_thresholds() {
     let policy = CompactionPolicy::deep();
-    assert_eq!(policy.threshold_tokens(), 102_400);
-    assert_eq!(policy.retain_tokens(), 20_480);
+    assert_eq!(policy.threshold_tokens(), 70_400);
+    assert_eq!(policy.retain_tokens(), 15_360);
   }
 
   #[test]
   fn multi_turn_policy_lowers_threshold() {
     let policy = CompactionPolicy::for_session(2);
-    assert_eq!(policy.threshold_ratio, 0.65);
-    assert_eq!(policy.threshold_tokens(), 83_200);
+    assert_eq!(policy.threshold_ratio, 0.45);
+    assert_eq!(policy.threshold_tokens(), 57_600);
   }
 }

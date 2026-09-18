@@ -1013,7 +1013,8 @@ async fn llm_completion(settings:&LlmSettings,system:&str,content:serde_json::Va
 }
 async fn llm_completion_opts(settings:&LlmSettings,system:&str,content:serde_json::Value,max_tokens:Option<u32>,timeout_secs:u64)->Result<String>{
   validate_llm_settings(settings)?; let key=llm_key_entry()?.get_password().map_err(|_|"尚未保存 API Key，请先在设置中配置".to_string())?; if key.trim().is_empty(){return Err("尚未保存 API Key，请先在设置中配置".into())}
-  let mut request=serde_json::json!({"model":settings.model,"temperature":0.1,"stream":false,"messages":[{"role":"system","content":system},{"role":"user","content":content}]});
+  let mut request=serde_json::json!({"model":settings.model,"stream":false,"messages":[{"role":"system","content":system},{"role":"user","content":content}]});
+  research_llm::attach_temperature(&mut request, &settings.model, 0.1);
   if let Some(limit)=max_tokens { request["max_tokens"]=serde_json::json!(limit); }
   let endpoint=llm_endpoint(&settings.base_url);
   let mut last_error=String::new();
@@ -1024,6 +1025,7 @@ async fn llm_completion_opts(settings:&LlmSettings,system:&str,content:serde_jso
     let client=Client::builder()
       .connect_timeout(Duration::from_secs(30))
       .timeout(Duration::from_secs(timeout_secs.max(30)))
+      .tcp_keepalive(Duration::from_secs(30))
       .pool_max_idle_per_host(0)
       .build()
       .map_err(err)?;

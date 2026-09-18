@@ -260,20 +260,86 @@ pub fn default_resume_boundary(events: &[serde_json::Value]) -> Result<i64> {
     }
   }
   if open_turn {
-    if let Some(step_end) = events.iter().rev().find_map(|event| {
-      if event.get("type")?.as_str()? != "step/end" {
-        return None;
-      }
-      event_seq(event).ok()
-    }) {
-      return Ok(step_end);
+    // Writer/Reviewer 中途失败会留下未闭合 turn。默认回到「上一闭合 turn/end」，
+    // 不要用末尾 step/end（常落在未闭合 turn 内部，导致恢复校验直接失败）。
+    if let Some(closed) = last_closed {
+      return Ok(closed);
     }
-    // 草稿仅有 turn/start + 用户消息：默认取末事件，供分叉；恢复仍由 validate_resume_boundary 拒绝未闭合 turn
+    // 草稿仅有 turn/start + 用户消息：默认取末事件，供分叉；恢复仍由 validate/resolve 处理
     return event_seq(events.last().unwrap());
   }
   last_closed
     .or_else(|| events.last().and_then(|event| event_seq(event).ok()))
     .ok_or_else(|| "没有可恢复的事件".into())
+}
+
+/// 将请求边界收敛到可恢复点：
+/// 1) 若落在未闭合 turn 内且该 turn 之后已有 turn/end → 向前对齐到该 turn/end
+/// 2) 否则对齐到此前最近的 turn/end
+pub fn resolve_resume_boundary(events: &[serde_json::Value], boundary_seq: i64) -> Result<i64> {
+  validate_boundary_range(events, boundary_seq)?;
+  if !prefix_has_open_turn(events, boundary_seq) {
+    return Ok(boundary_seq);
+  }
+  let mut open_turn: Option<u32> = None;
+  for event in events.iter().filter(|event| event_seq(event).unwrap_or(0) <= boundary_seq) {
+    match event.get("type").and_then(|value| value.as_str()) {
+      Some("turn/start") => {
+        open_turn = event
+          .pointer("/data/turn")
+          .and_then(|value| value.as_u64())
+          .map(|value| value as u32);
+      }
+      Some("turn/end") => {
+        let turn = event
+          .pointer("/data/turn")
+          .and_then(|value| value.as_u64())
+          .map(|value| value as u32);
+        if open_turn == turn {
+          open_turn = None;
+        }
+      }
+      _ => {}
+    }
+  }
+  if let Some(turn) = open_turn {
+    if let Some(forward) = events.iter().find_map(|event| {
+      if event.get("type").and_then(|value| value.as_str()) != Some("turn/end") {
+        return None;
+      }
+      let event_turn = event
+        .pointer("/data/turn")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as u32)?;
+      if event_turn != turn {
+        return None;
+      }
+      let seq = event_seq(event).ok()?;
+      if seq >= boundary_seq {
+        Some(seq)
+      } else {
+        None
+      }
+    }) {
+      return Ok(forward);
+    }
+  }
+  let snapped = events
+    .iter()
+    .filter_map(|event| {
+      let seq = event_seq(event).ok()?;
+      if seq > boundary_seq {
+        return None;
+      }
+      if event.get("type").and_then(|value| value.as_str()) != Some("turn/end") {
+        return None;
+      }
+      Some(seq)
+    })
+    .max();
+  snapped.ok_or_else(|| {
+    "恢复点不能落在未闭合的 turn 内；请选择已完成 turn 的结束边界（turn/end）".into()
+  })
 }
 
 pub fn validate_resume_boundary(events: &[serde_json::Value], boundary_seq: i64) -> Result<()> {
@@ -347,11 +413,12 @@ fn rewrite_log(workspace: &Path, header: &DshSessionHeader, events: &[serde_json
 
 pub fn truncate_to_boundary(workspace: &Path, boundary_seq: i64) -> Result<DshSessionSnapshot> {
   let snapshot = load_snapshot(workspace)?;
-  validate_resume_boundary(&snapshot.events, boundary_seq)?;
+  let boundary = resolve_resume_boundary(&snapshot.events, boundary_seq)?;
+  validate_resume_boundary(&snapshot.events, boundary)?;
   let kept: Vec<_> = snapshot
     .events
     .iter()
-    .filter(|event| event_seq(event).unwrap_or(0) <= boundary_seq)
+    .filter(|event| event_seq(event).unwrap_or(0) <= boundary)
     .cloned()
     .collect();
   rewrite_log(workspace, &snapshot.header, &kept)?;
@@ -435,9 +502,31 @@ mod tests {
     ];
     assert_eq!(default_resume_boundary(&events).unwrap(), 2);
     assert!(validate_resume_boundary(&events, 2).is_err());
+    assert!(resolve_resume_boundary(&events, 2).is_err());
     assert!(validate_fork_boundary(&events, 2).is_ok());
     assert!(validate_fork_boundary(&events, 1).is_err());
     let seed = fork_prefix(&events, 2).unwrap();
     assert_eq!(seed.len(), 2);
+  }
+
+  #[test]
+  fn failed_writer_turn_defaults_and_snaps_to_last_closed() {
+    let events = vec![
+      serde_json::json!({ "seq": 1, "type": "turn/start", "data": { "turn": 1 } }),
+      serde_json::json!({ "seq": 2, "type": "turn/end", "data": { "turn": 1, "reason": { "kind": "completed" } } }),
+      serde_json::json!({ "seq": 3, "type": "turn/start", "data": { "turn": 2 } }),
+      serde_json::json!({ "seq": 4, "type": "step/end", "data": { "turn": 2, "step": 1 } }),
+      serde_json::json!({ "seq": 5, "type": "turn/end", "data": { "turn": 2, "reason": { "kind": "completed" } } }),
+      serde_json::json!({ "seq": 6, "type": "turn/start", "data": { "turn": 3 } }),
+      serde_json::json!({ "seq": 7, "type": "step/start", "data": { "turn": 3, "step": 1 } }),
+    ];
+    // 旧逻辑会误选 seq=4（末尾 step/end），落在未闭合区间；现应回到 turn/end=5
+    assert_eq!(default_resume_boundary(&events).unwrap(), 5);
+    assert!(validate_resume_boundary(&events, 4).is_err());
+    // 落在 turn2 的 step/end：向前对齐到该 turn 的 turn/end
+    assert_eq!(resolve_resume_boundary(&events, 4).unwrap(), 5);
+    // Writer turn 未闭合：退回到上一闭合 turn/end
+    assert_eq!(resolve_resume_boundary(&events, 7).unwrap(), 5);
+    assert_eq!(resolve_resume_boundary(&events, 5).unwrap(), 5);
   }
 }

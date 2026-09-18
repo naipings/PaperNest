@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WritingLibrary } from "./WritingLibrary";
+import { seedSnapshot } from "../seed";
 import { backend } from "../services/backend";
 import { LibraryProvider } from "../state/LibraryContext";
 
@@ -26,8 +27,9 @@ describe("writing library errors", () => {
     vi.spyOn(backend, "saveExcerpt").mockRejectedValue(new Error("数据库不可写"));
     renderLibrary();
     const card = await excerptCard();
+    const purpose = seedSnapshot.excerpts[0]?.purpose ?? "方法描述";
 
-    fireEvent.click(card.getByRole("button", { name: "方法描述" }));
+    fireEvent.click(card.getByRole("button", { name: purpose }));
     fireEvent.click(card.getByRole("option", { name: "实验分析" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("更新写作用途失败：数据库不可写");

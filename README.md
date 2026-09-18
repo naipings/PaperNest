@@ -238,8 +238,8 @@ flowchart LR
 - Agent 流程（**react 模式**，默认）：LLM ReAct 循环选工具检索 → `finish_research` → Reviewer 门控（最多 2 轮补检索）→ Writer 写报告。
 - 主 Agent 可调用 `research_subtopic` 委派子问题；弱 tool 模型自动走 JSON ReAct fallback。
 - 可回退 `pipeline` 固定流水线（设置 → 文献调研 → 调研模式）。
-- 调研进行中 **ResearchView** 轮询步骤与 DSH 事件；**对话 / 轨迹 / 候选论文**三 Tab：对话为多轮会话流（底部追问框），轨迹为 DeepSeek Harness `TrajectoryView`，候选论文以雷达卡片样式展示未入库来源。
-- **单窗口多轮**：调研结束后在对话框继续追问即开新一轮（`turns/NNN.md`），无需新增分支；头部「合并导出」生成 `report-full.md`。报告用 `react-markdown` + `remark-gfm` 标准渲染。
+- 调研进行中 **ResearchView** 轮询步骤与 DSH 事件；**对话 / 报告 / 轨迹 / 候选论文**四 Tab：对话为多轮问题与报告卡片入口，报告为全高文档框阅读全文，轨迹为 DeepSeek Harness `TrajectoryView`，候选论文以雷达卡片样式展示未入库来源。
+- **单窗口多轮**：调研结束后在对话框继续追问即开新一轮（`turns/NNN.md`），无需新增分支；头部「合并导出」生成 `report-full.md`。报告用 `react-markdown` + `remark-gfm` 标准渲染，完成后自动打开「报告」页。
 - 轨迹底栏支持 **从此处恢复**、**分叉为新任务**；deep 模式长会话自动压缩。
 - 调研完成后，未入库的 arXiv 来源生成 `proposals/`，可在「候选论文」Tab 审批（仅元数据或下载 PDF 入库）。
 - 默认工作区：`PaperNestLibrary/research/<session-id>/`；也可指定任意项目文件夹。
@@ -315,6 +315,8 @@ npm run tauri build  # 生成 paper-reader.exe 与 NSIS 安装包
 Copy-Item src-tauri\target\release\paper-reader.exe release\windows\PaperNest.exe -Force
 Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release\windows\ -Force
 ```
+
+临床医学研究生安装包：套用 `backup/clinical-medicine/overlay/` 后按同流程打包，产物写入 `PaperNest-clinmed_<version>*.exe`；步骤见该目录 README。主工作区默认保持计算机科学内容。
 
 
 | 文档                                                           | 内容                                          |

@@ -250,12 +250,21 @@ flowchart LR
 - 个人资料保存失败时，在设置页显示具体错误。
 - API Key、LibreTranslate 虚拟环境路径 **不** 进入备份包。
 
+### 3.9 临床医学变体
+
+- 源码改动集中在 `backup/clinical-medicine/overlay/`；套用、打包与恢复步骤见该目录 `README.md`。
+- 临床版相对 CS 的差异：主领域/子领域预设、默认 `researchField`、LLM 翻译与导入分析提示词、分类弃权说明、设置页文案、窗口标题；启动迁移改为清除 CS 预设 ID。
+- 开发分支：`clinical-medicine`。主工作区默认保持计算机科学内容。
+- 安装包产物：`release/windows/PaperNest-clinmed_<version>.exe` 与对应 `*_x64-setup.exe`。
+
 ---
 
 ## 4. 目录结构
 
 ```text
 paperReader/
+├── backup/clinical-medicine/   # 临床医学变体 overlay 与说明
+├── release/windows/            # PaperNest.exe / setup / clinmed 产物
 ├── src/
 │   ├── App.tsx                 # 屏幕路由：library / radar / research / writing / knowledge / tasks / trash / settings
 │   ├── components/
@@ -295,7 +304,7 @@ paperReader/
 │   ├── src/research_reviewer.rs
 │   ├── src/research_subagent.rs
 │   ├── src/research_writer.rs
-│   ├── src/research_llm.rs     # 调研 LLM 客户端（瞬时网络错误有界重试）
+│   ├── src/research_llm.rs     # 调研 LLM（流式长输出、自适应超时、Kimi 省略 temperature）
 │   ├── src/mcp_server.rs       # MCP Server（stdio JSON-RPC）
 │   └── src/bin/papernest_mcp.rs
 │   └── schema.sql              # 数据库迁移
@@ -595,7 +604,9 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 **Phase 10 多轮追问（0.2.17）**：`turns.jsonl` 记录每轮问题/附件/答复路径，`research_continue_session` 复用既有 DSH 事件重建上下文后开新 turn 继续 ReAct+Writer（`research_dsh_derive` 以「带 tools 的 request/header」定位最后一轮 ReAct）。输入框（`ResearchComposer`）支持图片/PDF/Office/文本附件与链接 chip，前端在 `src/lib/researchAttachments.ts` 提取文本、图片走多模态；`fetch_url` 工具抓取网页正文。入库提案移至「候选论文」Tab（雷达卡片样式），报告改用 `react-markdown` + `remark-gfm`。`research_llm` 对连接/超时/发送类瞬时错误有界重试。
 
-**Phase 11 报告详度与多轮上下文（0.2.23）**：`reportMaxTokens` 默认 12000；Writer excerpt 800；ReAct 2000；DSH 压缩覆盖全部调研深度，多轮（`turns≥2`）阈值 0.65。详见 [deep-literature-research-assessment.md](research/deep-literature-research-assessment.md) §4.1。
+**报告阅读 UX（0.2.37）**：长报告从对话流拆出，独立「报告」Tab 全高文档框阅读；对话里仅保留问题气泡与报告卡片入口（对齐 Artifact / 侧栏文档类产品）。完成调研或追问后自动切到报告页。
+
+**Phase 11 报告详度与多轮上下文（0.2.23 / 0.2.35）**：`reportMaxTokens` 默认 12000；Writer 流式分段续写（约 6k tokens/段）；来源摘录按约 40KB 预算收缩；LLM 超时按 max_tokens 自适应（上限 20 分钟）；DSH 压缩阈值单轮 0.55 / 多轮 0.45；工具观察写入 messages 截断 3500 字。详见 [deep-literature-research-assessment.md](research/deep-literature-research-assessment.md) §4.1。
 
 **Phase 14 上下文圆环（0.2.24）**：追问 composer 旁圆环 + `research_context_usage` 分项托盘；与 `derive_openai_messages` 同源估算。详见 assessment §Phase 14。
 
