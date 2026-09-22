@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { folderSiblingNameTaken } from "./folders";
+import { folderIdsVisibleForQuery, folderSiblingNameTaken } from "./folders";
 import type { Folder } from "../types";
 
 const folders: Folder[] = [
@@ -16,5 +16,13 @@ describe("folderSiblingNameTaken", () => {
   it("allows same name under different parents", () => {
     expect(folderSiblingNameTaken([...folders, { id: "r2", name: "AAAI", position: 0, createdAt: "t", updatedAt: "t" }], "AAAI", "r2")).toBe(false);
     expect(folderSiblingNameTaken(folders, "AAAI", "r1")).toBe(true);
+  });
+});
+
+describe("folderIdsVisibleForQuery", () => {
+  it("keeps ancestors of a matching nested folder", () => {
+    const visible = folderIdsVisibleForQuery(folders, "aaai");
+    expect(visible).toEqual(new Set(["c1", "r1"]));
+    expect(folderIdsVisibleForQuery(folders, "  ")).toBeUndefined();
   });
 });

@@ -1,6 +1,8 @@
 # 导入 PDF 时 LLM 自动分类（V1）
 
 > 方案日期：2026-08-24；**已实现于 0.1.83**。参考 [zotero-semantic-tagger](https://github.com/roey-angel/zotero-semantic-tagger)、[zotero-llm-classify](https://github.com/Mor-Li/zotero-llm-classify)、[zotero_tag_recommender](https://github.com/kinranlau/zotero_tag_recommender)。
+>
+> 下一步替换决策模型、保留本文件的写回与严格度规则：[taxonomy-jev-plan.md](taxonomy-jev-plan.md)。
 
 ## 结论摘要
 

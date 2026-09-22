@@ -413,5 +413,39 @@ export interface LibrarySnapshot {
 
 export interface SearchHit { kind: "paper" | "pdf" | "vocabulary" | "annotation" | "excerpt"; paperId: Id; title: string; snippet: string; page?: number; score: number; }
 
+export interface PaperExplainOverview {
+  summary: string;
+  problem: string;
+  method: string;
+  findings: string;
+  limits: string;
+  readingTips: string;
+}
+
+export interface PaperExplainMessage {
+  role: "user" | "assistant" | string;
+  content: string;
+  cites?: number[];
+  createdAt: string;
+}
+
+export interface PaperExplainChatSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface PaperExplainSession {
+  paperId: string;
+  locale: string;
+  overview?: PaperExplainOverview | null;
+  chatId?: string | null;
+  messages: PaperExplainMessage[];
+  chats?: PaperExplainChatSummary[];
+  model?: string | null;
+  updatedAt?: string | null;
+}
+
 export const uuid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();

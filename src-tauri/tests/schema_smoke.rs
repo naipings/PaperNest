@@ -20,6 +20,39 @@ fn schema_supports_papers_and_bilingual_search() {
     sqlx::query("INSERT INTO tasks(id,title,due_date,status,priority,paper_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind("task-test").bind("Read paper").bind("2026-08-04").bind("todo").bind("high").bind("paper-test").bind("2026-08-03").bind("2026-08-03").execute(&pool).await.unwrap();
     let task = sqlx::query("SELECT title,paper_id FROM tasks WHERE id=?").bind("task-test").fetch_one(&pool).await.unwrap();
     assert_eq!(task.get::<String,_>(0), "Read paper");
+    sqlx::query("INSERT INTO pdf_pages(paper_id,page,text) VALUES(?,?,?)")
+      .bind("paper-test").bind(1_i64).bind("Abstract Attention mechanism").execute(&pool).await.unwrap();
+    let page = sqlx::query("SELECT page, text FROM pdf_pages WHERE paper_id=?")
+      .bind("paper-test").fetch_one(&pool).await.unwrap();
+    assert_eq!(page.get::<i64,_>("page"), 1);
+    assert!(page.get::<String,_>("text").contains("Attention"));
+    sqlx::query("INSERT INTO paper_explains(paper_id,locale,overview_json,messages_json,model,updated_at) VALUES(?,?,?,?,?,?)")
+      .bind("paper-test")
+      .bind("zh-CN")
+      .bind(r#"{"summary":"提出 Transformer","problem":"","method":"","findings":"","limits":"","readingTips":""}"#)
+      .bind("[]")
+      .bind("gpt-test")
+      .bind("2026-09-19T00:00:00Z")
+      .execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO paper_explain_chats(id,paper_id,title,messages_json,model,created_at,updated_at) VALUES(?,?,?,?,?,?,?)")
+      .bind("chat-test")
+      .bind("paper-test")
+      .bind("新对话")
+      .bind("[]")
+      .bind(Option::<String>::None)
+      .bind("2026-09-19T00:00:00Z")
+      .bind("2026-09-19T00:00:00Z")
+      .execute(&pool).await.unwrap();
+    let explain = sqlx::query("SELECT overview_json FROM paper_explains WHERE paper_id=?")
+      .bind("paper-test").fetch_one(&pool).await.unwrap();
+    assert!(explain.get::<String,_>(0).contains("Transformer"));
+    sqlx::query("DELETE FROM papers WHERE id=?").bind("paper-test").execute(&pool).await.unwrap();
+    let leftover: Option<String> = sqlx::query_scalar("SELECT paper_id FROM paper_explains WHERE paper_id=?")
+      .bind("paper-test").fetch_optional(&pool).await.unwrap();
+    assert!(leftover.is_none());
+    let leftover_chat: Option<String> = sqlx::query_scalar("SELECT id FROM paper_explain_chats WHERE id=?")
+      .bind("chat-test").fetch_optional(&pool).await.unwrap();
+    assert!(leftover_chat.is_none());
     pool.close().await; drop(pool); let _ = fs::remove_dir_all(root);
   });
 }

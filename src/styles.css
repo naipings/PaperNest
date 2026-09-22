@@ -319,10 +319,16 @@ body.is-paper-dragging .folder-row.droppable { cursor: copy; }
 .folder-count { color: var(--muted); font-size: 11px; }
 .folder-twist, .folder-actions button { border: 0; background: transparent; color: var(--muted); padding: 0; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .folder-twist-spacer { width: 14px; display: inline-block; }
-.folder-actions { display: none; gap: 2px; }
-.folder-row:hover .folder-actions,
-.folder-row.active .folder-actions { display: inline-flex; }
+.folder-actions { display: none; }
+.folder-row:hover .folder-actions { display: inline-flex; }
+.folder-more { width: 22px; }
 .folder-breadcrumb { color: var(--muted); font-size: 12.5px; }
+.move-folder-dialog { display: flex; flex-direction: column; gap: 10px; }
+.move-folder-dialog input { width: 100%; }
+.move-folder-dialog .picker-scroll { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+.move-folder-dialog .folder-row { width: 100%; }
+.move-folder-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
+.move-folder-dialog .muted { margin: 8px; }
 .paper-table tr.cut td { opacity: .5; background: color-mix(in srgb, var(--panel) 88%, var(--soft)); }
 .paper-table tr.cut.selected td { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); opacity: .65; }
 .view-header { height: 78px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 0 22px; border-bottom: 1px solid var(--line); }

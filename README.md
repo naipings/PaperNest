@@ -96,7 +96,7 @@ sequenceDiagram
 | ----- | ------------------------------------------- |
 | 论文库   | 文件夹树、表格检索、分类标签、保存视图、批量回收站、重复检测         |
 | 阅读台   | PDF.js 连续滚动、缩放、批注、撤销/重做                     |
-| 学习侧栏  | 速览、批注列表、术语库、框架图（与阅读台同屏）                     |
+| 学习侧栏  | 速览、批注、术语、框架、编辑、**解读**（结构化讲稿 + 与 PDF 对话） |
 | 写作资料库 | 英文原句、中文译文、用途标签、回到原文页码                       |
 | 本地知识树 | 按领域/标签/文本相似度组织节点，双击定位论文                     |
 | 任务日历  | 本地任务，可关联论文；页底阅读打卡（每日新增 + 满 5 分钟阅读）          |
@@ -126,6 +126,9 @@ sequenceDiagram
 ### PDF 阅读与学习
 
 阅读台采用 **pdfjs-dist** `PDFPageView` **+ PaperNest 学习侧栏**：
+
+- 连续滚动阅读；批注、术语、写作素材与框架图同屏沉淀。
+- **解读** Tab：先生成本篇结构化讲稿，再就正文多轮提问；回答支持 Markdown 渲染，页码引用（如 `(P2-P3)`）点击后滚动到对应页。计划见 [阅读台解读](docs/research/reader-pdf-explain-plan.md)。
 
 ```mermaid
 flowchart LR
@@ -326,5 +329,6 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [更新记录](docs/CHANGELOG.md)                                    | 版本变更                                        |
 | [扩展能力评估](docs/research/metadata-and-extension-assessment.md) | Crossref、Word/浏览器插件、PDF 边界                  |
 | [论文雷达评估](docs/research/paper-radar-feature-assessment.md) | 发现层定位、双层保护、稀疏使用与空池降级 |
+| [阅读台解读](docs/research/reader-pdf-explain-plan.md) | 精读侧栏与 PDF 对话：讲稿 + 多轮问答 |
 | [文献调研计划](docs/research/deep-literature-research-assessment.md) | 深度调研定稿、工作区与 MCP 路线 |
 | [Trajectory 方案](docs/research/research-trajectory-plan.md) | Phase 9：复用 DSH 官方 session + TrajectoryView |

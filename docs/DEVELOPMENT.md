@@ -71,9 +71,10 @@ flowchart LR
 
 | 组件 | 路径 | 职责 |
 |------|------|------|
-| `PdfReader` | `src/components/PdfReader.tsx` | 加载 PDF、缩放、工具模式、批注持久化、学习侧栏、OCR/导出 |
+| `PdfReader` | `src/components/PdfReader.tsx` | 加载 PDF、缩放、工具模式、批注持久化、学习侧栏（含解读）、OCR/导出 |
 | `ContinuousAnnotatablePdf` | `src/components/ContinuousAnnotatablePdf.tsx` | 连续页 `PDFPageView`、批注 overlay、选区浮动条 |
 | `SelectionToolbar` | `src/components/SelectionToolbar.tsx` | 高亮/下划线/批注切换、颜色、术语/佳句 |
+| `ExplainPanel` | `src/components/ExplainPanel.tsx` | 解读 Tab：结构化讲稿 + 与 PDF 多轮问答 |
 | `AnnotationHistory` | `src/lib/annotationHistory.ts` | 批注撤销/重做 |
 | `pdfRenderScale` | `src/lib/pdfRenderScale.ts` | 适应宽度/页面与 96/72 CSS 单位 |
 
@@ -132,7 +133,7 @@ flowchart LR
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
 - 封面提取同时写入 PDF 页数。
 - 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
-- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。向尚无分类的论文写入分类结果。
+- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。向尚无分类的论文写入分类结果。当前实现走 Chat Completions；改为 Jev 的方案见 [taxonomy-jev-plan.md](research/taxonomy-jev-plan.md)，尚未落地。
 - LLM「测试连接」先写入当前设置；写入失败时不发起连接请求，测试结束前保持按钮禁用。
 - 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
 - PDF、Bib/RIS 导入失败时刷新资料库快照，并在顶部显示错误；导入期间禁用两个导入按钮与新建论文按钮。
@@ -270,6 +271,7 @@ paperReader/
 │   ├── components/
 │   │   ├── PdfReader.tsx                  # 阅读台壳层
 │   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
+│   │   ├── ExplainPanel.tsx               # 解读 Tab（讲稿 + 问答）
 │   │   ├── LibraryView.tsx                # 论文表格 + 范围/状态/领域筛选
 │   │   ├── FilterMenu.tsx                 # 带过渡的自定义筛选菜单
 │   │   ├── DetailPanel.tsx                # 论文详情
@@ -294,6 +296,7 @@ paperReader/
 │   └── types.ts                # 前后端共享类型（镜像 Rust 结构）
 ├── src-tauri/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
+│   ├── src/explain.rs          # 阅读台解读（page 文 + LLM）
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
 │   ├── src/research.rs         # 文献调研会话与命令（含多轮 continue/export）
@@ -330,6 +333,7 @@ paperReader/
 | `Task` | `tasks` | 截止日期、状态、关联论文 |
 | `Folder` | `folders` | 名称、`parent_id`、排序；可嵌套 |
 | `Paper.folderId` | `papers.folder_id` | 每篇至多一个文件夹；`NULL` 为未归档 |
+| `PaperExplain` | `paper_explains` | 按 `paper_id` 缓存解读稿 JSON 与多轮对话 |
 
 ### 5.2 主领域与子领域预设
 
@@ -363,6 +367,7 @@ paperReader/
 | `import_pdfs` | 复制 PDF 并创建论文记录；可选 `folder_id` |
 | `read_pdf` | 读取受管 PDF 字节 |
 | `index_pdf` / `indexed_pdf_pages` | 页级全文索引 |
+| `explain_get` / `explain_start` / `explain_new_chat` / `explain_switch_chat` / `explain_delete_chat` / `explain_ask` / `explain_delete_turn` / `explain_reset` | 阅读台解读：讲稿共享、多对话新建/切换/删除、提问、删单轮、整篇重置 |
 | `ocr_page` | Tesseract OCR 单页 |
 | `search` | FTS5 + PDF 页搜索 |
 | `save_vocabulary` / `delete_vocabulary` | 术语增删 |
@@ -488,6 +493,7 @@ cd src-tauri; cargo check
 | 论文库横向滚动 | 勾选框与各列表头、表体列宽一致，无叠影 |
 | 论文库横向滚动 | 窗口非全屏时滚到最右并向下滚，表头整行吸顶，逐列与表体对齐 |
 | 打开阅读台 | 从第 1 页起读，文本可选，Ctrl+滚轮与适应宽度/页面可反复切换；底部无暗色空隙；展开/收起学习侧栏与滚轮缩放无明显整页闪断 |
+| 阅读台解读 | 侧栏「解读」：首轮生成讲稿后可多对话；新建对话复用讲稿直接聊；历史按钮切换/删除对话；页码跳转与删单轮 |
 | 阅读台编辑框 | 选区可右键/浮动条复制；「填入当前选区」或「送入编辑框」写入原文；箭头翻译；字号小/中/大；可收为术语 / 加入写作库（无译文时自动翻译，有译文则复用） |
 | 本地知识树 | L1 BM25+TF-IDF；原点可搜索切换；空白取消选中；自适应力导向；先前·衍生·列表 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |

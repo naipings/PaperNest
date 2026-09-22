@@ -13,6 +13,11 @@ interface LibraryContextValue {
   startRadarExplain(arxivId: string, title: string): void;
   finishRadarExplain(arxivId: string): void;
   radarExplainBusy: string;
+  /** paperId → 短标签；阅读台解读进行中，跨侧栏/关阅读器仍保留 */
+  paperExplaining: Record<string, string>;
+  startPaperExplain(paperId: string, label: string): void;
+  finishPaperExplain(paperId: string): void;
+  paperExplainBusy: string;
   researchBusy: string; researchNotice: string;
   setResearchBusy(value: string): void; setResearchNotice(value: string): void;
   refresh(): Promise<void>; savePaper(paper: Paper): Promise<void>; saveAnnotation(annotation: Annotation): Promise<void>;
@@ -37,6 +42,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [radarBusy, setRadarBusy] = useState(""); const [radarNotice, setRadarNotice] = useState("");
   const [researchBusy, setResearchBusy] = useState(""); const [researchNotice, setResearchNotice] = useState("");
   const [radarExplaining, setRadarExplaining] = useState<Record<string, string>>({});
+  const [paperExplaining, setPaperExplaining] = useState<Record<string, string>>({});
   const refresh = useCallback(async () => { try { setError(undefined); setData(await backend.initialize()); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); } }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const startRadarExplain = useCallback((arxivId: string, title: string) => {
@@ -56,6 +62,23 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     if (entries.length === 1) return `正在解读：${entries[0][1]}…`;
     return `正在解读 ${entries.length} 篇…`;
   }, [radarExplaining]);
+  const startPaperExplain = useCallback((paperId: string, label: string) => {
+    setPaperExplaining(current => ({ ...current, [paperId]: label.slice(0, 48) }));
+  }, []);
+  const finishPaperExplain = useCallback((paperId: string) => {
+    setPaperExplaining(current => {
+      if (!(paperId in current)) return current;
+      const next = { ...current };
+      delete next[paperId];
+      return next;
+    });
+  }, []);
+  const paperExplainBusy = useMemo(() => {
+    const entries = Object.entries(paperExplaining);
+    if (entries.length === 0) return "";
+    if (entries.length === 1) return `${entries[0][1]}…`;
+    return `正在解读 ${entries.length} 篇论文…`;
+  }, [paperExplaining]);
   const wrap = useCallback(<T,>(fn: (value: T) => Promise<void>) => async (value: T) => { await fn(value); await refresh(); }, [refresh]);
   const addReadingSeconds = useCallback(async (paperId: string, day: string, seconds: number) => {
     const total = await backend.addReadingSeconds(paperId, day, seconds);
@@ -71,6 +94,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LibraryContextValue>(() => ({
     data, loading, error, importBusy, importNotice, setImportBusy, setImportNotice, radarBusy, radarNotice, setRadarBusy, setRadarNotice,
     radarExplaining, startRadarExplain, finishRadarExplain, radarExplainBusy,
+    paperExplaining, startPaperExplain, finishPaperExplain, paperExplainBusy,
     researchBusy, researchNotice, setResearchBusy, setResearchNotice, refresh,
     savePaper: wrap(backend.savePaper), saveAnnotation: wrap(backend.saveAnnotation), deleteAnnotation: wrap(backend.deleteAnnotation),
     saveVocabulary: wrap(backend.saveVocabulary), deleteVocabulary: async id => { await backend.deleteVocabulary(id); await refresh(); },
@@ -89,7 +113,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     archiveCustomFieldDefinition: async fieldId => { await backend.archiveCustomFieldDefinition(fieldId); await refresh(); },
     savePaperCustomFieldValues: async (paperId, values) => { await backend.savePaperCustomFieldValues(paperId, values); await refresh(); },
     saveTask: wrap(backend.saveTask), deleteTask: async id => { await backend.deleteTask(id); await refresh(); },
-  }), [data, loading, error, importBusy, importNotice, radarBusy, radarNotice, radarExplaining, radarExplainBusy, researchBusy, researchNotice, startRadarExplain, finishRadarExplain, refresh, wrap, addReadingSeconds]);
+  }), [data, loading, error, importBusy, importNotice, radarBusy, radarNotice, radarExplaining, radarExplainBusy, paperExplaining, paperExplainBusy, researchBusy, researchNotice, startRadarExplain, finishRadarExplain, startPaperExplain, finishPaperExplain, refresh, wrap, addReadingSeconds]);
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }
 

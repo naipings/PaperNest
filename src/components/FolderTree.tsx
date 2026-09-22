@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { endPaperDrag, isPaperDragActive, readPaperDragIds, subscribeDropTarget } from "../lib/paperDrag";
 import type { Folder as FolderRecord, FolderSelection, Paper } from "../types";
 
@@ -32,6 +32,19 @@ function countUnfiled(papers: Paper[]) {
   return papers.filter(paper => !paper.deletedAt && !paper.folderId).length;
 }
 
+/** Native tooltip on the row when the name is ellipsized. Range avoids integer scrollWidth rounding. */
+function titleIfTruncated(event: ReactMouseEvent<HTMLElement>) {
+  const row = event.currentTarget;
+  const label = [...row.children].find((child): child is HTMLElement => child.classList.contains("folder-name"));
+  if (!label) return;
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const textWidth = range.getBoundingClientRect().width;
+  const boxWidth = label.getBoundingClientRect().width;
+  if (textWidth > boxWidth + 0.5) row.title = label.textContent ?? "";
+  else row.removeAttribute("title");
+}
+
 function acceptPaperDrag(event: ReactDragEvent) {
   const types = [...event.dataTransfer.types];
   if (!isPaperDragActive() && !types.includes("application/x-papernest-papers")) {
@@ -43,7 +56,7 @@ function acceptPaperDrag(event: ReactDragEvent) {
 }
 
 function FolderNode({
-  folder, folders, papers, selection, depth, expanded, dropTarget, onToggle, onSelect, onCreateChild, onRename, onDelete, onDropPapers, onOpenMenu, onSetDropTarget,
+  folder, folders, papers, selection, depth, expanded, dropTarget, onToggle, onSelect, onDropPapers, onOpenMenu, onSetDropTarget,
 }: {
   folder: FolderRecord;
   folders: FolderRecord[];
@@ -54,9 +67,6 @@ function FolderNode({
   dropTarget?: DropTarget;
   onToggle(id: string): void;
   onSelect(selection: FolderSelection): void;
-  onCreateChild(parentId: string): void;
-  onRename(folder: FolderRecord): void;
-  onDelete(folder: FolderRecord): void;
   onDropPapers(folderId: string | null, paperIds: string[]): void;
   onOpenMenu(event: ReactMouseEvent, folder: FolderRecord): void;
   onSetDropTarget(target?: DropTarget): void;
@@ -76,6 +86,7 @@ function FolderNode({
       style={{ paddingLeft: depth === 0 ? undefined : 8 + depth * 14 }}
       data-folder-drop={folder.id}
       onClick={() => onSelect({ kind: "folder", id: folder.id })}
+      onMouseEnter={titleIfTruncated}
       onContextMenu={event => onOpenMenu(event, folder)}
       onDragEnter={event => { if (acceptPaperDrag(event)) onSetDropTarget({ kind: "folder", id: folder.id }); }}
       onDragOver={event => { if (acceptPaperDrag(event)) onSetDropTarget({ kind: "folder", id: folder.id }); }}
@@ -98,14 +109,12 @@ function FolderNode({
       <span className="folder-name">{folder.name}</span>
       <small className="folder-count">{count}</small>
       <span className="folder-actions">
-        <button type="button" title="新建子文件夹" onClick={event => { event.stopPropagation(); if (!open) onToggle(folder.id); onCreateChild(folder.id); }}><FolderPlus size={13} /></button>
-        <button type="button" title="重命名" onClick={event => { event.stopPropagation(); onRename(folder); }}><Pencil size={13} /></button>
-        <button type="button" title="删除" onClick={event => { event.stopPropagation(); onDelete(folder); }}><Trash2 size={13} /></button>
+        <button type="button" className="folder-more" title="文件夹操作" aria-label="文件夹操作" onClick={event => { event.stopPropagation(); onOpenMenu(event, folder); }}><MoreHorizontal size={14} /></button>
       </span>
     </div>
     {open && kids.map(child => (
       <FolderNode key={child.id} folder={child} folders={folders} papers={papers} selection={selection} depth={depth + 1}
-        expanded={expanded} dropTarget={dropTarget} onToggle={onToggle} onSelect={onSelect} onCreateChild={onCreateChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={onOpenMenu} onSetDropTarget={onSetDropTarget} />
+        expanded={expanded} dropTarget={dropTarget} onToggle={onToggle} onSelect={onSelect} onDropPapers={onDropPapers} onOpenMenu={onOpenMenu} onSetDropTarget={onSetDropTarget} />
     ))}
   </div>;
 }
@@ -239,6 +248,7 @@ export function FolderTree({
         onClick={() => onSelect({ kind: "all" })}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect({ kind: "all" }); } }}
         onContextMenu={openRootMenu}
+        onMouseEnter={titleIfTruncated}
         onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "none"; }}
       >
         <Folder size={15} /><span className="folder-name">全部论文</span><small className="folder-count">{total}</small>
@@ -251,6 +261,7 @@ export function FolderTree({
         onClick={() => onSelect({ kind: "unfiled" })}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect({ kind: "unfiled" }); } }}
         onContextMenu={openRootMenu}
+        onMouseEnter={titleIfTruncated}
         onDragEnter={event => { if (acceptPaperDrag(event)) setDropTarget({ kind: "unfiled" }); }}
         onDragOver={event => { if (acceptPaperDrag(event)) setDropTarget({ kind: "unfiled" }); }}
         onDragLeave={event => {
@@ -270,7 +281,7 @@ export function FolderTree({
       {roots.length > 0 && <div className="folder-tree-divider" aria-hidden="true" />}
       {roots.map(folder => (
         <FolderNode key={folder.id} folder={folder} folders={folders} papers={papers} selection={selection} depth={0}
-          expanded={expanded} dropTarget={dropTarget} onToggle={toggle} onSelect={onSelect} onCreateChild={createChild} onRename={onRename} onDelete={onDelete} onDropPapers={onDropPapers} onOpenMenu={openFolderMenu} onSetDropTarget={setDropTarget} />
+          expanded={expanded} dropTarget={dropTarget} onToggle={toggle} onSelect={onSelect} onDropPapers={onDropPapers} onOpenMenu={openFolderMenu} onSetDropTarget={setDropTarget} />
       ))}
     </div>
     {menu && createPortal(

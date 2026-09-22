@@ -37,6 +37,25 @@ CREATE TABLE IF NOT EXISTS excerpts (id TEXT PRIMARY KEY, paper_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS saved_views (id TEXT PRIMARY KEY, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pdf_pages (paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE, page INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(paper_id,page));
+CREATE TABLE IF NOT EXISTS paper_explains (
+  paper_id TEXT PRIMARY KEY REFERENCES papers(id) ON DELETE CASCADE,
+  locale TEXT NOT NULL DEFAULT 'zh-CN',
+  overview_json TEXT,
+  messages_json TEXT NOT NULL DEFAULT '[]',
+  active_chat_id TEXT,
+  model TEXT,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paper_explain_chats (
+  id TEXT PRIMARY KEY,
+  paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '新对话',
+  messages_json TEXT NOT NULL DEFAULT '[]',
+  model TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_paper_explain_chats_paper ON paper_explain_chats(paper_id, updated_at);
 CREATE TABLE IF NOT EXISTS paper_day_reads (
   day TEXT NOT NULL,
   paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
@@ -123,4 +142,4 @@ INSERT OR IGNORE INTO tags(id,name,color) VALUES
 INSERT OR IGNORE INTO settings(key,value) VALUES
  ('profile','{"displayName":"研究生同学","researchField":"计算机科学","theme":"system","visualTheme":"workbench"}'),
  ('llm_settings','{"baseUrl":"https://api.openai.com/v1","model":"gpt-4.1-mini","autoAnalyzeOnImport":true,"visionEnabled":true}'),
- ('schema_version','5');
+ ('schema_version','6');

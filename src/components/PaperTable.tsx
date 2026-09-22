@@ -30,7 +30,7 @@ function folderDropAt(clientX: number, clientY: number) {
 
 export function PaperTable({
   papers, categories, tags, folders, customFieldDefinitions, customFieldValues, selectedId, cutPaperIds,
-  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder, clearChecksToken,
+  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder, onRequestMove, clearChecksToken,
 }: {
   papers: Paper[];
   categories: Category[];
@@ -47,6 +47,7 @@ export function PaperTable({
   onBulkRecycle(papers: Paper[]): void;
   onCut(ids: string[]): void;
   onMoveToFolder(paperIds: string[], folderId: string | null): void;
+  onRequestMove(paperIds: string[]): void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -192,22 +193,7 @@ export function PaperTable({
   }, [papers, checkedIds, selectedId, onCut]);
   const moveSelected = () => {
     if (!selectedPapers.length) return;
-    const ids = selectedPapers.map(paper => paper.id);
-    const options = ["未归档", ...folders.map(item => item.name)];
-    const choice = window.prompt(`移动到文件夹（输入名称）\n可选：${options.join("、")}`, "未归档");
-    if (choice === null) return;
-    if (choice.trim() === "未归档" || choice.trim() === "") {
-      onMoveToFolder(ids, null);
-      setCheckedIds(new Set());
-      return;
-    }
-    const target = folders.find(item => item.name === choice.trim());
-    if (!target) {
-      window.alert("未找到该文件夹");
-      return;
-    }
-    onMoveToFolder(ids, target.id);
-    setCheckedIds(new Set());
+    onRequestMove(selectedPapers.map(paper => paper.id));
   };
   return <div className="table-scroll">
     {selectedPapers.length > 0 && <div className="table-bulk-actions">

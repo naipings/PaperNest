@@ -8,6 +8,7 @@ import { PaperTable } from "./PaperTable";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { FilterMenu } from "./FilterMenu";
 import { FolderTree, folderBreadcrumb } from "./FolderTree";
+import { MovePapersDialog } from "./MovePapersDialog";
 
 const builtinViews: SavedView[] = [
   { id: "all", name: "全部论文", builtin: true, filter: {}, sorting: [], columnVisibility: {}, density: "comfortable" },
@@ -59,6 +60,7 @@ export function LibraryView({
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [clearChecksToken, setClearChecksToken] = useState(0);
+  const [movePaperIds, setMovePaperIds] = useState<string[]>();
   useEffect(() => {
     const toggleDensity = () => { document.documentElement.dataset.tableDensity = document.documentElement.dataset.tableDensity !== "compact" ? "compact" : "comfortable"; };
     const button = document.querySelector<HTMLButtonElement>(".view-tools .icon-button");
@@ -116,7 +118,7 @@ export function LibraryView({
   const saveCurrent = async () => { const name = window.prompt("视图名称", "我的筛选"); if (!name) return; const custom: SavedView = { ...view, id: uuid(), name, builtin: false }; await saveView(custom); setViewId(custom.id); };
   const recyclePapers = (items: Paper[]) => { const timestamp = new Date().toISOString(); void Promise.all(items.map(paper => savePaper({ ...paper, deletedAt: timestamp, updatedAt: timestamp }))); };
   const refreshLibrary = async () => { onClearLibraryNotice(); setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } };
-  const createFolder = async (parentId?: string) => {
+  const createFolder = async (parentId?: string, selectInLibrary = true) => {
     const name = window.prompt("文件夹名称", "新建文件夹");
     if (!name?.trim()) return;
     const trimmed = name.trim();
@@ -128,7 +130,8 @@ export function LibraryView({
     const folder: Folder = { id: uuid(), name: trimmed, ...(parentId ? { parentId } : {}), position: 0, createdAt: stamp, updatedAt: stamp };
     try {
       await saveFolder(folder);
-      onFolderSelection({ kind: "folder", id: folder.id });
+      if (selectInLibrary) onFolderSelection({ kind: "folder", id: folder.id });
+      return folder.id;
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -249,9 +252,17 @@ export function LibraryView({
           onBulkRecycle={recyclePapers}
           onCut={onCutPapers}
           onMoveToFolder={(paperIds, folderId) => void dropPapers(folderId, paperIds)}
+          onRequestMove={setMovePaperIds}
           clearChecksToken={clearChecksToken}
         />
       </div>
     </div>
+    {movePaperIds && <MovePapersDialog
+      folders={data.folders}
+      count={movePaperIds.length}
+      onClose={() => setMovePaperIds(undefined)}
+      onMove={folderId => { void dropPapers(folderId, movePaperIds); setMovePaperIds(undefined); }}
+      onCreate={parentId => createFolder(parentId, false)}
+    />}
   </main>;
 }

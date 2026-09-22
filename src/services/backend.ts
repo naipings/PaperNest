@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -257,6 +257,40 @@ export const backend = {
     return invoke("translate_with_llm", { text, mode, context });
   },
   async analyzePaper(paperId: string, input: LlmAnalysisInput): Promise<LlmAnalysis> { if (!isTauri()) throw new Error("浏览器预览模式不支持 LLM 分析"); return invoke("analyze_paper_with_llm", { paperId, input }); },
+  async explainGet(paperId: string): Promise<PaperExplainSession> {
+    if (!isTauri()) {
+      return { paperId, locale: "zh-CN", overview: null, messages: [], model: null, updatedAt: null };
+    }
+    return invoke("explain_get", { paperId });
+  },
+  async explainStart(paperId: string, locale = "zh-CN", resetChat = true): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_start", { paperId, locale, resetChat });
+  },
+  async explainNewChat(paperId: string): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_new_chat", { paperId });
+  },
+  async explainSwitchChat(paperId: string, chatId: string): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_switch_chat", { paperId, chatId });
+  },
+  async explainDeleteChat(paperId: string, chatId: string): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_delete_chat", { paperId, chatId });
+  },
+  async explainAsk(paperId: string, question: string): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读问答");
+    return invoke("explain_ask", { paperId, question });
+  },
+  async explainDeleteTurn(paperId: string, messageIndex: number): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_delete_turn", { paperId, messageIndex });
+  },
+  async explainReset(paperId: string): Promise<PaperExplainSession> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持解读");
+    return invoke("explain_reset", { paperId });
+  },
   async classifyPaperTaxonomy(input: LlmTaxonomyInput): Promise<LlmTaxonomyResult> {
     if (!isTauri()) {
       return { categoryId: null, tagIds: [], abstain: true, reason: "浏览器预览模式不支持自动分类" };

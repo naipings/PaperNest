@@ -35,7 +35,7 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 export default function App() {
-  const { data, loading, error, refresh, savePaper, saveProfile, movePapersToFolder, importBusy, importNotice, radarBusy, radarNotice, radarExplainBusy, researchBusy, researchNotice } = useLibrary();
+  const { data, loading, error, refresh, savePaper, saveProfile, movePapersToFolder, importBusy, importNotice, radarBusy, radarNotice, radarExplainBusy, paperExplainBusy, researchBusy, researchNotice } = useLibrary();
   const [screen, setScreen] = useState<Screen>("library");
   const [search, setSearch] = useState("");
   const [searchHitPaperIds, setSearchHitPaperIds] = useState<string[]>([]);
@@ -197,7 +197,8 @@ export default function App() {
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
       {radarBusy && screen !== "radar" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{radarBusy}</div>}
       {!radarBusy && radarExplainBusy && screen !== "radar" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{radarExplainBusy}</div>}
-      {!radarBusy && !radarExplainBusy && radarNotice && screen !== "radar" && <div className="import-status-banner">{radarNotice}</div>}
+      {!radarBusy && !radarExplainBusy && paperExplainBusy && !readerPaper && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{paperExplainBusy}</div>}
+      {!radarBusy && !radarExplainBusy && !paperExplainBusy && radarNotice && screen !== "radar" && <div className="import-status-banner">{radarNotice}</div>}
       {researchBusy && screen !== "research" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{researchBusy}</div>}
       {!researchBusy && researchNotice && screen !== "research" && <div className="import-status-banner">{researchNotice}</div>}
       {screen === "writing" && <LazyScreenBoundary><Suspense fallback={pageFallback}><WritingLibrary onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}

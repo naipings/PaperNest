@@ -17,10 +17,11 @@ import { findOverlappingAnnotation, findOverlappingNote } from "../lib/annotatio
 import { fitPdfScale } from "../lib/pdfRenderScale";
 import { PurposePickerDialog } from "./PurposePickerDialog";
 import { StudyClipPanel } from "./StudyClipPanel";
+import { ExplainPanel } from "./ExplainPanel";
 import "./PdfReader.css";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-type SideTab = "overview" | "annotations" | "vocabulary" | "framework" | "clip";
+type SideTab = "overview" | "annotations" | "vocabulary" | "framework" | "clip" | "explain";
 type ZoomPreset = "fit-width" | "fit-page" | "custom";
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
@@ -204,8 +205,9 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
         if (!active) return;
         const sourceHasText = indexPages.some(item => item.text.trim());
         if (sourceHasText) {
+          await backend.indexPdf(paper.id, indexPages);
+          if (!active) return;
           setPageText(texts);
-          void backend.indexPdf(paper.id, indexPages);
         } else {
           const stored = await backend.indexedPdfPages(paper.id);
           if (!active) return;
@@ -282,6 +284,18 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       stage?.removeEventListener("wheel", zoomWithCtrl);
       stage?.removeEventListener("scroll", onScroll);
     };
+  }, [pdf]);
+
+  const jumpToPage = useCallback((pageNumber: number) => {
+    const stage = stageRef.current;
+    if (!stage || !pdf) return;
+    const target = Math.max(1, Math.min(pdf.numPages, Math.floor(pageNumber)));
+    const host = stage.querySelector<HTMLElement>(`[data-page="${target}"]`);
+    if (host) {
+      keepTop.current = false;
+      host.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    setPage(target);
   }, [pdf]);
 
   const setReaderTool = useCallback((tool: ReaderTool) => {
@@ -762,7 +776,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
         {(message || toolHint) && <div className={`reader-message ${busy ? "busy" : ""}`}>{message || toolHint}</div>}
       </section>
       <aside className={`study-sidebar${rightOpen ? "" : " is-closed"}`} aria-hidden={!rightOpen}>
-        <nav>{([["overview", "速览"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`], ["clip", "编辑"]] as [SideTab, string][]).map(([id, label]) => (
+        <nav>{([["overview", "速览"], ["explain", "解读"], ["annotations", `批注 ${annotations.length}`], ["vocabulary", `术语 ${vocab.length}`], ["framework", `框架 ${figures.length}`], ["clip", "编辑"]] as [SideTab, string][]).map(([id, label]) => (
           <button className={tab === id ? "active" : ""} onClick={() => setTab(id)} key={id}>{label}</button>
         ))}</nav>
         <div className="study-body">
@@ -824,6 +838,14 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
             onTerm={async entry => { await saveVocabulary(entry); setTab("vocabulary"); }}
             onExcerpt={async entry => { await saveExcerpt(entry); }}
           />}
+          <div className="study-tab-panel" hidden={tab !== "explain"} aria-hidden={tab !== "explain"}>
+            <ExplainPanel
+              paper={paper}
+              pageTextReady={Object.keys(pageText).length > 0}
+              llmReady={llmReady}
+              onJumpPage={jumpToPage}
+            />
+          </div>
         </div>
       </aside>
     </div>
