@@ -269,9 +269,10 @@ paperReader/
 ├── backup/clinical-medicine/   # 临床医学变体 overlay 与说明
 ├── release/windows/            # PaperNest.exe / setup / clinmed 产物
 ├── src/
-│   ├── App.tsx                 # 屏幕路由：library / radar / research / deepread / writing / knowledge / tasks / trash / settings
+│   ├── App.tsx                 # 屏幕路由：library / radar / research / deepread / skills / writing / knowledge / tasks / trash / settings
 │   ├── components/
 │   │   ├── DeepReadView.tsx               # 论文精读页；子组件在 deepread/
+│   │   ├── SkillLibraryView.tsx           # Skill 库页；导入、更新、关联来源对话框在 skills/
 │   │   ├── PdfReader.tsx                  # 阅读台壳层
 │   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
 │   │   ├── ExplainPanel.tsx               # 解读 Tab（讲稿 + 问答）
@@ -307,6 +308,7 @@ paperReader/
 │   ├── src/deepread_visuals.rs # 论文精读：pdffigures2 提取、逐图预读、选图计划、插图校验
 │   ├── src/deepread_skill/     # 精读 skill 提示词（移植自 evidence-grounded-paper-deep-read，MIT）
 │   ├── resources/pdffigures2/  # pdffigures2.jar + 精简 JRE（gitignore，scripts/build-pdffigures2.ps1 构建）
+│   ├── src/skills.rs           # Skill 库：本地/GitHub 导入、上游关联与更新、追问读取
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
 │   ├── src/research.rs         # 文献调研会话与命令（含多轮 continue/export）
@@ -344,7 +346,8 @@ paperReader/
 | `Folder` | `folders` | 名称、`parent_id`、排序；可嵌套 |
 | `Paper.folderId` | `papers.folder_id` | 每篇至多一个文件夹；`NULL` 为未归档 |
 | `PaperExplain` | `paper_explains` | 按 `paper_id` 缓存解读稿 JSON 与多轮对话 |
-| `DeepRead` | `deep_reads` | 精读任务：`paper_id`（论文删除后置空）、来源 `library`/`external`、状态与当前阶段、校验问题、追问记录；文件在 `deepread/<id>/` |
+| `DeepRead` | `deep_reads` | 精读任务：`paper_id`（论文删除后置空）、来源 `library`/`external`、状态与当前阶段、校验问题、追问记录（回答附所用 skill）；文件在 `deepread/<id>/` |
+| `SkillEntry` | `skills` | 主键为目录名；frontmatter 名称与描述、`skill`/`shared`、含脚本、启用、引用目录、来源仓库与路径、本地与最新上游 tree SHA；文件在 `skills/<目录名>/` |
 
 ### 5.2 主领域与子领域预设
 
@@ -404,7 +407,11 @@ paperReader/
 | `research_open_workspace` / `research_delete_session` | 打开文件夹 / 删除任务 |
 | `deepread_create` / `deepread_run` / `deepread_cancel` | 论文精读：建任务（写 `sections.json`）/ 后台串行生成（`restart` 清空阶段）/ 当前阶段结束后停止 |
 | `deepread_list` / `deepread_get` / `deepread_delete` / `deepread_open_workspace` | 精读任务列表、详情（报告、已完成阶段、追问、图表清单、段落位置）、删除、打开文件夹 |
-| `deepread_ask` / `deepread_delete_turn` / `deepread_link_paper` | 精读追问、删单轮、外部 PDF 入库后关联论文 |
+| `deepread_ask` / `deepread_delete_turn` / `deepread_link_paper` | 精读追问（有已启用 skill 时走工具循环）、删单轮、外部 PDF 入库后关联论文 |
+| `skills_scan_local` / `skills_import_local` / `skills_scan_github` / `skills_import_github` | Skill 库：扫描本地目录或 GitHub 仓库、导入所选 skill 及其直接引用的目录 |
+| `skills_link_sources` / `skills_check_updates` / `skills_diff` / `skills_update` | 关联 GitHub 来源、检查更新、列出变化文件、备份后覆盖更新 |
+| `skills_list` / `skills_delete` / `skills_set_enabled` / `skills_open_dir` | 列表、删除、追问启用开关、打开目录 |
+| `skills_github_token_saved` / `skills_save_github_token` | GitHub Token 状态与保存（空值清除） |
 | `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
 | `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
 | `save_custom_field_definition` | 新增或更新字段定义 |
@@ -426,6 +433,7 @@ flowchart TB
     Radar["screen=radar"]
     Research["screen=research"]
     DeepRead["screen=deepread"]
+    Skills["screen=skills"]
     Writing["screen=writing"]
     Knowledge["screen=knowledge"]
     Tasks["screen=tasks"]
@@ -461,6 +469,7 @@ flowchart TB
 | Markdown / 公式 | react-markdown + remark-gfm；论文精读另加 remark-math + rehype-katex（KaTeX） |
 | 带批注导出 | pdf-lib |
 | 数据库 | SQLite + SQLx + FTS5 |
+| Skill 库 | serde_yaml（frontmatter）、sha1（git blob SHA）、GitHub Trees API + raw 下载 |
 | OCR | 本机 Tesseract |
 
 阅读、全文索引和 OCR 渲染共用同一套 `pdfjs-dist` worker（Vite 打包路径）。
@@ -488,6 +497,8 @@ npm run tauri build      # 安装包
 npm run check            # test + build
 ```
 
+> `tauri dev` 运行中修改 Rust 文件会触发重编译，Vite 可能因监听 `target\debug\deps\paper_reader.exe` 报 EBUSY 退出，且重启会中断进行中的后台任务；改 Rust 前先停止 dev。
+>
 > 若本机 Hyper-V 预留了 `1388–2087` 等端口段，勿再使用 `1420`；当前 `vite.config` / `tauri.conf` 已改为 `5173`。
 
 ---
@@ -514,6 +525,7 @@ cd src-tauri; cargo check
 | 阅读台编辑框 | 选区可右键/浮动条复制；「填入当前选区」或「送入编辑框」写入原文；箭头翻译；字号小/中/大；可收为术语 / 加入写作库（无译文时自动翻译，有译文则复用） |
 | 本地知识树 | L1 BM25+TF-IDF；原点可搜索切换；空白取消选中；自适应力导向；先前·衍生·列表 |
 | 论文精读 | 论文库或本地 PDF 选篇后逐篇生成五节报告，八阶段进度可见（图表提取、看图预读 n/N、选图计划、五节），报告内嵌原图原表，公式渲染，校验问题置顶；停止后「继续生成」复用已完成阶段；报告完成后可追问、删单轮；外部 PDF 可「加入论文库」；「对照阅读」点击证据锚点或插图，右侧原文跳页并高亮段落或图表区域；知识树详情栏「论文精读」预选该论文 |
+| Skill 库 | 从本地目录或 GitHub 仓库勾选导入，引用的同级目录一并导入；导入后按候选仓库关联来源；「检查全部更新」标出有更新项；更新前列出变化文件，确认后旧版本进入 `skills/.backup/`；追问审稿类问题时回答下方显示所用 skill；关闭「追问时启用」后不再出现在追问清单 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |
 | 术语收录 | 选中文本 → 侧栏术语库有条目 |
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
@@ -654,6 +666,7 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
              → 流式生成 → stages/<key>.md（已存在则跳过，支持继续生成）
        拼装 report.md → validate_report（五节顺序、证据锚点、公式定界符、TODO、插图来源、计划覆盖）
   → deepread_ask：报告全文 + 按问题关键词选段（40000 字）+ 最近 12 条对话
+       有已启用 skill 时走工具循环（load_skill / read_skill_file，最多 8 轮），见 §17
 ```
 
 | 约定 | 说明 |
@@ -671,6 +684,31 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 ---
 
-## 17. 扩展方向
+## 17. Skill 库
+
+PaperNest 自行保存一份 Agent Skill（[规范](https://agentskills.io/specification)）：文件在 `PaperNestLibrary/skills/<目录名>/`，元数据在 `library.db` 的 `skills` 表，随资料库备份。论文精读追问时，模型按描述自动读取已启用的 skill。后端 `src-tauri/src/skills.rs`，页面 `src/components/SkillLibraryView.tsx` 与 `src/components/skills/`。
+
+```text
+导入：本地目录（skills_scan_local → skills_import_local）或 GitHub 仓库（skills_scan_github → skills_import_github）
+  所选 skill + 它们直接引用的同级目录（`../<目录>/`）→ skills/.staging/ → skills/<目录名>/
+关联：skills_link_sources（每仓库一次 Trees API；按目录名找同名目录，逐文件比对 git blob SHA，兼容 CRLF）
+检查：skills_check_updates（比对上游目录 tree SHA）
+更新：skills_diff 列出变化 → 确认 → skills_update（下载校验 → 旧目录移到 skills/.backup/<目录名>-<时间>/）
+追问：enabled_skills 进系统提示 → load_skill / read_skill_file 工具循环 → 回答记录所用 skill
+```
+
+| 约定 | 说明 |
+|------|------|
+| 状态 | 未关联来源 / 未检查 / 已是最新 / 有更新 / 与上游不同 / 上游已删除，由 `tree_sha`、`latest_tree_sha`、`checked_at` 计算 |
+| 脚本 | 含 `.py .sh .js` 等文件的 skill 标注「含脚本」，PaperNest 不执行，模型只读取文字 |
+| 读取范围 | `read_skill_file` 路径解析后须在 `skills/` 内且不进入 `.backup`、`.staging`；单次最多 40000 字 |
+| GitHub | 未认证 60 次/小时；页面可保存 Token（系统凭据 `PaperNest/github_token`）；raw 下载 8 路并发，逐文件校验 blob SHA |
+| 更新范围 | 只覆盖所选 skill；上游新增的引用目录在详情页标「未导入」 |
+
+实现计划与实测见 [skill-library-plan.md](research/skill-library-plan.md)。
+
+---
+
+## 18. 扩展方向
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。

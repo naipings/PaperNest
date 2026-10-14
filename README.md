@@ -103,6 +103,7 @@ sequenceDiagram
 | 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
 | 文献调研  | ReAct Agent；**单窗口多轮追问** + 附件/链接 + `fetch_url`；对话/轨迹/候选论文三 Tab（DSH 1:1 UI）；`report.md` + `turns/` + `proposals/`；MCP（`papernest-mcp`） |
 | 论文精读  | 论文库 / 知识树邻域 / 本地 PDF 选篇，逐篇生成 What → Why → How → Experiment → Question 证据报告（页码 + 段落锚点、内嵌原图原表、KaTeX 公式、自动校验），对照阅读点击证据跳到原文并高亮，报告后多轮追问 |
+| Skill 库  | 从本地目录或 GitHub 仓库导入 Agent Skill，独立存放于资料库；检查上游更新、查看差异后备份覆盖；论文精读追问时模型按需读取 |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 
 
@@ -260,6 +261,16 @@ flowchart LR
 - 报告页显示八阶段进度（图表提取、看图预读、选图计划、五节）与校验问题；停止或失败后 **继续生成** 复用已完成阶段。**追问** 页基于报告与原文段落多轮问答。
 - **对照阅读**：左侧报告、右侧阅读台原文（可批注），顶部切换精读任务。点击证据锚点跳到对应页并高亮段落，点击插图框出原文图表区域。0.2.51 之前创建的任务只能跳页、不高亮段落。
 - 本地 PDF 只存精读工作区，报告页 **加入论文库** 后可在阅读台打开、可对照阅读。工作区：`PaperNestLibrary/deepread/<id>/`。
+- 追问时模型可读取 Skill 库中已启用的 skill（如审稿、公式推导类），回答下方显示「使用 skill：…」。
+
+### Skill 库
+
+- 侧栏 **Skill 库**：PaperNest 自行保存一份 [Agent Skill](https://agentskills.io/specification)，文件在 `PaperNestLibrary/skills/`，与 `~/.cursor/skills` 等目录互不影响，随资料库备份。
+- **从本地导入**：选择 skill 目录（如 `~/.cursor/skills`），勾选 skill；它们直接引用的同级目录（如 `../ccf-common/`）一并导入。导入后按填写的 GitHub 仓库自动关联来源，逐文件比对与上游是否一致。
+- **从 GitHub 导入**：填写 `owner/repo` 或仓库网址，读取后勾选导入。
+- **检查更新**：比对上游目录版本；「查看差异并更新」列出新增、删除、修改的文件，确认后覆盖，旧版本移到 `skills/.backup/`。上游新增的引用目录在详情页标「未导入」。
+- GitHub 未登录每小时 60 次请求，批量检查或更新前可在页面保存 **GitHub Token**（存于 Windows 凭据管理器）。
+- 每个 skill 可关闭 **追问时启用**；含脚本的 skill 标注「含脚本」，PaperNest 只读取文字，不执行脚本。
 
 
 
@@ -298,6 +309,7 @@ flowchart LR
 ├── pdf/originals/          # 受管 PDF 原件
 ├── research/               # 默认调研工作区（每任务一子文件夹）
 ├── deepread/               # 论文精读工作区（sections.json、figures/、visuals/、stages/、report.md）
+├── skills/                 # Skill 库（每个 skill 一个目录；.backup/ 为更新前的旧版本）
 ├── figures/                # 方法框架图
 ├── avatars/                # 用户头像
 ├── backups/                # 完整备份包
@@ -348,4 +360,5 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [文献调研计划](docs/research/deep-literature-research-assessment.md) | 深度调研定稿、工作区与 MCP 路线 |
 | [论文精读计划](docs/research/paper-deep-read-plan.md) | 证据驱动五节报告：参考实现复用范围、数据、分步验收 |
 | [论文精读 V2](docs/research/paper-deep-read-v2-plan.md) | 插图（pdffigures2 + 看图预读 + 选图计划）与对照阅读 |
+| [Skill 库计划](docs/research/skill-library-plan.md) | 开源实现调研、导入与更新流程、追问工具、实测记录 |
 | [Trajectory 方案](docs/research/research-trajectory-plan.md) | Phase 9：复用 DSH 官方 session + TrajectoryView |

@@ -1,5 +1,16 @@
 # 更新记录
 
+## 0.2.52 - 2026-10-14
+
+### Skill 库
+
+- 侧栏新增「Skill 库」：PaperNest 在 `PaperNestLibrary/skills/` 保存独立的 [Agent Skill](https://agentskills.io/specification) 副本，元数据写入 `library.db`，随资料库备份。
+- 导入：从本地目录（如 `~/.cursor/skills`）或 GitHub 仓库勾选 skill，所选 skill 直接引用的同级目录（`../<目录>/`）一并导入；本地导入后按填写的仓库关联来源，逐文件比对 git blob SHA 判断与上游是否一致。
+- 更新：「检查更新」比对上游目录 tree SHA（参考 [vercel-labs/skills](https://github.com/vercel-labs/skills) 的锁定方式）；「查看差异并更新」列出新增、删除、修改文件，确认后逐项覆盖并显示进度，旧版本移到 `skills/.backup/`；支持单个或全部更新、批量删除（提示被哪些 skill 引用）。
+- GitHub 下载 8 路并发、逐文件校验；可保存 GitHub Token 提高请求上限（Windows 凭据管理器）。
+- 论文精读追问：已启用 skill 的名称与描述进入提示，模型通过 `load_skill` / `read_skill_file` 按需读取（最多 8 轮），回答下方显示「使用 skill：…」。读取路径限定在 `skills/` 内。
+- 含脚本的 skill 标注「含脚本」，PaperNest 不执行脚本。
+
 ## 0.2.51 - 2026-10-14
 
 ### 论文精读：插图与对照阅读
