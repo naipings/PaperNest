@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CustomFieldDefinition, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CreateDeepReadInput, CustomFieldDefinition, DeepRead, DeepReadDetail, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -311,6 +311,10 @@ export const backend = {
     const paths = await open({ multiple: true, filters: [{ name: "PDF", extensions: ["pdf"] }] });
     return paths ? invoke<ImportedPaper[]>("import_pdfs", { paths: Array.isArray(paths) ? paths : [paths], folderId: folderId ?? null }) : [];
   },
+  async importPdfPaths(paths: string[], folderId?: string | null): Promise<ImportedPaper[]> {
+    if (!isTauri()) return [];
+    return invoke<ImportedPaper[]>("import_pdfs", { paths, folderId: folderId ?? null });
+  },
   async chooseAndImportCitations(): Promise<Paper[]> {
     if (!isTauri()) return [];
     const paths = await open({ multiple: true, filters: [{ name: "文献数据", extensions: ["bib", "bibtex", "ris"] }] });
@@ -487,6 +491,46 @@ export const backend = {
   async researchRejectProposal(sessionId: string, proposalId: string): Promise<void> {
     if (!isTauri()) return;
     return invoke("research_reject_proposal", { sessionId, proposalId });
+  },
+  async deepreadList(): Promise<DeepRead[]> {
+    if (!isTauri()) return [];
+    return invoke("deepread_list");
+  },
+  async deepreadGet(id: string): Promise<DeepReadDetail> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_get", { id });
+  },
+  async deepreadCreate(input: CreateDeepReadInput): Promise<DeepRead> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_create", { input });
+  },
+  async deepreadRun(id: string, restart: boolean): Promise<DeepRead> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_run", { id, restart });
+  },
+  async deepreadCancel(id: string): Promise<DeepRead> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_cancel", { id });
+  },
+  async deepreadAsk(id: string, question: string): Promise<DeepReadDetail> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_ask", { id, question });
+  },
+  async deepreadDeleteTurn(id: string, messageIndex: number): Promise<DeepReadDetail> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_delete_turn", { id, messageIndex });
+  },
+  async deepreadLinkPaper(id: string, paperId: string): Promise<DeepRead> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_link_paper", { id, paperId });
+  },
+  async deepreadOpenWorkspace(id: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("deepread_open_workspace", { id });
+  },
+  async deepreadDelete(id: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("deepread_delete", { id });
   },
   async mcpGetInfo(): Promise<McpInfo> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持 MCP");

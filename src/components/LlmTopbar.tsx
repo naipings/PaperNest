@@ -137,7 +137,7 @@ async function analyzeWithFallback(paper: Paper, input: LlmAnalysisInput): Promi
   return analysis;
 }
 
-const importPorts = {
+export const importPorts = {
   confirmKeep: async (existing: Paper, incoming: Paper) => {
     const message = `库中已有相同文献《${existing.titleZh || existing.titleEn}》。仍要导入《${incoming.titleZh || incoming.titleEn}》吗？`;
     try {
@@ -165,7 +165,7 @@ function importNotice(count: number, notes: string[]) {
   return `已导入 ${count} 篇，已从 PDF 填写能识别的标题、作者、摘要和日期${extra}。`;
 }
 
-async function fillFromPdf(paper: Paper, visionEnabled: boolean): Promise<{ paper: Paper; analysisInput?: LlmAnalysisInput; candidateImages: { page: number; dataUrl: string }[]; failure?: string }> {
+export async function fillFromPdf(paper: Paper, visionEnabled: boolean): Promise<{ paper: Paper; analysisInput?: LlmAnalysisInput; candidateImages: { page: number; dataUrl: string }[]; failure?: string }> {
   if (!paper.pdfPath) return { paper, candidateImages: [] };
   const bytes = await backend.readPdf(paper.pdfPath);
   let next: Paper = { ...paper, arxivId: paper.arxivId || arxivFromText(paper.titleEn), updatedAt: now() };

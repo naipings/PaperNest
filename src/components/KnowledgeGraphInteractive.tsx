@@ -1,4 +1,4 @@
-import { ExternalLink, Minus, Network, Plus, RotateCcw, Search, Sparkles } from "lucide-react";
+import { BookOpenCheck, ExternalLink, Minus, Network, Plus, RotateCcw, Search, Sparkles } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -39,7 +39,7 @@ const paperMatch = (paper: Paper, q: string) => {
     .includes(q);
 };
 
-export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: Paper): void }) {
+export function KnowledgeGraphInteractive({ onOpenPaper, onDeepRead }: { onOpenPaper(paper: Paper): void; onDeepRead(paper: Paper): void }) {
   const { data } = useLibrary();
   const [listQuery, setListQuery] = useState("");
   const [originDraft, setOriginDraft] = useState("");
@@ -364,6 +364,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper }: { onOpenPaper(paper: 
           <div className="cp-inspector-actions">
             {!selected.isOrigin && <button type="button" className="secondary" onClick={() => makeOrigin(selected.paper)}>设为原点重建图</button>}
             <button type="button" className="primary" onClick={() => onOpenPaper(selected.paper)}><ExternalLink size={16} />在论文表格中定位</button>
+            <button type="button" className="secondary" disabled={!selected.paper.pdfPath} title={selected.paper.pdfPath ? "以该论文为原点打开论文精读" : "该论文没有 PDF"} onClick={() => onDeepRead(selected.paper)}><BookOpenCheck size={16} />论文精读</button>
           </div>
           <small>单击节点查看；点空白取消选中；双击打开。非原点可「设为原点重建图」，或在上方原点栏搜索切换。</small>
         </> : <p className="cp-inspector-idle">单击图中节点或左侧列表查看详情；点击画布空白处可取消选中。原点请用上方搜索框切换。</p>}

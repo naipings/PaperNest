@@ -447,5 +447,40 @@ export interface PaperExplainSession {
   updatedAt?: string | null;
 }
 
+export type DeepReadStatus = "draft" | "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export interface DeepRead {
+  id: string;
+  paperId: string | null;
+  sourceKind: "library" | "external";
+  title: string;
+  sourceName: string;
+  workspacePath: string;
+  status: DeepReadStatus;
+  stage: string | null;
+  error: string | null;
+  validation: string[];
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeepReadDetail {
+  task: DeepRead;
+  report: string;
+  messages: PaperExplainMessage[];
+  stagesDone: string[];
+}
+
+export interface DeepReadPage { page: number; paragraphs: string[]; }
+
+export interface CreateDeepReadInput {
+  paperId?: string;
+  title: string;
+  sourceName: string;
+  pdfBase64?: string;
+  pages: DeepReadPage[];
+}
+
 export const uuid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();

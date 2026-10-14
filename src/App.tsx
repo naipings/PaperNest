@@ -23,6 +23,7 @@ const KnowledgeGraphInteractive = lazy(() => import("./components/KnowledgeGraph
 const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module => ({ default: module.TaskCalendar })));
 const RadarView = lazy(() => import("./components/RadarView").then(module => ({ default: module.RadarView })));
 const ResearchView = lazy(() => import("./components/ResearchScreen").then(module => ({ default: module.ResearchScreen })));
+const DeepReadView = lazy(() => import("./components/DeepReadView").then(module => ({ default: module.DeepReadView })));
 
 function readSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -44,6 +45,7 @@ export default function App() {
   const [folderSelection, setFolderSelection] = useState<FolderSelection>({ kind: "all" });
   const [cutPaperIds, setCutPaperIds] = useState<string[]>([]);
   const [readerPaper, setReaderPaper] = useState<Paper>();
+  const [deepReadSeed, setDeepReadSeed] = useState<{ paperId: string; nonce: number }>();
   const [creating, setCreating] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
@@ -202,10 +204,11 @@ export default function App() {
       {researchBusy && screen !== "research" && <div className="import-status-banner"><LoaderCircle className="spin" size={15} />{researchBusy}</div>}
       {!researchBusy && researchNotice && screen !== "research" && <div className="import-status-banner">{researchNotice}</div>}
       {screen === "writing" && <LazyScreenBoundary><Suspense fallback={pageFallback}><WritingLibrary onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
-      {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => locatePaper(paper.id)} /></Suspense></LazyScreenBoundary>}
+      {screen === "knowledge" && <LazyScreenBoundary><Suspense fallback={pageFallback}><KnowledgeGraphInteractive onOpenPaper={paper => locatePaper(paper.id)} onDeepRead={paper => { setDeepReadSeed({ paperId: paper.id, nonce: Date.now() }); setScreen("deepread"); }} /></Suspense></LazyScreenBoundary>}
       {screen === "tasks" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TaskCalendar /></Suspense></LazyScreenBoundary>}
       {screen === "radar" && <LazyScreenBoundary><Suspense fallback={pageFallback}><RadarView onImported={paperId => locatePaper(paperId)} /></Suspense></LazyScreenBoundary>}
       {screen === "research" && <LazyScreenBoundary><Suspense fallback={pageFallback}><ResearchView /></Suspense></LazyScreenBoundary>}
+      {screen === "deepread" && <LazyScreenBoundary><Suspense fallback={pageFallback}><DeepReadView seed={deepReadSeed} onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
       {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
       {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}
       {screen === "settings" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SettingsView /></Suspense></LazyScreenBoundary>}

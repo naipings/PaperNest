@@ -1,7 +1,7 @@
-import { BookOpen, CalendarDays, Feather, Library, Moon, Network, Radar, RotateCcw, Search, Settings, Sun, Trash2 } from "lucide-react";
+import { BookOpen, BookOpenCheck, CalendarDays, Feather, Library, Moon, Network, Radar, RotateCcw, Search, Settings, Sun, Trash2 } from "lucide-react";
 import type { Profile } from "../types";
 
-export type Screen = "library" | "tasks" | "knowledge" | "writing" | "trash" | "settings" | "reader" | "radar" | "research";
+export type Screen = "library" | "tasks" | "knowledge" | "writing" | "trash" | "settings" | "reader" | "radar" | "research" | "deepread";
 
 export function Sidebar({
   screen,
@@ -22,6 +22,7 @@ export function Sidebar({
     { id: "library" as const, label: "论文库", icon: Library },
     { id: "radar" as const, label: "论文雷达", icon: Radar },
     { id: "research" as const, label: "文献调研", icon: Search },
+    { id: "deepread" as const, label: "论文精读", icon: BookOpenCheck },
     { id: "tasks" as const, label: "任务与日历", icon: CalendarDays },
     { id: "writing" as const, label: "写作资料库", icon: Feather },
     { id: "trash" as const, label: "回收站", icon: Trash2 },

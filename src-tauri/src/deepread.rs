@@ -219,20 +219,28 @@ async fn set_status(pool: &SqlitePool, id: &str, status: &str, stage: Option<&st
   Ok(())
 }
 
+fn read_report(workspace: &Path) -> Result<String> {
+  let path = workspace.join("report.md");
+  if !path.exists() {
+    return Ok(String::new());
+  }
+  fs::read_to_string(path).map_err(err)
+}
+
 fn read_sections(workspace: &Path) -> Result<Vec<SectionPage>> {
   let raw = fs::read_to_string(workspace.join("sections.json")).map_err(err)?;
   Ok(serde_json::from_str::<Sections>(&raw).map_err(err)?.pages)
 }
 
-fn stages_done(workspace: &Path) -> Vec<String> {
-  REPORT_STAGES
-    .iter()
-    .filter(|stage| {
-      fs::read_to_string(workspace.join("stages").join(format!("{}.md", stage.key)))
-        .is_ok_and(|text| !text.trim().is_empty())
-    })
-    .map(|stage| stage.key.to_string())
-    .collect()
+fn stages_done(workspace: &Path) -> Result<Vec<String>> {
+  let mut done = Vec::new();
+  for stage in &REPORT_STAGES {
+    let path = workspace.join("stages").join(format!("{}.md", stage.key));
+    if path.exists() && !fs::read_to_string(&path).map_err(err)?.trim().is_empty() {
+      done.push(stage.key.to_string());
+    }
+  }
+  Ok(done)
 }
 
 fn normalize(text: &str) -> String {
@@ -635,7 +643,8 @@ async fn generate(pool: &SqlitePool, workspace: &Path, settings: &ResearchLlmSet
   let mut generated: Vec<(&str, String)> = Vec::new();
   for stage in &REPORT_STAGES {
     let path = stages_dir.join(format!("{}.md", stage.key));
-    if let Ok(cached) = fs::read_to_string(&path) {
+    if path.exists() {
+      let cached = fs::read_to_string(&path).map_err(err)?;
       if !cached.trim().is_empty() {
         generated.push((stage.key, cached));
         continue;
@@ -706,8 +715,8 @@ pub async fn deepread_get(state: State<'_, AppState>, id: String) -> Result<Deep
   let messages = load_messages(&pool, &id).await?;
   let workspace = PathBuf::from(&task.workspace_path);
   Ok(DeepReadDetail {
-    report: fs::read_to_string(workspace.join("report.md")).unwrap_or_default(),
-    stages_done: stages_done(&workspace),
+    report: read_report(&workspace)?,
+    stages_done: stages_done(&workspace)?,
     task,
     messages,
   })
@@ -779,8 +788,8 @@ pub async fn deepread_run(state: State<'_, AppState>, id: String, restart: bool)
   let workspace = PathBuf::from(&task.workspace_path);
   let prepared = async {
     if restart {
-      for stage in &REPORT_STAGES {
-        let path = workspace.join("stages").join(format!("{}.md", stage.key));
+      let stage_files = REPORT_STAGES.iter().map(|stage| workspace.join("stages").join(format!("{}.md", stage.key)));
+      for path in stage_files.chain([workspace.join("report.md")]) {
         if path.exists() {
           fs::remove_file(path).map_err(err)?;
         }
@@ -833,7 +842,7 @@ pub async fn deepread_ask(state: State<'_, AppState>, id: String, question: Stri
     (load_task(&pool, &state.library_dir, &id).await?, load_messages(&pool, &id).await?)
   };
   let workspace = PathBuf::from(&task.workspace_path);
-  let report = fs::read_to_string(workspace.join("report.md")).unwrap_or_default();
+  let report = read_report(&workspace)?;
   if report.trim().is_empty() {
     return Err("报告生成完成后才能追问".into());
   }
