@@ -383,6 +383,13 @@ pub async fn open_research_pool_public(library_dir: &Path) -> Result<SqlitePool>
   open_research_pool(library_dir).await
 }
 
+pub(crate) async fn load_research_settings(library_dir: &Path) -> Result<ResearchLlmSettings> {
+  let pool = open_research_pool(library_dir).await?;
+  let settings = load_settings(&pool).await;
+  pool.close().await;
+  settings
+}
+
 /// 启动时内存里还没有任何运行令牌，数据库里残留的 running 只可能来自上次异常退出。
 /// 不清理的话前端会一直停在「调研进行中」并持续轮询。
 pub(crate) async fn reset_interrupted_sessions(library_dir: &Path) -> Result<()> {

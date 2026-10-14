@@ -63,6 +63,22 @@ CREATE TABLE IF NOT EXISTS paper_day_reads (
   PRIMARY KEY(day, paper_id)
 );
 CREATE INDEX IF NOT EXISTS idx_paper_day_reads_day ON paper_day_reads(day);
+CREATE TABLE IF NOT EXISTS deep_reads (
+  id TEXT PRIMARY KEY,
+  paper_id TEXT REFERENCES papers(id) ON DELETE SET NULL,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('library','external')),
+  title TEXT NOT NULL,
+  source_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  stage TEXT,
+  error TEXT,
+  validation_json TEXT NOT NULL DEFAULT '[]',
+  messages_json TEXT NOT NULL DEFAULT '[]',
+  model TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deep_reads_updated ON deep_reads(updated_at);
 
 CREATE TABLE IF NOT EXISTS custom_field_definitions (
   id TEXT PRIMARY KEY,
