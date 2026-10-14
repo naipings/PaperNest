@@ -2,10 +2,12 @@
 //! 文件位于 `<资料库>/skills/<目录名>/`，元数据位于 `skills` 表。
 
 use super::*;
+use futures_util::stream::{self, StreamExt, TryStreamExt};
 use sha1::{Digest, Sha1};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::OnceLock;
 
+const DOWNLOAD_CONCURRENCY: usize = 8;
 const SCRIPT_EXTS: &[&str] = &["py", "sh", "js", "mjs", "cjs", "ts", "ps1", "bat", "cmd", "rb", "pl"];
 const TEXT_EXTS: &[&str] = &["md", "markdown", "yaml", "yml", "json", "txt"];
 const SKILL_READ_CHARS: usize = 40_000;
@@ -382,7 +384,12 @@ fn github_token() -> Result<Option<String>> {
 
 impl GitHub {
   fn new() -> Result<Self> {
-    let client = Client::builder().user_agent("PaperNest").timeout(Duration::from_secs(60)).build().map_err(err)?;
+    let client = Client::builder()
+      .user_agent("PaperNest")
+      .connect_timeout(Duration::from_secs(20))
+      .read_timeout(Duration::from_secs(60))
+      .build()
+      .map_err(err)?;
     Ok(Self { client, token: github_token()? })
   }
 
@@ -459,17 +466,20 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
 }
 
 async fn download_folder(gh: &GitHub, repo: &str, tree: &RepoTree, path: &str, dest: &Path) -> Result<()> {
-  for (rel, sha) in tree.folder_files(path) {
-    let full = if path.is_empty() { rel.clone() } else { format!("{path}/{rel}") };
-    let bytes = gh.raw(repo, &full).await?;
-    if git_blob_sha(&bytes) != sha {
-      return Err(format!("{repo}/{full} 下载内容与 GitHub 目录树不一致，请重试"));
-    }
-    let target = dest.join(&rel);
-    fs::create_dir_all(target.parent().expect("file path has parent")).map_err(err)?;
-    fs::write(&target, bytes).map_err(err)?;
-  }
-  Ok(())
+  stream::iter(tree.folder_files(path))
+    .map(|(rel, sha)| async move {
+      let full = if path.is_empty() { rel.clone() } else { format!("{path}/{rel}") };
+      let bytes = gh.raw(repo, &full).await?;
+      if git_blob_sha(&bytes) != sha {
+        return Err(format!("{repo}/{full} 下载内容与 GitHub 目录树不一致，请重试"));
+      }
+      let target = dest.join(&rel);
+      fs::create_dir_all(target.parent().expect("file path has parent")).map_err(err)?;
+      fs::write(&target, bytes).map_err(err)
+    })
+    .buffer_unordered(DOWNLOAD_CONCURRENCY)
+    .try_collect()
+    .await
 }
 
 async fn installed_dirs(pool: &SqlitePool) -> Result<HashSet<String>> {
@@ -533,45 +543,43 @@ async fn load_entries(pool: &SqlitePool) -> Result<Vec<SkillEntry>> {
     .collect()
 }
 
-/// 依次下载 `paths`，并把它们 `../` 引用的同级目录（仓库中存在且库中没有的）一并导入。
+/// 下载 `paths` 并写入库；返回它们 `../` 引用、仓库中存在且库中还没有的同级目录路径。
 async fn install_from_github(
   gh: &GitHub,
   pool: &SqlitePool,
   root: &Path,
   repo: &str,
   tree: &RepoTree,
-  paths: Vec<String>,
+  paths: &[String],
   installed: &mut HashSet<String>,
-) -> Result<()> {
-  let mut queue = paths;
-  let mut i = 0;
-  while i < queue.len() {
-    let path = queue[i].clone();
-    i += 1;
-    let dir = dir_of(repo, &path);
+) -> Result<Vec<String>> {
+  let mut missing: Vec<String> = Vec::new();
+  for path in paths {
+    let dir = dir_of(repo, path);
     check_dir_name(&dir)?;
     if installed.contains(&dir) {
       continue;
     }
-    let sha = tree.folder_sha(&path).ok_or_else(|| format!("{repo} 中没有目录 {path}"))?.to_string();
+    let sha = tree.folder_sha(path).ok_or_else(|| format!("{repo} 中没有目录 {path}"))?.to_string();
     let staging = prepare_staging(root, &dir)?;
-    download_folder(gh, repo, tree, &path, &staging).await?;
+    download_folder(gh, repo, tree, path, &staging).await?;
     let info = inspect(&root.join(".staging"), &dir)?;
     let mut requires = Vec::new();
     for name in &info.references {
-      let sibling = sibling_path(&path, name);
+      let sibling = sibling_path(path, name);
       if installed.contains(name) || tree.folder_sha(&sibling).is_some() {
         requires.push(name.clone());
-        if !installed.contains(name) {
-          queue.push(sibling);
+        if !installed.contains(name) && !missing.contains(&sibling) {
+          missing.push(sibling);
         }
       }
     }
     install_staged(root, &dir)?;
-    insert_skill(pool, &dir, &info, &requires, Some(Source { repo, path: &path, sha: &sha })).await?;
+    insert_skill(pool, &dir, &info, &requires, Some(Source { repo, path, sha: &sha })).await?;
     installed.insert(dir);
   }
-  Ok(())
+  missing.retain(|path| !installed.contains(&dir_of(repo, path)));
+  Ok(missing)
 }
 
 #[tauri::command]
@@ -630,7 +638,8 @@ pub async fn skills_scan_local(state: State<'_, AppState>, root: String) -> Resu
     .collect();
   let manifest = source.join("_installed-from-repos.json");
   let repos = if manifest.is_file() {
-    let parsed: InstallManifest = serde_json::from_str(&fs::read_to_string(&manifest).map_err(err)?)
+    let text = fs::read_to_string(&manifest).map_err(err)?;
+    let parsed: InstallManifest = serde_json::from_str(text.trim_start_matches('\u{feff}'))
       .map_err(|e| format!("{} 解析失败：{e}", manifest.display()))?;
     parsed.repos.iter().map(|r| parse_repo(r)).collect::<Result<Vec<_>>>()?
   } else {
@@ -651,19 +660,21 @@ pub async fn skills_import_local(state: State<'_, AppState>, root: String, dirs:
       return Err(format!("{dir} 已在 Skill 库中"));
     }
   }
-  let mut queue = dirs.clone();
-  let mut seen: HashSet<String> = dirs.into_iter().collect();
+  let selected = dirs.len();
+  let mut queue = dirs;
   let mut i = 0;
   while i < queue.len() {
     let dir = queue[i].clone();
-    i += 1;
     let info = inspect(&source, &dir)?;
     let requires: Vec<String> = info.references.iter().filter(|n| source.join(n).is_dir()).cloned().collect();
-    for dep in &requires {
-      if !installed.contains(dep) && seen.insert(dep.clone()) {
-        queue.push(dep.clone());
+    if i < selected {
+      for dep in &requires {
+        if !installed.contains(dep) && !queue.contains(dep) {
+          queue.push(dep.clone());
+        }
       }
     }
+    i += 1;
     copy_dir(&source.join(&dir), &prepare_staging(&target, &dir)?)?;
     install_staged(&target, &dir)?;
     insert_skill(&pool, &dir, &info, &requires, None).await?;
@@ -705,7 +716,9 @@ pub async fn skills_import_github(state: State<'_, AppState>, repo: String, path
       return Err(format!("{dir} 已在 Skill 库中"));
     }
   }
-  install_from_github(&gh, &pool, &skills_root(&state.library_dir), &repo, &tree, paths, &mut installed).await?;
+  let root = skills_root(&state.library_dir);
+  let deps = install_from_github(&gh, &pool, &root, &repo, &tree, &paths, &mut installed).await?;
+  install_from_github(&gh, &pool, &root, &repo, &tree, &deps, &mut installed).await?;
   load_entries(&pool).await
 }
 
@@ -841,7 +854,7 @@ pub async fn skills_update(state: State<'_, AppState>, dirs: Vec<String>) -> Res
   let pool = state.pool.read().await;
   let gh = GitHub::new()?;
   let mut trees: HashMap<String, RepoTree> = HashMap::new();
-  let mut installed = installed_dirs(&pool).await?;
+  let installed = installed_dirs(&pool).await?;
   for dir in &dirs {
     let entry = linked_entry(&pool, dir).await?;
     let repo = entry.source_repo.expect("linked");
@@ -855,17 +868,12 @@ pub async fn skills_update(state: State<'_, AppState>, dirs: Vec<String>) -> Res
     download_folder(&gh, &repo, tree, &path, &staging).await?;
     install_staged(&root, dir)?;
     let info = inspect(&root, dir)?;
-    let mut requires = Vec::new();
-    let mut missing = Vec::new();
-    for name in &info.references {
-      let sibling = sibling_path(&path, name);
-      if installed.contains(name) {
-        requires.push(name.clone());
-      } else if tree.folder_sha(&sibling).is_some() {
-        requires.push(name.clone());
-        missing.push(sibling);
-      }
-    }
+    let requires: Vec<String> = info
+      .references
+      .iter()
+      .filter(|name| installed.contains(*name) || tree.folder_sha(&sibling_path(&path, name)).is_some())
+      .cloned()
+      .collect();
     let now = Utc::now().to_rfc3339();
     sqlx::query(
       "UPDATE skills SET name=?, description=?, kind=?, license=?, has_scripts=?, requires_json=?, tree_sha=?, latest_tree_sha=?, checked_at=?, updated_at=? WHERE dir=?",
@@ -884,7 +892,6 @@ pub async fn skills_update(state: State<'_, AppState>, dirs: Vec<String>) -> Res
     .execute(&*pool)
     .await
     .map_err(err)?;
-    install_from_github(&gh, &pool, &root, &repo, tree, missing, &mut installed).await?;
   }
   load_entries(&pool).await
 }

@@ -2976,6 +2976,7 @@ dependencies = [
  "chrono",
  "dunce",
  "fastembed",
+ "futures-util",
  "keyring",
  "open",
  "ort",

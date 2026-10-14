@@ -12,7 +12,7 @@ export function SkillUpdateDialog({ dirs, onClose, onDone }: {
   onDone(list: SkillEntry[], message: string): void;
 }) {
   const [diffs, setDiffs] = useState<SkillDiffEntry[]>();
-  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -20,15 +20,24 @@ export function SkillUpdateDialog({ dirs, onClose, onDone }: {
   }, [dirs]);
 
   const submit = async () => {
-    setBusy(true);
     setError("");
-    try {
-      const list = await backend.skillsUpdate(dirs);
-      onDone(list, `已更新 ${dirs.length} 项，旧版本已移到 skills/.backup/`);
-    } catch (e) {
-      setError(messageOf(e));
-      setBusy(false);
+    let list: SkillEntry[] | undefined;
+    for (const [index, dir] of dirs.entries()) {
+      setProgress(`正在更新 ${index + 1}/${dirs.length}：${dir}`);
+      try {
+        list = await backend.skillsUpdate([dir]);
+      } catch (e) {
+        const failure = `${dir} 更新失败：${messageOf(e)}`;
+        if (list) {
+          onDone(list, `已更新 ${index} 项；${failure}`);
+        } else {
+          setError(failure);
+          setProgress("");
+        }
+        return;
+      }
     }
+    onDone(list!, `已更新 ${dirs.length} 项，旧版本已移到 skills/.backup/`);
   };
 
   return (
@@ -46,12 +55,11 @@ export function SkillUpdateDialog({ dirs, onClose, onDone }: {
           </section>
         ))}
         {diffs && <p className="skill-import-note">确认后用 GitHub 上游版本覆盖本地目录；当前版本整体移到 skills/.backup/&lt;目录名&gt;-&lt;时间&gt;/。</p>}
+        {progress && <p className="skill-import-note"><LoaderCircle className="spin" size={14} />{progress}</p>}
         {error && <p className="inline-notice">{error}</p>}
         <footer>
-          <button type="button" className="ghost" onClick={onClose}>取消</button>
-          <button type="button" className="primary" disabled={!diffs || busy} onClick={() => void submit()}>
-            {busy && <LoaderCircle className="spin" size={15} />}备份并更新
-          </button>
+          <button type="button" className="ghost" disabled={!!progress} onClick={onClose}>取消</button>
+          <button type="button" className="primary" disabled={!diffs || !!progress} onClick={() => void submit()}>备份并更新</button>
         </footer>
       </div>
     </Modal>

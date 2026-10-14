@@ -232,7 +232,7 @@ export function SkillLibraryView() {
                 </dd>
                 <dt>状态</dt>
                 <dd>{STATUS_LABEL[selected.status]}{selected.checkedAt ? `（检查于 ${formatTime(selected.checkedAt)}）` : ""}</dd>
-                {selected.requires.length > 0 && <><dt>引用</dt><dd>{selected.requires.join("、")}</dd></>}
+                {selected.requires.length > 0 && <><dt>引用</dt><dd>{selected.requires.map(dir => skills.some(skill => skill.dir === dir) ? dir : `${dir}（未导入）`).join("、")}</dd></>}
                 {requiredBy.length > 0 && <><dt>被引用</dt><dd>{requiredBy.join("、")}</dd></>}
                 {selected.hasScripts && <><dt>脚本</dt><dd>含脚本文件，PaperNest 不执行；追问时模型只读取文字说明。</dd></>}
                 <dt>导入</dt>

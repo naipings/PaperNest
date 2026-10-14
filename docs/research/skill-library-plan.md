@@ -45,7 +45,16 @@ CREATE TABLE IF NOT EXISTS skills (
 );
 ```
 
-状态由后端计算：未关联（`source_repo` 为空）、未检查（`checked_at` 为空）、已最新（`tree_sha = latest_tree_sha`）、有更新（两者不等）、上游已删除（已检查且 `latest_tree_sha` 为空）。
+状态由后端计算：
+
+| 状态 | 条件 |
+|------|------|
+| 未关联来源 | `source_repo` 为空 |
+| 未检查 | `checked_at` 为空 |
+| 已是最新 | `tree_sha = latest_tree_sha` |
+| 有更新 | 两者都有值且不等 |
+| 与上游不同 | `tree_sha` 为空（关联时本地内容已与上游不一致） |
+| 上游已删除 | 已检查且 `latest_tree_sha` 为空 |
 
 ## 4. 后端（`src-tauri/src/skills.rs`）
 
@@ -55,13 +64,15 @@ CREATE TABLE IF NOT EXISTS skills (
 skills_scan_local(root)
   列出 root 下含 SKILL.md 的子目录：目录名、frontmatter、是否含脚本、依赖、是否已在库中
   读取 root/_installed-from-repos.json 的 repos（去掉 " (…)" 版本后缀）作为候选来源仓库
+  root 本身含 SKILL.md 时，按单个 skill 处理（来源目录取其上级）
 skills_import_local(root, dirs)
-  dirs 与其传递依赖一起复制到 skills/，写入 skills 表
+  dirs 与它们直接引用的同级目录一起复制到 skills/（经 .staging/ 暂存后就位），写入 skills 表
 ```
 
-- frontmatter 用 `serde_yaml` 解析，取 `name`、`description`、`license`。
+- frontmatter 用 `serde_yaml` 解析，取 `name`、`description`、`license`；文件开头的 UTF-8 BOM 先去掉。`_installed-from-repos.json` 同样去 BOM（PowerShell 写出的 JSON 带 BOM）。
 - 脚本判定：目录内存在 `.py .sh .js .mjs .cjs .ts .ps1 .bat .cmd .rb .pl` 文件。
-- 依赖解析：扫描 `.md .yaml .yml .json .txt` 文件中的 `../<目录>/` 片段，相对**引用它的文件**解析；落在 skill 目录之外、且是 root 下同级目录的，记为依赖。`references/` 里的 `../scripts` 指向本 skill 内部，不算依赖。
+- 引用解析：扫描 `.md .markdown .yaml .yml .json .txt` 文件中的 `../<目录>/` 片段，相对**引用它的文件**解析；落在 skill 目录之外、且是 root 下同级目录的，记为引用。`references/` 里的 `../scripts` 指向本 skill 内部，不算引用。
+- 只导入所选 skill **直接引用**的目录，不递归。共享目录常回指使用它的各个 skill（如 `ccf-common` 的路由表列出所有 ccf-* skill），递归会把无关 skill 一并带入；导入对话框预览的也是直接引用。
 
 ### 4.2 来源关联
 
@@ -81,32 +92,38 @@ skills_link_sources(repos, dirs?)
 ```text
 skills_scan_github(source)      source 为 owner/repo 或仓库 URL；返回仓库中含 SKILL.md 的目录
 skills_import_github(repo, paths)
-  按 tree 下载各文件：raw.githubusercontent.com/{owner}/{repo}/{commit}/{path}
-  逐文件校验 blob SHA，与 tree 一致才写入
-  依赖解析同 4.1，在仓库中取同级目录一并导入
+  按 tree 下载各文件：raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}，8 路并发
+  逐文件校验 blob SHA，与 tree 一致才写入（tree 与 raw 之间上游有新提交时校验失败，提示重试）
+  所选目录直接引用、且仓库中存在的同级目录一并导入
 ```
+
+- 单 skill 仓库（SKILL.md 在仓库根目录）以仓库名作为目录名。
+- HTTP 客户端用连接超时 20 秒 + 读取空闲超时 60 秒，不设整体超时：部分 skill 带大文件（`ccf-paper-writer` 上游 230 个文件、283MB，含 44MB 的论文 PDF），整体超时会中断正常下载。
 
 ### 4.4 检查更新、差异、更新、删除
 
 ```text
 skills_check_updates(dirs?)   每个来源仓库一次 tree 请求，写 latest_tree_sha、checked_at
-skills_diff(dir)              对比本地与上游：新增 / 删除 / 修改的文件
-skills_update(dirs)           下载到 skills/.staging/<dir> 并校验 → 旧目录移到 skills/.backup/<dir>-<时间戳>/ → 新目录就位 → 更新表；新出现的依赖从同仓库导入
-skills_delete(dirs)           删除目录与记录；界面先列出依赖它的 skill 供确认
+skills_diff(dirs)             对比本地与上游：新增 / 删除 / 修改的文件；同仓库共用一次 tree 请求
+skills_update(dirs)           下载到 skills/.staging/<dir> 并校验 → 旧目录移到 skills/.backup/<dir>-<时间戳>/ → 新目录就位 → 更新表
+skills_delete(dirs)           删除目录与记录；界面先列出引用它的 skill 供确认
 skills_set_enabled(dir, enabled)
 ```
 
-- GitHub 未认证限额 60 次/小时。检查更新按仓库计请求，14 个 skill 来自 3 个仓库只需 3 次。可在页面保存 GitHub Token（`keyring` 条目 `PaperNest/github_token`），请求带 `Authorization: Bearer`。
+- 更新只覆盖所选 skill，不导入上游新增的引用目录；详情页「引用」一栏把库中没有的目录标为「未导入」，由用户决定是否从 GitHub 导入。
+- 「全部更新」由界面逐个调用 `skills_update`，显示「正在更新 i/n」；中途失败时保留已完成的更新、刷新列表并报告失败项。
+- GitHub API 未认证限额 60 次/小时（raw 下载不计入）。检查更新按仓库计请求，首批 18 项来自 3 个仓库，只需 3 次。可在页面保存 GitHub Token（`keyring` 条目 `PaperNest/github_token`），请求带 `Authorization: Bearer`，限额 5000 次/小时。超限时报错信息提示保存 Token。
 - 网络或 GitHub 返回错误时，命令直接报错并显示原因。
 
 ## 5. 追问接入（`deepread_ask`）
 
 存在已启用的 skill 时：
 
-1. 系统提示追加「可用 skill」清单（名称 + 描述），说明先调用 `load_skill` 读说明、再按需 `read_skill_file` 读引用文件；脚本不可执行，只参考文字。
-2. 工具：
-   - `load_skill(name)`：返回 SKILL.md 全文与该 skill 的文件清单（脚本文件标注不可执行）。
-   - `read_skill_file(name, path)`：读取 skill 目录内文本文件，`path` 可以是 `../<依赖目录>/…`，解析后必须位于 `skills/` 内；单次最多 40,000 字符。
+1. 系统提示追加「可用 skill」清单（目录名 + 描述，只含已启用的 `kind='skill'`），说明先调用 `load_skill` 读说明、再按需 `read_skill_file` 读引用文件；脚本不可执行，只参考文字；skill 规定的输出格式与证据格式冲突时保留证据标记。
+2. 工具（`skill` 参数为目录名，须在已启用清单内）：
+   - `load_skill(skill)`：返回 SKILL.md 全文与该 skill 的文件清单（脚本文件标注「脚本，PaperNest 不执行」）。
+   - `read_skill_file(skill, path)`：读取 skill 目录内文本文件，`path` 可以是 `../<引用目录>/…`，解析后必须位于 `skills/` 内且不进入 `.backup`、`.staging`；单次最多 40,000 字符，超出截断并注明全文长度。
+   - 工具出错（未启用的 skill、文件不存在、越界路径）时把错误文本作为工具结果返回给模型。
 3. 用 `research_llm_with_tools` 跑工具循环，最多 8 轮；第 8 轮仍在调用工具则报错。
 4. 回答消息记录本轮读取过的 skill（`PaperExplainMessage.skills`），追问界面在回答下方显示。
 
@@ -132,11 +149,28 @@ skills_set_enabled(dir, enabled)
 | 精读与审稿 | nature-reader、nature-paper-card、nature-reviewer、ccf-paper-reviewer、ccf-idea-reviewer |
 | 论证核查 | paper-claim-audit、citation-audit、formula-derivation、proof-checker、kill-argument、novelty-check |
 | 实验与图表 | experiment-audit、figure-description、analyze-results |
-| 共享目录（依赖） | nature-shared、ccf-common、shared-references |
+| 直接引用（随之导入） | nature-shared、ccf-common、shared-references、ccf-paper-writer |
+
+- 共 18 项。`nature-shared`、`ccf-common` 自带 SKILL.md，按 skill 计入追问清单；`shared-references` 无 SKILL.md，按共享目录处理。
+- `ccf-paper-reviewer` 运行时读取 `../ccf-paper-writer/references/` 下的投稿指南与写作检查清单，因此 `ccf-paper-writer` 随之导入。
+- 两项与论文阅读关联较弱：`figure-description` 面向专利附图说明；`paper-claim-audit` 要求核对原始实验结果文件。两者保留在库中，可在详情页关闭「追问时启用」。
 
 ## 8. 测试
 
-Rust 单元测试：frontmatter 解析、blob SHA（含 CRLF 归一）、依赖解析、读取路径限制在 `skills/` 内、GitHub 地址解析、本地/上游差异计算。桌面端验证：通过界面完成 §7 导入、来源关联、检查更新，并在追问中触发 skill。
+Rust 单元测试（`cargo test skills::`，12 项）：frontmatter 解析（引号、嵌套 metadata、CRLF、折叠描述）、blob SHA 与 CRLF 归一、引用解析、读取路径限制、GitHub 地址解析、状态计算、tree 解析、本地/上游差异、暂存就位与备份、skill 读取与截断。
+
+桌面端验证（2026-10-14，资料库 `D:\PaperNest\PaperNestLibrary`）：
+
+| 项目 | 结果 |
+|------|------|
+| 扫描 `~/.cursor/skills` | 340 个 skill，0.7 秒，无解析错误；manifest 中 9 个仓库全部识别 |
+| 导入 §7 的 14 项 | 0.6 秒，连同直接引用共 18 项 |
+| 关联来源 | 9 个仓库共 9 次 tree 请求，约 10 秒；8 项与上游一致，10 项本地版本旧于上游，0 项未找到 |
+| 差异核对 | 抽查 `formula-derivation/SKILL.md`，与 `git diff` 结果一致（上游新增 `Skill(lean-formalize)` 等 6 行） |
+| 全部更新 | 10 项分两批完成：差异对话框逐项列出变化文件，确认后显示「正在更新 i/n」；`ccf-paper-writer`（283 MB，含 41.8 MB PDF）约 4 分 20 秒，其余每项数秒；18 项全部「已是最新」，`skills/.backup/` 下 10 份旧版本 |
+| 从 GitHub 导入 | `https://github.com/larashero3-dotcom/lieflat-less-ai-tone`（根目录即 skill）：识别 1 项并标「含脚本」，导入后来源已关联、状态「已是最新」；随后从详情页删除 |
+| 追问 | 审稿类问题自动读取 `ccf-paper-reviewer` 及其引用的 `ccf-common`，回答保留证据锚点，用时 138 秒；回答下方显示所用 skill |
+| 批量删除 | 确认框列出引用它们的 skill，删除后目录与记录一并移除 |
 
 ## 9. 实施阶段
 
