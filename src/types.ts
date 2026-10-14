@@ -465,11 +465,25 @@ export interface DeepRead {
   updatedAt: string;
 }
 
+export interface FigureBoundary { x1: number; y1: number; x2: number; y2: number; }
+
+/** pdffigures2 提取的图表；page 从 1 开始，boundary 为 72 DPI 页面坐标，image 为工作区相对路径。 */
+export interface DeepReadFigure {
+  name: string;
+  figType: string;
+  page: number;
+  caption: string;
+  image: string;
+  regionBoundary: FigureBoundary;
+  captionBoundary: FigureBoundary;
+}
+
 export interface DeepReadDetail {
   task: DeepRead;
   report: string;
   messages: PaperExplainMessage[];
   stagesDone: string[];
+  figures: DeepReadFigure[];
 }
 
 export interface DeepReadPage { page: number; paragraphs: string[]; }
