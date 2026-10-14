@@ -26,6 +26,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 sha2 = "0.10"
 base64 = "0.22"
+regex = "1"
 
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "charset"] }
 keyring = { version = "3", features = ["windows-native"] }

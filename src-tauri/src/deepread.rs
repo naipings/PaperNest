@@ -1,7 +1,9 @@
-//! 论文精读：PDF 段落 → 五阶段证据驱动报告（What/Why/How/Experiment/Question）→ 多轮追问。
+//! 论文精读：PDF 段落 + pdffigures2 图表 → 看图预读与选图计划 → 五阶段证据驱动报告
+//! （What/Why/How/Experiment/Question）→ 多轮追问。
 //! 阶段划分、证据包选段与报告校验移植自 evidence-grounded-paper-deep-read（MIT），
-//! skill 文本见 `deepread_skill/`。
+//! skill 文本见 `deepread_skill/`，插图流程见 `deepread_visuals.rs`。
 use super::*;
+use crate::deepread_visuals::{self as visuals, FigureItem, VisualContext};
 use crate::explain::{remove_explain_turn, PaperExplainMessage};
 use crate::research::ResearchLlmSettings;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -48,7 +50,7 @@ pub(crate) const REPORT_STAGES: [ReportStage; 5] = [
   ReportStage {
     key: "how",
     heading: "## 3. How：如何实现",
-    description: "详细展开输入→表征构造→关键模块→训练/优化→推理输出，每个核心模块讲清输入输出、内部操作、设计理由和与前后步骤的关系，关键公式就地定义符号。论文用方法图说明的流程，依据图注与正文讲解模块和数据流并标注图号。区分训练和推理，不能仅概述模块名称或省略核心技术细节。建议 1200–2000 字，复杂方法按需要扩展。",
+    description: "详细展开输入→表征构造→关键模块→训练/优化→推理输出，每个核心模块讲清输入输出、内部操作、设计理由和与前后步骤的关系，关键公式就地定义符号。技术路线图按照全局计划去重后尽量全部展示，先交代如何读图，再结合模块、箭头和流程讲解；总览图与局部机制图通常互补。区分训练和推理，不能仅概述模块名称或省略核心技术细节。建议 1200–2000 字，复杂方法按需要扩展。",
     keywords: &["method", "approach", "model", "algorithm", "training", "loss", "equation", "feature", "network", "inference"],
     always_keywords: &["abstract"],
   },
@@ -132,6 +134,7 @@ pub struct DeepReadDetail {
   pub report: String,
   pub messages: Vec<PaperExplainMessage>,
   pub stages_done: Vec<String>,
+  pub figures: Vec<FigureItem>,
 }
 
 struct RunControl {
@@ -234,6 +237,11 @@ fn read_sections(workspace: &Path) -> Result<Vec<SectionPage>> {
 
 fn stages_done(workspace: &Path) -> Result<Vec<String>> {
   let mut done = Vec::new();
+  for (key, file) in [("figures", visuals::MANIFEST_FILE), ("visuals", visuals::ANALYSIS_FILE), ("visual_plan", visuals::PLAN_FILE)] {
+    if workspace.join(file).exists() {
+      done.push(key.to_string());
+    }
+  }
   for stage in &REPORT_STAGES {
     let path = workspace.join("stages").join(format!("{}.md", stage.key));
     if path.exists() && !fs::read_to_string(&path).map_err(err)?.trim().is_empty() {
@@ -296,9 +304,10 @@ fn keyword_score(text: &str, keywords: &[&str]) -> usize {
   keywords.iter().filter(|keyword| lowered.contains(&keyword.to_lowercase())).count()
 }
 
-/// 参考项目在无图表时的正文预算：`max_input_chars` 的 55%，夹在 24k–48k 字符之间。
-pub(crate) fn estimate_char_budget(max_input_chars: usize) -> usize {
-  let budget = (max_input_chars as f64 * 0.55) as usize;
+/// 参考项目的正文预算：`max_input_chars` 的 55% 减去每张图表 700 字符（最多 24k），夹在 24k–48k 字符之间。
+pub(crate) fn estimate_char_budget(max_input_chars: usize, figure_count: usize) -> usize {
+  let figure_penalty = (figure_count * 700).min(24_000);
+  let budget = ((max_input_chars as f64 * 0.55) as usize).saturating_sub(figure_penalty);
   max_input_chars.min(24_000usize.max(48_000usize.min(budget)))
 }
 
@@ -390,15 +399,16 @@ pub(crate) fn stage_messages(
   source_name: &str,
   pages: &[SectionPage],
   previous: &[(&str, String)],
-) -> (String, String) {
+  visual: &VisualContext,
+) -> Result<(String, String)> {
   let evidence_pack = build_stage_text_pack(
     pages,
     stage.keywords,
     stage.always_keywords,
-    estimate_char_budget(MAX_INPUT_CHARS),
+    estimate_char_budget(MAX_INPUT_CHARS, visual.manifest.len()),
   );
   let prior = previous.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join("\n\n");
-  let system = "你是一名严谨的论文精读助手。只输出最终 Markdown，不输出思考过程。报告语言：简体中文。保留 What/Why/How/Experiment/Question 叙述路线。图表只依据图注与正文文本讲解，不插入图片。".to_string();
+  let system = "你是一名严谨的论文精读助手。只输出最终 Markdown，不输出思考过程。报告语言：简体中文。保留 What/Why/How/Experiment/Question 叙述路线。图表必须自然融入对应正文段落，不要单开图表精读章节。".to_string();
   let user = format!(
     "请为论文精读报告生成一个局部阶段。
 
@@ -412,12 +422,13 @@ PDF 文件名：{source_name}
 - 使用标题 `{heading}`。
 - 只输出一个二级章节；可少量使用三级标题，不重复前文。
 - 行内公式使用 $...$，行间公式使用独占行的 $$ 包裹，禁止其他数学定界符。
-- 引用图表时依据图注和正文描述其内容、支持的主张与证明边界，标注图表号与页码；不得插入图片，不得声称看过图片。
-- How 按技术路线组织讲解：总流程→局部机制→训练与推理，讲清关键部件和设计理由。
-- Experiment 按核心贡献的证明链组织，明确比较条件、结果与边界；不罗列全部实验。
-- 文本抽取遗漏或表格错行时明确证据限制；不能编造数值。
+- 执行全局选图计划，本阶段所有 include=true 图表必须在指定章节展示并讲解，不能因压缩篇幅再次删除；include=false 图表不插入。
+- How 按去重后的技术路线图组织讲解：总流程→局部机制→训练与推理，图前指明阅读重点，图后解释关键部件和设计理由。互补图不当成冗余。
+- Experiment 按计划中核心贡献的证明链自主组织图表和文字，明确比较条件、结果与边界；不凑图数，不重复同一图表。
+- 抽取遗漏或图像不可读时明确证据限制；不能自行截图或裁剪，不能编造数值。
 - 独立评价需标注“我的判断”或 `(Inference from ...)`，不可冒充作者结论。
-- 重要判断必须带 evidence marker，例如 `(Evidence: Page 3, P0042)` 或 `(Evidence: p. 6, Table 2)`。
+- 重要判断必须带 evidence marker，例如 `(Evidence: Page 3, P0042)` 或 `(Evidence: Page 3, Fig. 2)`。
+- 如果使用图片，必须引用 Figure And Table Manifest 中的 `image` 路径，例如 `![Figure 2](figures/paper-Figure2-1.png)`。
 - 不要编造没有证据的作者、年份、实验结果或公式。
 
 {SKILL_PROMPT}
@@ -430,6 +441,17 @@ PDF 文件名：{source_name}
 # Section Candidates
 {candidates}
 
+# All Visual Analyses (completed before writing)
+{analysis}
+
+# Global Visual Plan
+{plan}
+
+# Figure And Table Manifest
+```json
+{manifest}
+```
+
 # Stage Evidence Pack
 ```markdown
 {evidence_pack}
@@ -437,8 +459,11 @@ PDF 文件名：{source_name}
     description = stage.description,
     heading = stage.heading,
     candidates = section_candidates(pages),
+    analysis = serde_json::to_string_pretty(&visual.analysis).map_err(err)?,
+    plan = serde_json::to_string_pretty(&visual.plan).map_err(err)?,
+    manifest = serde_json::to_string_pretty(&visual.manifest).map_err(err)?,
   );
-  (system, user)
+  Ok((system, user))
 }
 
 pub(crate) fn strip_markdown_fence(text: &str) -> String {
@@ -566,8 +591,8 @@ fn has_evidence(body: &str) -> bool {
     || ["证据：", "证据:", "推断依据：", "推断依据:"].iter().any(|marker| body.contains(marker))
 }
 
-/// 参考项目 validate_report 的纯文本版：五节顺序、每节证据锚点、标题、占位符、数学定界符；本版本不允许插图。
-pub(crate) fn validate_report(text: &str) -> Vec<String> {
+/// 参考项目 validate_report：五节顺序、每节证据锚点、标题、占位符、数学定界符、插图来源与选图计划覆盖。
+pub(crate) fn validate_report(text: &str, visual: &VisualContext) -> Vec<String> {
   const CONCEPTS: [&str; 5] = ["what", "why", "how", "experiment", "question"];
   let mut problems = Vec::new();
   let (prose, _) = split_fenced(text);
@@ -602,10 +627,9 @@ pub(crate) fn validate_report(text: &str) -> Vec<String> {
   if text.split(|c: char| !c.is_ascii_alphanumeric()).any(|word| word == "TODO") || text.contains("生成失败") {
     problems.push("报告含未完成占位符".into());
   }
-  if prose.contains("![") {
-    problems.push("报告不应包含图片".into());
-  }
   problems.extend(math_problems(text));
+  problems.extend(visuals::coverage_problems(text, &visual.plan));
+  problems.extend(visuals::image_problems(text, visual));
   let mut seen = HashSet::new();
   problems.retain(|problem| seen.insert(problem.clone()));
   problems
@@ -633,11 +657,51 @@ pub(crate) async fn reset_interrupted(pool: &SqlitePool) -> Result<()> {
   Ok(())
 }
 
-async fn generate(pool: &SqlitePool, workspace: &Path, settings: &ResearchLlmSettings, task: &DeepRead) -> Result<Vec<String>> {
+pub(crate) struct RunPaths {
+  pub workspace: PathBuf,
+  pub source_pdf: PathBuf,
+  pub pdffigures2_dir: PathBuf,
+}
+
+/// 图表提取 → 逐图预读 → 全局选图计划；每步产物落盘后断点续跑时跳过。
+async fn prepare_visuals(pool: &SqlitePool, paths: &RunPaths, settings: &ResearchLlmSettings, task: &DeepRead, pages: &[SectionPage]) -> Result<VisualContext> {
+  let workspace = paths.workspace.as_path();
+  let manifest = if workspace.join(visuals::MANIFEST_FILE).exists() {
+    visuals::load_manifest(workspace)?
+  } else {
+    ensure_not_cancelled(&task.id).await?;
+    set_status(pool, &task.id, "running", Some("figures"), None).await?;
+    visuals::extract_figures(&paths.pdffigures2_dir, &paths.source_pdf, workspace).await?
+  };
+  if !workspace.join(visuals::ANALYSIS_FILE).exists() {
+    let mut records = Vec::new();
+    for (index, item) in manifest.iter().enumerate() {
+      ensure_not_cancelled(&task.id).await?;
+      set_status(pool, &task.id, "running", Some(&format!("visuals:{}/{}", index + 1, manifest.len())), None).await?;
+      records.push(visuals::analyze_visual(settings, workspace, index, item, pages).await?);
+    }
+    visuals::finish_analysis(workspace, records, pages)?;
+  }
+  if !workspace.join(visuals::PLAN_FILE).exists() {
+    if manifest.is_empty() {
+      visuals::write_empty_plan(workspace)?;
+    } else {
+      ensure_not_cancelled(&task.id).await?;
+      set_status(pool, &task.id, "running", Some("visual_plan"), None).await?;
+      let analysis = visuals::read_json(&workspace.join(visuals::ANALYSIS_FILE))?;
+      visuals::build_plan(settings, workspace, &analysis, pages).await?;
+    }
+  }
+  visuals::load_context(workspace)
+}
+
+async fn generate(pool: &SqlitePool, paths: &RunPaths, settings: &ResearchLlmSettings, task: &DeepRead) -> Result<Vec<String>> {
   let _permit = control().gate.acquire().await.map_err(err)?;
   ensure_not_cancelled(&task.id).await?;
   set_status(pool, &task.id, "running", None, None).await?;
+  let workspace = paths.workspace.as_path();
   let pages = read_sections(workspace)?;
+  let visual = prepare_visuals(pool, paths, settings, task, &pages).await?;
   let stages_dir = workspace.join("stages");
   fs::create_dir_all(&stages_dir).map_err(err)?;
   let mut generated: Vec<(&str, String)> = Vec::new();
@@ -652,7 +716,7 @@ async fn generate(pool: &SqlitePool, workspace: &Path, settings: &ResearchLlmSet
     }
     ensure_not_cancelled(&task.id).await?;
     set_status(pool, &task.id, "running", Some(stage.key), None).await?;
-    let (system, user) = stage_messages(stage, &task.title, &task.source_name, &pages, &generated);
+    let (system, user) = stage_messages(stage, &task.title, &task.source_name, &pages, &generated, &visual)?;
     let (text, finish_reason) = crate::research_llm::research_llm_completion_streamed(
       settings,
       &system,
@@ -672,11 +736,11 @@ async fn generate(pool: &SqlitePool, workspace: &Path, settings: &ResearchLlmSet
   }
   let report = assemble_report(&task.title, &generated)?;
   fs::write(workspace.join("report.md"), &report).map_err(err)?;
-  Ok(validate_report(&report))
+  Ok(validate_report(&report, &visual))
 }
 
-async fn run_task(pool: SqlitePool, workspace: PathBuf, settings: ResearchLlmSettings, task: DeepRead) {
-  let outcome = generate(&pool, &workspace, &settings, &task).await;
+async fn run_task(pool: SqlitePool, paths: RunPaths, settings: ResearchLlmSettings, task: DeepRead) {
+  let outcome = generate(&pool, &paths, &settings, &task).await;
   control().tokens.lock().await.remove(&task.id);
   let now = Utc::now().to_rfc3339();
   let query = match &outcome {
@@ -717,6 +781,7 @@ pub async fn deepread_get(state: State<'_, AppState>, id: String) -> Result<Deep
   Ok(DeepReadDetail {
     report: read_report(&workspace)?,
     stages_done: stages_done(&workspace)?,
+    figures: visuals::load_manifest(&workspace)?,
     task,
     messages,
   })
@@ -771,13 +836,31 @@ pub async fn deepread_create(state: State<'_, AppState>, input: CreateDeepReadIn
 
 /// `restart=true` 清空已生成阶段从头写；否则复用 `stages/` 里已完成的阶段继续。
 #[tauri::command]
-pub async fn deepread_run(state: State<'_, AppState>, id: String, restart: bool) -> Result<DeepRead> {
+pub async fn deepread_run(app: tauri::AppHandle, state: State<'_, AppState>, id: String, restart: bool) -> Result<DeepRead> {
   let settings = crate::research::load_research_settings(&state.library_dir).await?;
   if !settings.enabled || !settings.api_key_saved {
     return Err("论文精读使用「设置 → 文献调研」的 LLM，请先启用并保存 API Key".into());
   }
   let pool = state.pool.read().await.clone();
   let task = load_task(&pool, &state.library_dir, &id).await?;
+  let workspace = PathBuf::from(&task.workspace_path);
+  let source_pdf = match &task.paper_id {
+    Some(paper_id) => {
+      let pdf_path: Option<String> = sqlx::query_scalar("SELECT pdf_path FROM papers WHERE id=?")
+        .bind(paper_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(err)?
+        .flatten();
+      state.library_dir.join(pdf_path.filter(|path| !path.is_empty()).ok_or_else(|| "论文没有 PDF".to_string())?)
+    }
+    None => workspace.join("source.pdf"),
+  };
+  let paths = RunPaths {
+    pdffigures2_dir: app.path().resource_dir().map_err(err)?.join("pdffigures2"),
+    source_pdf,
+    workspace,
+  };
   {
     let mut tokens = control().tokens.lock().await;
     if tokens.contains_key(&id) {
@@ -785,13 +868,19 @@ pub async fn deepread_run(state: State<'_, AppState>, id: String, restart: bool)
     }
     tokens.insert(id.clone(), Arc::new(AtomicBool::new(false)));
   }
-  let workspace = PathBuf::from(&task.workspace_path);
   let prepared = async {
     if restart {
+      let workspace = &paths.workspace;
       let stage_files = REPORT_STAGES.iter().map(|stage| workspace.join("stages").join(format!("{}.md", stage.key)));
-      for path in stage_files.chain([workspace.join("report.md")]) {
+      let generated = [visuals::MANIFEST_FILE, visuals::ANALYSIS_FILE, visuals::PLAN_FILE, "report.md"].map(|file| workspace.join(file));
+      for path in stage_files.chain(generated) {
         if path.exists() {
           fs::remove_file(path).map_err(err)?;
+        }
+      }
+      for dir in [visuals::FIGURES_DIR, visuals::VISUALS_DIR].map(|dir| workspace.join(dir)) {
+        if dir.exists() {
+          fs::remove_dir_all(dir).map_err(err)?;
         }
       }
       sqlx::query("UPDATE deep_reads SET validation_json='[]' WHERE id=?").bind(&id).execute(&pool).await.map_err(err)?;
@@ -802,7 +891,7 @@ pub async fn deepread_run(state: State<'_, AppState>, id: String, restart: bool)
   .await;
   match prepared {
     Ok(queued) => {
-      tauri::async_runtime::spawn(run_task(pool, workspace, settings, queued.clone()));
+      tauri::async_runtime::spawn(run_task(pool, paths, settings, queued.clone()));
       Ok(queued)
     }
     Err(error) => {
@@ -946,11 +1035,16 @@ mod tests {
     assert_eq!(numbered[1].paragraphs[0].id, "P0002");
   }
 
+  fn no_visuals() -> VisualContext {
+    VisualContext { manifest: Vec::new(), analysis: serde_json::json!({"items": []}), plan: serde_json::json!({"items": [], "claims": []}) }
+  }
+
   #[test]
-  fn budget_matches_reference_without_figures() {
-    assert_eq!(estimate_char_budget(120_000), 48_000);
-    assert_eq!(estimate_char_budget(30_000), 24_000);
-    assert_eq!(estimate_char_budget(10_000), 10_000);
+  fn budget_matches_reference_figure_penalty() {
+    assert_eq!(estimate_char_budget(120_000, 0), 48_000);
+    assert_eq!(estimate_char_budget(120_000, 40), 42_000);
+    assert_eq!(estimate_char_budget(30_000, 0), 24_000);
+    assert_eq!(estimate_char_budget(10_000, 5), 10_000);
   }
 
   #[test]
@@ -995,10 +1089,12 @@ mod tests {
   fn stage_message_carries_heading_skill_and_previous_sections() {
     let p = pages(&[(1, &["Abstract: we study X."])]);
     let previous = vec![("what", "## 1. What：做了什么\n内容".to_string())];
-    let (system, user) = stage_messages(&REPORT_STAGES[1], "Paper T", "t.pdf", &p, &previous);
-    assert!(system.contains("不插入图片"));
+    let (system, user) = stage_messages(&REPORT_STAGES[1], "Paper T", "t.pdf", &p, &previous, &no_visuals()).unwrap();
+    assert!(system.contains("图表必须自然融入"));
     assert!(user.contains("## 2. Why：为什么做"));
     assert!(user.contains("# Report Schema"));
+    assert!(user.contains("# Global Visual Plan"));
+    assert!(user.contains("# Figure And Table Manifest"));
     assert!(user.contains("## 1. What：做了什么\n内容"));
     assert!(user.contains("[Page 1, P0001]"));
   }
@@ -1021,7 +1117,7 @@ mod tests {
     let report = assemble_report("Paper T", &sections).unwrap();
     assert!(report.starts_with("# 论文精读报告：Paper T\n\n## 1. What"));
     assert!(!report.contains("多余标题"));
-    assert!(validate_report(&report).is_empty(), "{:?}", validate_report(&report));
+    assert!(validate_report(&report, &no_visuals()).is_empty(), "{:?}", validate_report(&report, &no_visuals()));
   }
 
   #[test]
@@ -1042,10 +1138,10 @@ mod tests {
       "## 5. Question：评价与疑问\n$$ x $$ (Inference from Sec. 2)",
     ]
     .join("\n\n");
-    let problems = validate_report(&report);
+    let problems = validate_report(&report, &no_visuals());
     assert!(problems.iter().any(|p| p.contains("what 节缺少证据")));
     assert!(problems.iter().any(|p| p.contains("第 2 节应为 why")));
-    assert!(problems.iter().any(|p| p.contains("图片")));
+    assert!(problems.iter().any(|p| p.contains("插图不在 pdffigures2 提取清单中：a.png")));
     assert!(problems.iter().any(|p| p.contains("\\(")));
     assert!(problems.iter().any(|p| p.contains("独占一行")));
   }
@@ -1053,7 +1149,7 @@ mod tests {
   #[test]
   fn validation_counts_sections_and_unclosed_math() {
     let report = "# T\n\n## 1. What：做了什么\n$a (Evidence: p. 1)\n\nnext";
-    let problems = validate_report(report);
+    let problems = validate_report(report, &no_visuals());
     assert!(problems.iter().any(|p| p.contains("实际 1 个")));
     assert!(problems.iter().any(|p| p.contains("未闭合")));
   }
@@ -1062,7 +1158,7 @@ mod tests {
   fn display_math_block_is_valid() {
     let report = good_sections().into_iter().map(|(_, s)| s).collect::<Vec<_>>().join("\n\n");
     let report = format!("# T\n\n{report}\n\n$$\nL = L_1 + \\lambda L_2\n$$\n");
-    assert!(validate_report(&report).is_empty(), "{:?}", validate_report(&report));
+    assert!(validate_report(&report, &no_visuals()).is_empty(), "{:?}", validate_report(&report, &no_visuals()));
   }
 
   #[test]

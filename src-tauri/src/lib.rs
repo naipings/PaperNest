@@ -23,6 +23,7 @@ pub mod mcp_server;
 mod local_embed;
 mod explain;
 mod deepread;
+mod deepread_visuals;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

@@ -53,7 +53,7 @@ scripts/build-pdffigures2.ps1
 
 ### 4.1 插图渲染
 
-- `DeepReadMarkdown` 的 `img` 渲染器：`figures/…` 路径经新命令 `deepread_figure(id, path)` 读取字节（后端限定在该任务的 `figures/` 目录内，路径来自模型输出），生成 blob URL 显示。
+- `DeepReadMarkdown` 的 `img` 渲染器：`figures/…` 拼成 `deepread/<id>/figures/…`，经现有 `read_managed_file`（限定在资料库目录内）读取字节，生成 blob URL 显示。`deepread_get` 返回 `figures`（manifest）供前端定位图表区域。
 - 阶段进度条增加「图表提取 / 看图预读 n/N / 选图计划」。
 
 ### 4.2 段落坐标
@@ -82,7 +82,7 @@ scripts/build-pdffigures2.ps1
 | 步骤 | 内容 | 验收 |
 |------|------|------|
 | 1 | 构建脚本、jar、精简运行时、`bundle.resources` | 用 9 页样例论文直接运行 jar，得到图表 PNG 与 JSON |
-| 2 | 后端 `figures` / `visuals` / `visual_plan` 阶段、提示词、校验、`deepread_figure` | `cargo test deepread` 覆盖 manifest 解析、`plan_problems`、`coverage_problems`、路径限定 |
+| 2 | 后端 `figures` / `visuals` / `visual_plan` 阶段、提示词、校验 | `cargo test deepread` 覆盖 manifest 解析、上下文选段、预读字段、`plan_problems`、`coverage_problems`、插图来源 |
 | 3 | 插图渲染、阶段进度 | vitest 覆盖图片渲染器；样例论文报告内插图可见 |
 | 4 | 段落坐标、对照阅读视图、证据锚点解析、`reveal` 高亮 | vitest 覆盖锚点解析与矩形换算；桌面端点击锚点跳页高亮正确 |
 | 5 | 文档同步、版本 0.2.51、桌面实测、打包 | 安装包与便携版均能提取图表 |
