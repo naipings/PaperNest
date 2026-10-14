@@ -3,6 +3,7 @@ dist/
 target/
 src-tauri/target/
 src-tauri/target-reader-pageview/
+src-tauri/resources/pdffigures2/
 .vite/
 *.log
 *.sqlite

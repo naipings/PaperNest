@@ -29,6 +29,9 @@
     "targets": [
       "nsis"
     ],
+    "resources": {
+      "resources/pdffigures2/": "pdffigures2/"
+    },
     "shortDescription": "Windows 本地双语论文管理与阅读工具",
     "longDescription": "在本地管理、阅读、批注论文，并沉淀双语术语和写作素材。",
     "windows": {
