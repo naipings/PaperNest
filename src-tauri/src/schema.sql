@@ -79,6 +79,23 @@ CREATE TABLE IF NOT EXISTS deep_reads (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_deep_reads_updated ON deep_reads(updated_at);
+CREATE TABLE IF NOT EXISTS skills (
+  dir TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK(kind IN ('skill','shared')),
+  license TEXT,
+  has_scripts INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  requires_json TEXT NOT NULL DEFAULT '[]',
+  source_repo TEXT,
+  source_path TEXT,
+  tree_sha TEXT,
+  latest_tree_sha TEXT,
+  checked_at TEXT,
+  installed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS custom_field_definitions (
   id TEXT PRIMARY KEY,
