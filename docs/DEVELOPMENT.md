@@ -176,6 +176,7 @@ sequenceDiagram
 
 知识树对齐 [Connected Papers](https://www.connectedpapers.com/about/) 的**交互与视觉模型**；当前底层为 **L1 本地语义**（未接引文 API）。
 「在论文表格中定位」与双击节点：切换到论文库、清空搜索、选中论文所在文件夹（或未归档），表格选中行高亮并滚入可视区。
+详情栏「论文精读」：切到论文精读页，预选该论文，候选范围设为以它为原点的知识树邻域（§16）。
 
 | Connected Papers | PaperNest（L1） |
 |------------------|-----------------|
@@ -268,8 +269,9 @@ paperReader/
 ├── backup/clinical-medicine/   # 临床医学变体 overlay 与说明
 ├── release/windows/            # PaperNest.exe / setup / clinmed 产物
 ├── src/
-│   ├── App.tsx                 # 屏幕路由：library / radar / research / writing / knowledge / tasks / trash / settings
+│   ├── App.tsx                 # 屏幕路由：library / radar / research / deepread / writing / knowledge / tasks / trash / settings
 │   ├── components/
+│   │   ├── DeepReadView.tsx               # 论文精读页；子组件在 deepread/
 │   │   ├── PdfReader.tsx                  # 阅读台壳层
 │   │   ├── ContinuousAnnotatablePdf.tsx   # PDF.js 连续页 + 批注层
 │   │   ├── ExplainPanel.tsx               # 解读 Tab（讲稿 + 问答）
@@ -284,6 +286,8 @@ paperReader/
 │   │   ├── pdfCoverMeta.ts
 │   │   ├── pdfSession.ts                  # PDF.js 串行打开 / destroy
 │   │   ├── extractPdfCover.ts             # 导入：单次会话封面+分析文本
+│   │   ├── pdfParagraphs.ts               # 论文精读：pdf.js 文本项 → 页/段落
+│   │   ├── deepReadCandidates.ts          # 论文精读：全部 / 文件夹 / 知识树邻域候选
 │   │   └── pdfRenderScale.ts
 │   ├── services/
 │   │   ├── backend.ts          # Tauri invoke 统一入口
@@ -298,6 +302,8 @@ paperReader/
 ├── src-tauri/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/explain.rs          # 阅读台解读（page 文 + LLM）
+│   ├── src/deepread.rs         # 论文精读：证据包、五阶段生成、报告校验、追问
+│   ├── src/deepread_skill/     # 精读 skill 提示词（移植自 evidence-grounded-paper-deep-read，MIT）
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
 │   ├── src/research.rs         # 文献调研会话与命令（含多轮 continue/export）
@@ -335,6 +341,7 @@ paperReader/
 | `Folder` | `folders` | 名称、`parent_id`、排序；可嵌套 |
 | `Paper.folderId` | `papers.folder_id` | 每篇至多一个文件夹；`NULL` 为未归档 |
 | `PaperExplain` | `paper_explains` | 按 `paper_id` 缓存解读稿 JSON 与多轮对话 |
+| `DeepRead` | `deep_reads` | 精读任务：`paper_id`（论文删除后置空）、来源 `library`/`external`、状态与当前阶段、校验问题、追问记录；文件在 `deepread/<id>/` |
 
 ### 5.2 主领域与子领域预设
 
@@ -392,6 +399,9 @@ paperReader/
 | `research_dsh_append` / `research_dsh_derive_messages` / `research_dsh_load` | Phase 9：DSH Session 桥接 |
 | `research_dsh_fork` / `research_resume_session` | Phase 9：官方 `SessionStore.fork` + Rust 续跑 |
 | `research_open_workspace` / `research_delete_session` | 打开文件夹 / 删除任务 |
+| `deepread_create` / `deepread_run` / `deepread_cancel` | 论文精读：建任务（写 `sections.json`）/ 后台串行生成（`restart` 清空阶段）/ 当前阶段结束后停止 |
+| `deepread_list` / `deepread_get` / `deepread_delete` / `deepread_open_workspace` | 精读任务列表、详情（报告、已完成阶段、追问）、删除、打开文件夹 |
+| `deepread_ask` / `deepread_delete_turn` / `deepread_link_paper` | 精读追问、删单轮、外部 PDF 入库后关联论文 |
 | `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
 | `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
 | `save_custom_field_definition` | 新增或更新字段定义 |
@@ -412,6 +422,7 @@ flowchart TB
     Library["screen=library"]
     Radar["screen=radar"]
     Research["screen=research"]
+    DeepRead["screen=deepread"]
     Writing["screen=writing"]
     Knowledge["screen=knowledge"]
     Tasks["screen=tasks"]
@@ -444,6 +455,7 @@ flowchart TB
 | 桌面壳 | Tauri 2 |
 | UI | React 19 + TypeScript + Vite |
 | 阅读 / 索引 | pdfjs-dist |
+| Markdown / 公式 | react-markdown + remark-gfm；论文精读另加 remark-math + rehype-katex（KaTeX） |
 | 带批注导出 | pdf-lib |
 | 数据库 | SQLite + SQLx + FTS5 |
 | OCR | 本机 Tesseract |
@@ -497,6 +509,7 @@ cd src-tauri; cargo check
 | 阅读台解读 | 侧栏「解读」：首轮生成讲稿后可多对话；新建对话复用讲稿直接聊；历史按钮切换/删除对话；页码跳转与删单轮 |
 | 阅读台编辑框 | 选区可右键/浮动条复制；「填入当前选区」或「送入编辑框」写入原文；箭头翻译；字号小/中/大；可收为术语 / 加入写作库（无译文时自动翻译，有译文则复用） |
 | 本地知识树 | L1 BM25+TF-IDF；原点可搜索切换；空白取消选中；自适应力导向；先前·衍生·列表 |
+| 论文精读 | 论文库或本地 PDF 选篇后逐篇生成五节报告，阶段进度可见，公式渲染，校验问题置顶；停止后「继续生成」复用已完成阶段；报告完成后可追问、删单轮；外部 PDF 可「加入论文库」；知识树详情栏「论文精读」预选该论文 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |
 | 术语收录 | 选中文本 → 侧栏术语库有条目 |
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
@@ -621,6 +634,33 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 ---
 
-## 16. 扩展方向
+## 16. 论文精读
+
+把论文 PDF 转为证据驱动的 Markdown 精读报告，每篇一个任务，五节依次为 What → Why → How → Experiment → Question。流程、阶段关键词、证据包选段和报告校验移植自 [evidence-grounded-paper-deep-read](https://github.com/MoonKirito/evidence-grounded-paper-deep-read)（MIT），提示词在 `src-tauri/src/deepread_skill/`。使用「设置 → 文献调研」的 LLM。
+
+```text
+来源：论文库（全部 / 文件夹 / 知识树邻域）或本地 PDF
+  → 前端 pdf.js 抽页文并切段（pdfParagraphs.ts）
+  → deepread_create：sections.json（全局段落 ID P0001…）；外部 PDF 另存 source.pdf
+  → deepread_run：后台任务，全局单许可串行
+       每阶段：阶段关键词选段（预算 48000 字，补邻段）+ 章节候选 + 已生成前文 + skill 提示词
+             → 流式生成 → stages/<key>.md（已存在则跳过，支持继续生成）
+       拼装 report.md → validate_report（五节顺序、每节证据锚点、公式定界符、TODO、图片）
+  → deepread_ask：报告全文 + 按问题关键词选段（40000 字）+ 最近 12 条对话
+```
+
+| 约定 | 说明 |
+|------|------|
+| 证据 | 纯文本：`(Evidence: p. 5, P0042)`；图表按图注与正文引用定位，报告不插图 |
+| 校验 | 问题写入 `validation_json` 并显示在报告顶部，报告照常保存 |
+| 截断 | 阶段输出 `finish_reason=length` 判失败，提示换用输出上限更高的模型后继续生成 |
+| 中断 | 启动时 `queued` / `running` 改为 `failed`，可「继续生成」 |
+| 外部 PDF | 只存精读工作区；「加入论文库」走 `import_pdfs` + 封面元数据 + 重复判定，再 `deepread_link_paper` |
+
+工作区 `PaperNestLibrary/deepread/<id>/` 随资料库备份。实现计划见 [paper-deep-read-plan.md](research/paper-deep-read-plan.md)。
+
+---
+
+## 17. 扩展方向
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。

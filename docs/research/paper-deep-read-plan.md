@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS deep_reads (
   source_kind TEXT NOT NULL CHECK(source_kind IN ('library','external')),
   title TEXT NOT NULL,
   source_name TEXT NOT NULL,
-  status TEXT NOT NULL,          -- queued | running | completed | failed | cancelled
+  status TEXT NOT NULL,          -- draft | queued | running | completed | failed | cancelled
   stage TEXT,                    -- 运行中的阶段 key
   error TEXT,
   validation_json TEXT NOT NULL DEFAULT '[]',
@@ -60,8 +60,8 @@ report.md
 ## 4. 后端（`src-tauri/src/deepread.rs`）
 
 ```text
-deepread_create(input)        → 写工作区与 sections.json，插入 queued 任务
-deepread_run(id, restart)     → 后台 spawn；全局单许可信号量串行；restart 清空 stages
+deepread_create(input)        → 写工作区与 sections.json，插入 draft 任务（前端随即调用 deepread_run）
+deepread_run(id, restart)     → 后台 spawn；全局单许可信号量串行；restart 清空 stages 与 report.md
   for stage in What..Question:
     已有 stages/<key>.md → 跳过（断点续写）
     取消令牌 → cancelled
@@ -86,7 +86,7 @@ deepread_link_paper(id, paperId) / deepread_open_workspace(id)
 | 追问 Tab | 多轮对话（Markdown + 公式），删除单轮；无轨迹视图 |
 | 知识树衔接 | 知识树详情栏「论文精读」按钮：跳到精读页并预选该论文，范围切到以它为原点的知识树邻域 |
 
-页文抽取：前端 `src/lib/pdfParagraphs.ts` 用 pdf.js 文本项按行合并，行距大于 1.6 倍行高或换栏时断段，并拼回行尾连字符。库内论文从受管路径读 PDF，外部 PDF 读用户文件后以 base64 交给后端落盘。
+页文抽取：前端 `src/lib/pdfParagraphs.ts` 用 pdf.js 文本项按行合并，行距大于 1.6 倍中位行距、换栏（y 回跳）、首行缩进或字号变化时断段，并拼回行尾连字符。参考项目用 PyMuPDF 纯文本按空行切段，pdf.js 文本项不带空行，因此改用几何信号。库内论文从受管路径读 PDF，外部 PDF 读用户文件后以 base64 交给后端落盘。
 
 新依赖：`remark-math`、`rehype-katex`、`katex`（报告公式渲染）。
 

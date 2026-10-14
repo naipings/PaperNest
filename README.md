@@ -102,6 +102,7 @@ sequenceDiagram
 | 任务日历  | 本地任务，可关联论文；页底阅读打卡（每日新增 + 满 5 分钟阅读）          |
 | 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
 | 文献调研  | ReAct Agent；**单窗口多轮追问** + 附件/链接 + `fetch_url`；对话/轨迹/候选论文三 Tab（DSH 1:1 UI）；`report.md` + `turns/` + `proposals/`；MCP（`papernest-mcp`） |
+| 论文精读  | 论文库 / 知识树邻域 / 本地 PDF 选篇，逐篇生成 What → Why → How → Experiment → Question 证据报告（页码 + 段落锚点、KaTeX 公式、自动校验），报告后多轮追问 |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 
 
@@ -249,6 +250,15 @@ flowchart LR
 - 过程文件：`.dsh-session/`（DSH 事件日志）、`steps/`、`sources.jsonl`、`outline.md`、`turns.jsonl`、`turns/`、`attachments/`。外网论文只记链接与摘要，调研期不下载 PDF。
 - **Codex MCP**：设置页复制 `codex mcp add` 命令；`papernest-mcp.exe` 与主程序同目录。
 
+### 论文精读
+
+- 使用 **设置 → 文献调研** 的 LLM；流程与提示词移植自 [evidence-grounded-paper-deep-read](https://github.com/MoonKirito/evidence-grounded-paper-deep-read)（MIT）。
+- 侧栏 **论文精读**：从论文库（全部 / 文件夹 / 知识树邻域）勾选多篇，或选择、拖入本地 PDF，点 **开始精读**。每篇一个任务，逐篇排队生成。
+- 本地知识树详情栏 **论文精读**：预选该论文，并列出以它为原点的邻域论文。
+- 报告五节：What（做了什么）→ Why（为什么做）→ How（如何实现）→ Experiment（如何证明有效）→ Question（评价与疑问）。结论附 `(Evidence: p. 5, P0042)` 证据，图表按图注定位，不插图。
+- 报告页显示五阶段进度与校验问题；停止或失败后 **继续生成** 复用已完成阶段。**追问** 页基于报告与原文段落多轮问答。
+- 本地 PDF 只存精读工作区，报告页 **加入论文库** 后可在阅读台打开。工作区：`PaperNestLibrary/deepread/<id>/`。
+
 
 
 ### 导入、搜索与辅助能力
@@ -285,6 +295,7 @@ flowchart LR
 ├── research.db             # 文献调研会话索引
 ├── pdf/originals/          # 受管 PDF 原件
 ├── research/               # 默认调研工作区（每任务一子文件夹）
+├── deepread/               # 论文精读工作区（sections.json、stages/、report.md）
 ├── figures/                # 方法框架图
 ├── avatars/                # 用户头像
 ├── backups/                # 完整备份包
@@ -331,4 +342,5 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [论文雷达评估](docs/research/paper-radar-feature-assessment.md) | 发现层定位、双层保护、稀疏使用与空池降级 |
 | [阅读台解读](docs/research/reader-pdf-explain-plan.md) | 精读侧栏与 PDF 对话：讲稿 + 多轮问答 |
 | [文献调研计划](docs/research/deep-literature-research-assessment.md) | 深度调研定稿、工作区与 MCP 路线 |
+| [论文精读计划](docs/research/paper-deep-read-plan.md) | 证据驱动五节报告：参考实现复用范围、数据、分步验收 |
 | [Trajectory 方案](docs/research/research-trajectory-plan.md) | Phase 9：复用 DSH 官方 session + TrajectoryView |
