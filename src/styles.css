@@ -1034,6 +1034,7 @@ button.reading-heat-dot { cursor: default; }
   border-radius: 16px;
   padding: 16px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 6%, transparent);
 }
@@ -1604,6 +1605,7 @@ button.reading-heat-dot { cursor: default; }
 
 .research-composer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--line);
@@ -1646,15 +1648,17 @@ button.reading-heat-dot { cursor: default; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 260px;
+  max-width: min(260px, 100%);
+  min-width: 0;
   padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--text) 4%, transparent);
   font-size: 12px;
 }
-.research-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.research-chip small { color: var(--muted); font-size: 10px; }
+.research-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.research-chip small, .research-chip svg, .research-chip button { flex-shrink: 0; }
+.research-chip small { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .research-chip button {
   display: inline-flex;
   border: none;

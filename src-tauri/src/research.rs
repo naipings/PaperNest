@@ -397,6 +397,33 @@ pub(crate) async fn reset_interrupted_sessions(library_dir: &Path) -> Result<()>
   Ok(())
 }
 
+/// 资料库整体迁到其他盘符或目录后，库内会话记录的绝对路径失效；按会话 ID 指回当前资料库下的目录。
+/// 用户自选的库外项目文件夹无法推断新位置，保持原样。
+pub(crate) async fn relink_moved_workspaces(library_dir: &Path) -> Result<()> {
+  let pool = open_research_pool(library_dir).await?;
+  let rows = sqlx::query("SELECT id, workspace_path FROM research_sessions")
+    .fetch_all(&pool)
+    .await
+    .map_err(err)?;
+  for row in rows {
+    let id: String = row.get("id");
+    let stored: String = row.get("workspace_path");
+    let current = library_dir.join("research").join(&id);
+    if Path::new(&stored).exists() || !current.is_dir() {
+      continue;
+    }
+    sqlx::query("UPDATE research_sessions SET workspace_path=?, report_path=? WHERE id=?")
+      .bind(current.to_string_lossy().into_owned())
+      .bind(current.join("report.md").to_string_lossy().into_owned())
+      .bind(&id)
+      .execute(&pool)
+      .await
+      .map_err(err)?;
+  }
+  pool.close().await;
+  Ok(())
+}
+
 pub async fn list_sessions_public(pool: &SqlitePool) -> Result<Vec<ResearchSession>> {
   let rows = sqlx::query("SELECT * FROM research_sessions ORDER BY updated_at DESC")
     .fetch_all(pool)
@@ -1796,5 +1823,45 @@ mod tests {
       .collect();
     let block = sources_block_for_writer(&sources);
     assert!(block.len() < 90_000, "writer sources block too large: {}", block.len());
+  }
+
+  #[test]
+  fn relink_moved_workspaces_points_sessions_at_current_library() {
+    tauri::async_runtime::block_on(async {
+      let library = env::temp_dir().join(format!("papernest-relink-{}", Uuid::new_v4()));
+      let external = env::temp_dir().join(format!("papernest-relink-ext-{}", Uuid::new_v4()));
+      fs::create_dir_all(library.join("research").join("moved")).unwrap();
+      fs::create_dir_all(&external).unwrap();
+      let session = |id: &str, workspace: &Path| ResearchSession {
+        id: id.into(),
+        title: id.into(),
+        query: id.into(),
+        output_requirements: String::new(),
+        workspace_path: workspace.to_string_lossy().into_owned(),
+        report_path: workspace.join("report.md").to_string_lossy().into_owned(),
+        status: "completed".into(),
+        report_preview: None,
+        error: None,
+        created_at: "2026-10-13T00:00:00Z".into(),
+        updated_at: "2026-10-13T00:00:00Z".into(),
+      };
+      let pool = open_research_pool(&library).await.unwrap();
+      upsert_session(&pool, &session("moved", Path::new(r"Z:\Old\PaperNestLibrary\research\moved"))).await.unwrap();
+      upsert_session(&pool, &session("external", &external)).await.unwrap();
+      pool.close().await;
+
+      relink_moved_workspaces(&library).await.unwrap();
+
+      let pool = open_research_pool(&library).await.unwrap();
+      let moved = get_session_row(&pool, "moved").await.unwrap();
+      let kept = get_session_row(&pool, "external").await.unwrap();
+      pool.close().await;
+      let expected = library.join("research").join("moved");
+      assert_eq!(moved.workspace_path, expected.to_string_lossy());
+      assert_eq!(moved.report_path, expected.join("report.md").to_string_lossy());
+      assert_eq!(kept.workspace_path, external.to_string_lossy());
+      let _ = fs::remove_dir_all(&library);
+      let _ = fs::remove_dir_all(&external);
+    });
   }
 }

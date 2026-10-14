@@ -282,7 +282,8 @@ fn default_settings() -> RadarSettings {
   }
 }
 
-// arXiv 的 submittedDate 索引比自然日滞后约一天，2 天窗口在周末会返回空列表。
+// arXiv API 只收录已公告的稿件，最新 submittedDate 常比自然日晚 2–4 天（周末与公告批次叠加）。
+// 日窗因此以订阅类目里最新一篇的投稿日为终点，而不是以今天为终点。
 const NEW_WINDOW_DAYS: i64 = 3;
 const INTEREST_WINDOW_DAYS: i64 = 4;
 const INTEREST_PER_KEYWORD: i64 = 50;
@@ -570,7 +571,7 @@ fn urlencoding_encode(value: &str) -> String {
 type ArxivEntry = (String, String, String, Vec<String>, Vec<String>, Option<String>, Option<String>);
 
 async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
-  let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
+  let client = Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
   let url = format!(
     "https://export.arxiv.org/api/query?search_query={}&sortBy=submittedDate&sortOrder=descending&max_results={}",
     urlencoding_encode(search_query),
@@ -597,7 +598,7 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
     let response = match response {
       Ok(response) => response,
       Err(error) => {
-        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request()) {
+        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request() || error.is_body() || error.is_decode()) {
           last_transport = error.to_string();
           continue;
         }
@@ -605,11 +606,20 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
       }
     };
     let status = response.status();
-    let text = response.text().await.map_err(err)?;
+    let text = match response.text().await {
+      Ok(text) => text,
+      Err(error) => {
+        if attempt < 4 {
+          last_transport = error.to_string();
+          continue;
+        }
+        return Err(err(error));
+      }
+    };
     if status.is_success() {
       return Ok(parse_arxiv_atom(&text));
     }
-    if status.as_u16() == 429 && attempt < 4 {
+    if matches!(status.as_u16(), 429 | 502 | 503) && attempt < 4 {
       continue;
     }
     return Err(format!("arXiv API 失败（{status}）"));
@@ -620,8 +630,7 @@ async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Re
   Err("arXiv API 失败（429 Too Many Requests）".into())
 }
 
-fn submitted_date_range(window_days: i64) -> String {
-  let end = Utc::now().date_naive();
+fn submitted_date_range(end: chrono::NaiveDate, window_days: i64) -> String {
   let start = end - chrono::Duration::days(window_days.max(0));
   format!(
     "submittedDate:[{}0000 TO {}2359]",
@@ -638,32 +647,58 @@ fn escape_arxiv_phrase(value: &str) -> String {
   value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn build_interest_query(keyword: &str, categories: &[String], window_days: i64) -> String {
+fn build_interest_query(keyword: &str, categories: &[String], end: chrono::NaiveDate, window_days: i64) -> String {
   let phrase = escape_arxiv_phrase(keyword.trim());
   let kw = format!("(ti:\"{phrase}\" OR abs:\"{phrase}\")");
   let mut parts = vec![kw];
   if !categories.is_empty() {
     parts.push(format!("({})", category_or_query(categories)));
   }
-  parts.push(submitted_date_range(window_days));
+  parts.push(submitted_date_range(end, window_days));
   parts.join(" AND ")
 }
 
-async fn fetch_arxiv_new(categories: &[String], limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
+fn entry_date(entry: &ArxivEntry) -> Option<chrono::NaiveDate> {
+  let published = entry.6.as_deref()?;
+  chrono::NaiveDate::parse_from_str(published.get(..10)?, "%Y-%m-%d").ok()
+}
+
+/// 按投稿日倒序取订阅类目的最新稿，只保留最新投稿日往前 `NEW_WINDOW_DAYS` 天内的稿件。
+/// 同时返回最新投稿日，供兴趣召回对齐同一日窗。
+fn keep_newest_window(entries: Vec<ArxivEntry>) -> (Vec<ArxivEntry>, Option<chrono::NaiveDate>) {
+  let Some(newest) = entries.iter().filter_map(entry_date).max() else {
+    return (entries, None);
+  };
+  let start = newest - chrono::Duration::days(NEW_WINDOW_DAYS);
+  let kept = entries
+    .into_iter()
+    .filter(|entry| entry_date(entry).is_some_and(|date| date >= start))
+    .collect();
+  (kept, Some(newest))
+}
+
+async fn fetch_arxiv_new(
+  categories: &[String],
+  limit: i64,
+  mailto: Option<&str>,
+) -> Result<(Vec<ArxivEntry>, Option<chrono::NaiveDate>)> {
   if categories.is_empty() {
-    return Ok(vec![]);
+    return Ok((vec![], None));
   }
-  let query = format!(
-    "({}) AND {}",
-    category_or_query(categories),
-    submitted_date_range(NEW_WINDOW_DAYS)
-  );
-  arxiv_query(&query, limit, mailto).await
+  // 不按自然日窗过滤：先取投稿日最新的一批，再裁到「最新投稿日 − NEW_WINDOW_DAYS」。
+  // Atom 全文过长时易触发 body decode 失败，故单次请求上限 50。
+  let entries = arxiv_query(&category_or_query(categories), limit.min(50), mailto).await?;
+  Ok(keep_newest_window(entries))
+}
+
+fn arxiv_index_lag_end() -> chrono::NaiveDate {
+  Utc::now().date_naive() - chrono::Duration::days(3)
 }
 
 async fn fetch_arxiv_interest(
   keywords: &[String],
   categories: &[String],
+  window_end: chrono::NaiveDate,
   mailto: Option<&str>,
 ) -> Result<Vec<ArxivEntry>> {
   let kws = normalized_keywords(keywords);
@@ -676,7 +711,7 @@ async fn fetch_arxiv_interest(
     if index > 0 {
       tokio::time::sleep(Duration::from_millis(3100)).await;
     }
-    let query = build_interest_query(keyword, categories, INTEREST_WINDOW_DAYS);
+    let query = build_interest_query(keyword, categories, window_end, INTEREST_WINDOW_DAYS);
     let batch = arxiv_query(&query, INTEREST_PER_KEYWORD, mailto).await?;
     for entry in batch {
       if seen.insert(entry.0.clone()) {
@@ -1006,8 +1041,12 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
     tokio::time::sleep(Duration::from_millis(3100)).await;
   }
   arxiv_calls += 1;
+  let mut window_end = arxiv_index_lag_end();
   match fetch_arxiv_new(&settings.categories, settings.new_limit, settings.mailto.as_deref()).await {
-    Ok(cards) => {
+    Ok((cards, newest)) => {
+      if let Some(newest) = newest {
+        window_end = newest;
+      }
       for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in cards.into_iter().enumerate() {
         upsert_paper_meta(
           &radar,
@@ -1034,7 +1073,7 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
       tokio::time::sleep(Duration::from_millis(3100)).await;
     }
     arxiv_calls += 1;
-    match fetch_arxiv_interest(&settings.keywords, &settings.categories, settings.mailto.as_deref()).await {
+    match fetch_arxiv_interest(&settings.keywords, &settings.categories, window_end, settings.mailto.as_deref()).await {
       Ok(cards) => {
         for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in cards.into_iter().enumerate() {
           upsert_paper_meta(
@@ -2295,12 +2334,28 @@ mod radar_unit_tests {
 
   #[test]
   fn interest_query_includes_keyword_cats_and_date() {
-    let q = build_interest_query("agent memory", &["cs.AI".into(), "cs.CL".into()], 3);
+    let end = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).unwrap();
+    let q = build_interest_query("agent memory", &["cs.AI".into(), "cs.CL".into()], end, 3);
     assert!(q.contains("ti:\"agent memory\""));
     assert!(q.contains("abs:\"agent memory\""));
     assert!(q.contains("cat:cs.AI"));
     assert!(q.contains("cat:cs.CL"));
-    assert!(q.contains("submittedDate:["));
+    assert!(q.contains("submittedDate:[202610060000 TO 202610092359]"));
+  }
+
+  #[test]
+  fn newest_window_anchors_on_latest_submission_not_today() {
+    let entry = |id: &str, published: &str| -> ArxivEntry {
+      (id.into(), id.into(), String::new(), vec![], vec![], None, Some(published.into()))
+    };
+    let (kept, newest) = keep_newest_window(vec![
+      entry("a", "2026-10-09T17:59:56Z"),
+      entry("b", "2026-10-06T08:00:00Z"),
+      entry("c", "2026-10-05T23:00:00Z"),
+    ]);
+    assert_eq!(newest, chrono::NaiveDate::from_ymd_opt(2026, 10, 9));
+    let ids: Vec<_> = kept.iter().map(|e| e.0.as_str()).collect();
+    assert_eq!(ids, vec!["a", "b"]);
   }
 
   #[test]
@@ -2324,11 +2379,11 @@ mod radar_unit_tests {
   #[tokio::test]
   async fn interest_and_new_network_smoke() {
     let cats = vec!["cs.AI".into(), "cs.CL".into(), "cs.LG".into()];
-    let new_cards = fetch_arxiv_new(&cats, 20, None).await.expect("new fetch");
+    let (new_cards, newest) = fetch_arxiv_new(&cats, 20, None).await.expect("new fetch");
     assert!(!new_cards.is_empty(), "New 日窗应返回稿件");
 
     tokio::time::sleep(Duration::from_millis(3100)).await;
-    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, None)
+    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, newest.expect("newest date"), None)
       .await
       .expect("interest fetch");
     assert!(!interest.is_empty(), "Interest 关键词召回应返回稿件");
@@ -2364,7 +2419,7 @@ mod radar_unit_tests {
     }
 
     tokio::time::sleep(Duration::from_millis(3100)).await;
-    let news = fetch_arxiv_new(&cats, 15, None).await.expect("new");
+    let (news, newest) = fetch_arxiv_new(&cats, 15, None).await.expect("new");
     for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in news.into_iter().enumerate() {
       upsert_paper_meta(
         &pool,
@@ -2384,7 +2439,7 @@ mod radar_unit_tests {
     }
 
     tokio::time::sleep(Duration::from_millis(3100)).await;
-    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, None)
+    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, newest.expect("newest date"), None)
       .await
       .expect("interest");
     assert!(!interest.is_empty());

@@ -72,7 +72,7 @@ export function ResearchComposer({
       {(attachments.length > 0 || links.length > 0) && (
         <div className="research-chip-row">
           {attachments.map(item => (
-            <span key={item.id} className={`research-chip research-chip--${item.kind}`}>
+            <span key={item.id} className={`research-chip research-chip--${item.kind}`} title={item.name}>
               {item.kind === "image" ? <Image size={13} /> : <FileText size={13} />}
               <span className="research-chip-name">{item.name}</span>
               <small>{item.sizeLabel}</small>

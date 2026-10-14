@@ -248,6 +248,7 @@ flowchart LR
 - 启动时若 `library.db` 或资料库目录不可写，复制到应用数据目录、更新路径配置，并通过 `libraryNotice` 在界面提示新路径。
 - 启动迁移会删除临床医学临时包残留的分类/标签 ID，并清理论文上的对应引用。
 - 资料库迁移、创建备份、恢复备份失败时，在设置页显示具体错误。
+- 启动时 `research::relink_moved_workspaces`：若 `research.db` 里会话的绝对路径失效，但当前资料库下 `research/<id>` 仍存在，则改写 `workspace_path` / `report_path`。库外自选项目文件夹无法推断新位置，保持原样。
 - 个人资料保存失败时，在设置页显示具体错误。
 - API Key、LibreTranslate 虚拟环境路径 **不** 进入备份包。
 
@@ -379,7 +380,7 @@ paperReader/
 | `create_backup` / `restore_backup` | 备份恢复 |
 | `lookup_online_metadata` | Crossref 元数据（设置开启 + 论文详情手动触发） |
 | `radar_get_settings` / `radar_save_settings` | 论文雷达开关与订阅类目（独立 `radar.db`） |
-| `radar_fetch_today` | 用户点击后三路召回 Hot + New(+日窗) + Interest(关键词)；发现期只写元数据 |
+| `radar_fetch_today` | 用户点击后三路召回 Hot + New（按最新投稿日裁 3 日窗，单次 ≤50）+ Interest(关键词，同窗)；发现期只写元数据 |
 | `radar_import_to_library` | 加入资料库；可选下载 PDF，或仅元数据 |
 | `radar_list_feed` / `radar_recommend` / `radar_week_hot` | 三榜（Hot/New/Interest）、推荐 cascade + 可选 embedding rerank、近 7 日热点 |
 | `radar_explain_paper` / `radar_get_explanation` / `radar_list_explained_ids` / `radar_delete_explanation` | 单篇解读生成/读缓存/列出已解读/删缓存 |
