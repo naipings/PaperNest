@@ -8,7 +8,7 @@ import { writingPurposeLabels } from "../lib/writingPurposes";
 import { useLibrary } from "../state/LibraryContext";
 import type { Annotation, Paper, Point, VocabularyEntry, WritingExcerpt } from "../types";
 import { now, uuid } from "../types";
-import { ContinuousAnnotatablePdf, pageNumberAtStageTop, type CapturedSelection } from "./ContinuousAnnotatablePdf";
+import { ContinuousAnnotatablePdf, pageNumberAtStageTop, type CapturedSelection, type RevealFlash } from "./ContinuousAnnotatablePdf";
 import { NOTE_COLORS } from "./StickyNote";
 import { AnnotationHistory } from "../lib/annotationHistory";
 import type { ReaderTool } from "../lib/readerTools";
@@ -26,9 +26,17 @@ type ZoomPreset = "fit-width" | "fit-page" | "custom";
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
 
-export type PdfReaderHandle = { isDirty(): boolean; discard(): Promise<void> };
+export type PdfReaderHandle = {
+  isDirty(): boolean;
+  discard(): Promise<void>;
+  /** 跳到 `page`，滚动到该页第一个矩形附近，并短暂高亮 `marks`。 */
+  reveal(page: number, marks: RevealFlash["marks"]): void;
+  /** 页面宿主统一按首页尺寸（PDF 点）排版。 */
+  pageSize(): { width: number; height: number };
+};
 
-export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean }>(function PdfReader({ paper, onBack, embedded = false }, ref) {
+/** `pane`：嵌入对照阅读右半屏，学习侧栏默认收起、不显示返回按钮。 */
+export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean; pane?: boolean }>(function PdfReader({ paper, onBack, embedded = false, pane = false }, ref) {
   const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, deleteFigure, addReadingSeconds } = useLibrary();
   const stageRef = useRef<HTMLElement>(null);
   const pageSizeRef = useRef({ width: 612, height: 792 });
@@ -48,7 +56,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在打开 PDF…");
   const [pageText, setPageText] = useState<Record<number, string>>({});
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(!pane);
+  const [flash, setFlash] = useState<RevealFlash>();
   const [readerTool, setReaderToolState] = useState<ReaderTool>("select");
   const [toolHint, setToolHint] = useState("");
   const [captured, setCaptured] = useState<CapturedSelection>();
@@ -90,7 +99,21 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
       for (const item of excerpts) if (!origin.excerpts.some(entry => entry.id === item.id)) await deleteExcerpt(item.id);
       for (const item of origin.excerpts) if (!excerpts.some(entry => entry.id === item.id)) await saveExcerpt(item);
     },
-  }), [annotations, deleteAnnotation, deleteExcerpt, deleteVocabulary, excerpts, saveAnnotation, saveExcerpt, saveVocabulary, vocab]);
+    reveal: (pageNumber, marks) => {
+      const stage = stageRef.current;
+      if (!stage || !pdf) return;
+      const target = Math.max(1, Math.min(pdf.numPages, Math.floor(pageNumber)));
+      const host = stage.querySelector<HTMLElement>(`[data-page="${target}"]`)!;
+      const first = marks.find(mark => mark.page === target)?.rects[0];
+      const hostTop = stage.scrollTop + host.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+      const offset = first ? first.y * host.offsetHeight - stage.clientHeight / 3 : 0;
+      keepTop.current = false;
+      stage.scrollTo({ top: Math.max(0, hostTop + offset), behavior: "smooth" });
+      setPage(target);
+      setFlash({ key: Date.now(), marks });
+    },
+    pageSize: () => pageSizeRef.current,
+  }), [annotations, deleteAnnotation, deleteExcerpt, deleteVocabulary, excerpts, pdf, saveAnnotation, saveExcerpt, saveVocabulary, vocab]);
 
   const touchHistory = () => {
     setCanUndo(history.current.canUndo());
@@ -688,15 +711,15 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   };
 
   if (!data || !bytes) {
-    return <main className={"reader-screen" + (embedded ? " embedded" : "")}>
-      <header className="reader-toolbar"><button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button><div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong></div></header>
+    return <main className={"reader-screen" + (embedded ? " embedded" : "") + (pane ? " pane" : "")}>
+      <header className="reader-toolbar">{!pane && <button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button>}<div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong></div></header>
       {busy && <div className="reader-message busy">正在打开 PDF…</div>}
     </main>;
   }
 
-  return <main className={"reader-screen pdfjs-reader" + (embedded ? " embedded" : "")}>
+  return <main className={"reader-screen pdfjs-reader" + (embedded ? " embedded" : "") + (pane ? " pane" : "")}>
     <header className="reader-toolbar">
-      <button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button>
+      {!pane && <button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button>}
       <div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong><small>{paper.venue || "本地论文"} · P{page}{pdf ? ` / ${pdf.numPages}` : ""}</small></div>
       <div className="reader-zoom-tools">
         <button title="缩小" onClick={() => bumpScale(-0.08)}><ZoomOut size={16} /></button>
@@ -733,6 +756,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           pageHeight={pageSizeRef.current.height}
           tool={readerTool}
           annotations={annotations}
+          flash={flash}
           captured={captured}
           selectedAnnotation={selectedAnnotation}
           editingNoteId={editingNoteId}

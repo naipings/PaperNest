@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
+import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { backend } from "../../services/backend";
+import { EVIDENCE_SCHEME, linkEvidence } from "../../lib/deepReadEvidence";
 
-function DeepReadFigureImage({ taskId, src, alt }: { taskId: string; src: string; alt: string }) {
+function DeepReadFigureImage({ taskId, src, alt, onClick }: { taskId: string; src: string; alt: string; onClick?(): void }) {
   const [url, setUrl] = useState<string>();
   const [error, setError] = useState<string>();
   useEffect(() => {
@@ -25,19 +26,46 @@ function DeepReadFigureImage({ taskId, src, alt }: { taskId: string; src: string
     };
   }, [taskId, src]);
   if (error) return <span className="deepread-figure-error">插图读取失败：{src}（{error}）</span>;
-  return url ? <img className="deepread-figure" src={url} alt={alt} /> : <span className="deepread-figure-loading">{alt}</span>;
+  if (!url) return <span className="deepread-figure-loading">{alt}</span>;
+  return onClick
+    ? <img className="deepread-figure clickable" src={url} alt={alt} title="在原文中定位此图表" onClick={onClick} />
+    : <img className="deepread-figure" src={url} alt={alt} />;
 }
 
-/** 报告插图路径为工作区相对路径（`figures/…`），经资料库受管文件读取显示。 */
-export function DeepReadMarkdown({ text, taskId }: { text: string; taskId?: string }) {
+/**
+ * 报告插图路径为工作区相对路径（`figures/…`），经资料库受管文件读取显示。
+ * 传入 `onEvidence` / `onFigure` 时（对照阅读），证据锚点与插图可点击定位原文。
+ */
+export function DeepReadMarkdown({ text, taskId, onEvidence, onFigure }: {
+  text: string;
+  taskId?: string;
+  onEvidence?(segment: string): void;
+  onFigure?(src: string): void;
+}) {
+  const components: Components = {};
+  if (taskId) {
+    components.img = ({ src, alt }) => {
+      const path = String(src ?? "");
+      return <DeepReadFigureImage taskId={taskId} src={path} alt={alt ?? ""} onClick={onFigure ? () => onFigure(path) : undefined} />;
+    };
+  }
+  if (onEvidence) {
+    components.a = ({ href, children, node: _node, ...rest }) => href?.startsWith(EVIDENCE_SCHEME)
+      ? <a {...rest} href={href} className="deepread-evidence" onClick={event => {
+        event.preventDefault();
+        onEvidence(decodeURIComponent(href.slice(EVIDENCE_SCHEME.length)));
+      }}>{children}</a>
+      : <a {...rest} href={href}>{children}</a>;
+  }
   return (
     <div className="markdown-body deepread-md">
       <Markdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        components={taskId ? { img: ({ src, alt }) => <DeepReadFigureImage taskId={taskId} src={String(src ?? "")} alt={alt ?? ""} /> } : undefined}
+        components={components}
+        urlTransform={url => url.startsWith(EVIDENCE_SCHEME) ? url : defaultUrlTransform(url)}
       >
-        {text}
+        {onEvidence ? linkEvidence(text) : text}
       </Markdown>
     </div>
   );

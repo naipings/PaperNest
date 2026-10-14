@@ -12,6 +12,9 @@ import { StickyNote } from "./StickyNote";
 
 export type CapturedSelection = { text: string; rects: Rect[]; x: number; y: number; page: number; highlightId?: string; underlineId?: string; noteId?: string };
 
+/** 定位高亮：数秒后淡出，不写入批注；`key` 变化时重播动画。 */
+export type RevealFlash = { key: number; marks: { page: number; rects: Rect[] }[] };
+
 const silentL10n = {
   translate: async () => undefined,
   pause() {},
@@ -60,13 +63,14 @@ export function AnnotationOverlay({ annotation, selected, onSelect }: {
   </>;
 }
 
-export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
+export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, tool, annotations, flash, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf?: PDFDocumentProxy;
   scale: number;
   pageWidth: number;
   pageHeight: number;
   tool: ReaderTool;
   annotations: Annotation[];
+  flash?: RevealFlash;
   captured?: CapturedSelection;
   selectedAnnotation?: { id: string; page: number; x: number; y: number };
   editingNoteId?: string;
@@ -101,6 +105,8 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
         pageHeight={pageHeight}
         tool={tool}
         annotations={annotations.filter(item => item.page === index + 1)}
+        flashKey={flash?.key}
+        flashRects={flash?.marks.filter(mark => mark.page === index + 1).flatMap(mark => mark.rects)}
         captured={captured?.page === index + 1 ? captured : undefined}
         selectedAnnotation={selectedAnnotation?.page === index + 1 ? selectedAnnotation : undefined}
         editingNoteId={editingNoteId}
@@ -127,7 +133,7 @@ export function ContinuousAnnotatablePdf({ pdf, scale, pageWidth, pageHeight, to
   </div>;
 }
 
-function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
+function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, tool, annotations, flashKey, flashRects, captured, selectedAnnotation, editingNoteId, highlightColor, onCapture, onAnnotate, onRemoveAnnotation, onNote, onPlaceNote, onNoteMove, onNoteSave, onNoteEdit, onNoteCopy, onNoteDuplicate, onInkStroke, onSelectAnnotation, onHighlightColor, onTerm, onExcerpt, onClip, onClearSelection }: {
   pdf: PDFDocumentProxy;
   page: number;
   scale: number;
@@ -135,6 +141,8 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
   pageHeight: number;
   tool: ReaderTool;
   annotations: Annotation[];
+  flashKey?: number;
+  flashRects?: Rect[];
   captured?: CapturedSelection;
   selectedAnnotation?: { id: string; page: number; x: number; y: number };
   editingNoteId?: string;
@@ -317,6 +325,13 @@ function ContinuousAnnotatablePage({ pdf, page, scale, pageWidth, pageHeight, to
         onPlaceNote?.(page, norm(event));
       } : undefined}
     >
+      {flashRects?.map((rect, index) => (
+        <div
+          key={`${flashKey}-${index}`}
+          className="reveal-flash"
+          style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` }}
+        />
+      ))}
       {annotations.map(annotation => (
         <AnnotationOverlay
           key={annotation.id}

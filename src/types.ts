@@ -484,9 +484,15 @@ export interface DeepReadDetail {
   messages: PaperExplainMessage[];
   stagesDone: string[];
   figures: DeepReadFigure[];
+  paragraphs: DeepReadParagraphLocation[];
 }
 
-export interface DeepReadPage { page: number; paragraphs: string[]; }
+/** 段落逐行矩形，与批注同为 0–1 归一化页面坐标；V1 任务为空数组。 */
+export interface DeepReadParagraphLocation { id: string; page: number; rects: Rect[]; }
+
+export interface DeepReadParagraph { text: string; rects: Rect[]; }
+
+export interface DeepReadPage { page: number; paragraphs: DeepReadParagraph[]; }
 
 export interface CreateDeepReadInput {
   paperId?: string;

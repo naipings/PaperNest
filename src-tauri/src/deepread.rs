@@ -75,10 +75,29 @@ const SECTION_PATTERNS: [&str; 16] = [
   "experiments", "results", "analysis", "discussion", "limitation", "limitations", "conclusion", "references",
 ];
 
+/// 与阅读台批注同一坐标系：相对页面宽高的 0–1 矩形。
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Rect {
+  pub x: f64,
+  pub y: f64,
+  pub width: f64,
+  pub height: f64,
+}
+
+/// V1 任务的 `sections.json` 没有 `rects`，按空数组读取：可跳页，不高亮。
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Paragraph {
   pub id: String,
   pub text: String,
+  #[serde(default)]
+  pub rects: Vec<Rect>,
+}
+
+#[derive(Serialize)]
+pub struct ParagraphLocation {
+  pub id: String,
+  pub page: i64,
+  pub rects: Vec<Rect>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -96,7 +115,13 @@ struct Sections {
 #[serde(rename_all = "camelCase")]
 pub struct PageInput {
   page: i64,
-  paragraphs: Vec<String>,
+  paragraphs: Vec<ParagraphInput>,
+}
+
+#[derive(Deserialize)]
+pub struct ParagraphInput {
+  text: String,
+  rects: Vec<Rect>,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +160,7 @@ pub struct DeepReadDetail {
   pub messages: Vec<PaperExplainMessage>,
   pub stages_done: Vec<String>,
   pub figures: Vec<FigureItem>,
+  pub paragraphs: Vec<ParagraphLocation>,
 }
 
 struct RunControl {
@@ -264,11 +290,11 @@ pub(crate) fn number_paragraphs(pages: Vec<PageInput>) -> Vec<SectionPage> {
       page: page.page,
       paragraphs: page
         .paragraphs
-        .iter()
-        .map(|text| normalize(text))
-        .filter(|text| !text.is_empty())
-        .map(|text| {
-          let paragraph = Paragraph { id: format!("P{next:04}"), text };
+        .into_iter()
+        .map(|paragraph| (normalize(&paragraph.text), paragraph.rects))
+        .filter(|(text, _)| !text.is_empty())
+        .map(|(text, rects)| {
+          let paragraph = Paragraph { id: format!("P{next:04}"), text, rects };
           next += 1;
           paragraph
         })
@@ -782,6 +808,12 @@ pub async fn deepread_get(state: State<'_, AppState>, id: String) -> Result<Deep
     report: read_report(&workspace)?,
     stages_done: stages_done(&workspace)?,
     figures: visuals::load_manifest(&workspace)?,
+    paragraphs: read_sections(&workspace)?
+      .into_iter()
+      .flat_map(|page| {
+        page.paragraphs.into_iter().map(move |paragraph| ParagraphLocation { id: paragraph.id, page: page.page, rects: paragraph.rects })
+      })
+      .collect(),
     task,
     messages,
   })
@@ -857,7 +889,7 @@ pub async fn deepread_run(app: tauri::AppHandle, state: State<'_, AppState>, id:
     None => workspace.join("source.pdf"),
   };
   let paths = RunPaths {
-    pdffigures2_dir: app.path().resource_dir().map_err(err)?.join("pdffigures2"),
+    pdffigures2_dir: dunce::simplified(&app.path().resource_dir().map_err(err)?).join("pdffigures2"),
     source_pdf,
     workspace,
   };
@@ -1021,7 +1053,10 @@ mod tests {
     number_paragraphs(
       texts
         .iter()
-        .map(|(page, paragraphs)| PageInput { page: *page, paragraphs: paragraphs.iter().map(|s| s.to_string()).collect() })
+        .map(|(page, paragraphs)| PageInput {
+          page: *page,
+          paragraphs: paragraphs.iter().map(|s| ParagraphInput { text: s.to_string(), rects: Vec::new() }).collect(),
+        })
         .collect(),
     )
   }
@@ -1033,6 +1068,12 @@ mod tests {
     assert_eq!(numbered[0].paragraphs[0].id, "P0001");
     assert_eq!(numbered[0].paragraphs[0].text, "Abstract text wrapped");
     assert_eq!(numbered[1].paragraphs[0].id, "P0002");
+  }
+
+  #[test]
+  fn v1_sections_without_rects_still_load() {
+    let sections: Sections = serde_json::from_str(r#"{"pages":[{"page":1,"paragraphs":[{"id":"P0001","text":"Abstract"}]}]}"#).unwrap();
+    assert!(sections.pages[0].paragraphs[0].rects.is_empty());
   }
 
   fn no_visuals() -> VisualContext {

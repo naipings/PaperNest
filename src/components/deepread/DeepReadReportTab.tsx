@@ -20,7 +20,7 @@ export function stageLabel(stage: string | null) {
   return progress ? `${label} ${progress}` : label;
 }
 
-export function DeepReadReportTab({ detail }: { detail: DeepReadDetail }) {
+export function DeepReadReportTab({ detail, onEvidence, onFigure }: { detail: DeepReadDetail; onEvidence?(segment: string): void; onFigure?(src: string): void }) {
   const { task, report, stagesDone } = detail;
   const active = task.status === "running" || task.status === "queued";
   const runningKey = task.stage?.split(":")[0];
@@ -43,7 +43,7 @@ export function DeepReadReportTab({ detail }: { detail: DeepReadDetail }) {
       )}
       {report.trim() ? (
         <article className="research-report-document" aria-label={task.title}>
-          <DeepReadMarkdown text={report} taskId={task.id} />
+          <DeepReadMarkdown text={report} taskId={task.id} onEvidence={onEvidence} onFigure={onFigure} />
         </article>
       ) : (
         <div className="research-report-empty">

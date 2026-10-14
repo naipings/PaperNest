@@ -160,6 +160,7 @@ pub(crate) async fn extract_figures(pdffigures2_dir: &Path, pdf: &Path, workspac
   let mut command = Command::new(pdffigures2_dir.join("runtime").join("bin").join("java.exe"));
   command
     .arg("-Dsun.java2d.cmm=sun.java2d.cmm.kcms.KcmsServiceProvider")
+    .arg("-Duser.language=en")
     .arg("-jar")
     .arg(pdffigures2_dir.join("pdffigures2.jar"))
     .arg(&input)
@@ -579,7 +580,7 @@ mod tests {
   fn page(number: i64, texts: &[(&str, &str)]) -> SectionPage {
     SectionPage {
       page: number,
-      paragraphs: texts.iter().map(|(id, text)| Paragraph { id: id.to_string(), text: text.to_string() }).collect(),
+      paragraphs: texts.iter().map(|(id, text)| Paragraph { id: id.to_string(), text: text.to_string(), rects: Vec::new() }).collect(),
     }
   }
 

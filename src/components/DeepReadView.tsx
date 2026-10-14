@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, BookOpenText, Check, Copy, FolderOpen, Library, LoaderCircle, Play, RefreshCw, RotateCcw, Square, Trash2 } from "lucide-react";
+import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, Play, RefreshCw, RotateCcw, Square, Trash2 } from "lucide-react";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import { extractPdfParagraphs } from "../lib/pdfParagraphs";
@@ -9,6 +9,7 @@ import { fillFromPdf, importPorts } from "./LlmTopbar";
 import { DeepReadNewCard } from "./deepread/DeepReadNewCard";
 import { DeepReadReportTab, stageLabel } from "./deepread/DeepReadReportTab";
 import { DeepReadChatTab } from "./deepread/DeepReadChatTab";
+import { DeepReadCompare } from "./deepread/DeepReadCompare";
 import type { DeepRead, DeepReadDetail, DeepReadStatus, Paper } from "../types";
 
 type Tab = "report" | "chat";
@@ -50,6 +51,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const [notice, setNotice] = useState("");
   const [answering, setAnswering] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [compareId, setCompareId] = useState<string>();
 
   const showError = useCallback((error: unknown) => setNotice(messageOf(error)), []);
 
@@ -257,6 +259,13 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const stagesDone = detail?.task.id === selected?.id ? detail?.stagesDone ?? [] : [];
   const hasReport = !!detail?.report.trim() && detail.task.id === selected?.id;
 
+  if (compareId) {
+    return <DeepReadCompare tasks={tasks} initialId={compareId} onExit={() => {
+      setSelectedId(compareId);
+      setCompareId(undefined);
+    }} />;
+  }
+
   return (
     <main className="content-page research-page deepread-page">
       <div className="research-layout">
@@ -353,6 +362,15 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                       {copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "已复制" : "复制全文"}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={!linkedPaper}
+                    title={linkedPaper ? "左侧报告、右侧原文，点击证据跳到原文段落" : "外部 PDF 需先「加入论文库」"}
+                    onClick={() => setCompareId(selected.id)}
+                  >
+                    <Columns2 size={16} />对照阅读
+                  </button>
                   {linkedPaper && (
                     <button type="button" className="secondary" onClick={() => onOpenPaper(linkedPaper)}><BookOpenText size={16} />阅读台打开</button>
                   )}

@@ -12,6 +12,10 @@
 .pdfjs-reader.embedded .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr) 320px; }
 .pdfjs-reader.embedded .study-sidebar { min-height: 0; height: 100%; }
 .pdfjs-reader .study-sidebar.is-closed { display: none; }
+.reader-screen.pane { flex: 1; height: auto; min-height: 0; }
+.pdfjs-reader.pane .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr) 300px; }
+.continuous-annotation-layer .reveal-flash { position: absolute; border-radius: 2px; pointer-events: none; background: rgba(255, 196, 0, .38); outline: 2px solid rgba(232, 146, 0, .8); animation: reveal-flash 3.6s ease-out forwards; }
+@keyframes reveal-flash { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 .reader-annotate-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 8px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--soft) 70%, white); border: 1px solid var(--line); flex-wrap: wrap; }
 .reader-annotate-tools button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--text); padding: 5px 8px; border-radius: 6px; font-size: 12px; min-height: 30px; }
 .reader-annotate-tools button:disabled { opacity: 0.4; cursor: default; }
