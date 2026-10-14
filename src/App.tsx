@@ -24,6 +24,7 @@ const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module 
 const RadarView = lazy(() => import("./components/RadarView").then(module => ({ default: module.RadarView })));
 const ResearchView = lazy(() => import("./components/ResearchScreen").then(module => ({ default: module.ResearchScreen })));
 const DeepReadView = lazy(() => import("./components/DeepReadView").then(module => ({ default: module.DeepReadView })));
+const SkillLibraryView = lazy(() => import("./components/SkillLibraryView").then(module => ({ default: module.SkillLibraryView })));
 
 function readSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -209,6 +210,7 @@ export default function App() {
       {screen === "radar" && <LazyScreenBoundary><Suspense fallback={pageFallback}><RadarView onImported={paperId => locatePaper(paperId)} /></Suspense></LazyScreenBoundary>}
       {screen === "research" && <LazyScreenBoundary><Suspense fallback={pageFallback}><ResearchView /></Suspense></LazyScreenBoundary>}
       {screen === "deepread" && <LazyScreenBoundary><Suspense fallback={pageFallback}><DeepReadView seed={deepReadSeed} onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
+      {screen === "skills" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SkillLibraryView /></Suspense></LazyScreenBoundary>}
       {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
       {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}
       {screen === "settings" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SettingsView /></Suspense></LazyScreenBoundary>}

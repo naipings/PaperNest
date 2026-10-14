@@ -1909,6 +1909,31 @@ button.reading-heat-dot { cursor: default; }
 .deepread-composer { display: grid; gap: 6px; }
 .deepread-composer textarea { width: 100%; resize: vertical; }
 .deepread-composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.skills-page .research-session-list li { align-items: center; }
+.skill-check { flex: 0 0 auto; margin: 0; }
+.skill-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.skill-detail-grid { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 14px; margin: 14px 0; font-size: 13px; }
+.skill-detail-grid dt { color: var(--muted); }
+.skill-detail-grid dd { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.skill-md { border-top: 1px solid var(--line); padding-top: 6px; }
+.skill-import-note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.55; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.skill-repo-row { display: flex; gap: 8px; }
+.skill-repo-row input { flex: 1; min-width: 0; }
+.paper-editor .skill-pick-list { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.paper-editor .skill-pick-list li + li { border-top: 1px solid var(--line); }
+.paper-editor .skill-pick-list label { flex-direction: row; align-items: flex-start; gap: 10px; padding: 9px 12px; color: inherit; cursor: pointer; }
+.paper-editor .skill-pick-list label.disabled { opacity: .55; cursor: default; }
+.paper-editor .skill-pick-list input { padding: 0; margin: 3px 0 0; flex: 0 0 auto; }
+.skill-pick-list strong { font-size: 13px; }
+.skill-pick-list em { font-style: normal; font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--soft); color: var(--muted); }
+.skill-pick-list small { margin-top: 3px; color: var(--muted); font-size: 11.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.skill-pick-empty { padding: 12px; font-size: 12px; color: var(--muted); }
+.skill-diff h4 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; font-size: 13px; }
+.skill-diff h4 small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.skill-diff ul { margin: 0; padding-left: 4px; list-style: none; font-size: 12px; font-family: ui-monospace, Consolas, monospace; max-height: 180px; overflow: auto; }
+.skill-diff .added { color: #3d8b62; }
+.skill-diff .removed { color: #c45c5c; }
+.skill-diff .modified { color: var(--accent); }
 @media (max-width: 960px) {
   .research-page .research-layout { grid-template-columns: 1fr; }
   .research-page-header-left,

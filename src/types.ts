@@ -502,5 +502,44 @@ export interface CreateDeepReadInput {
   pages: DeepReadPage[];
 }
 
+export type SkillStatus = "unlinked" | "unchecked" | "current" | "outdated" | "differs" | "missing";
+
+export interface SkillEntry {
+  dir: string;
+  name: string;
+  description: string;
+  kind: "skill" | "shared";
+  license: string | null;
+  hasScripts: boolean;
+  enabled: boolean;
+  requires: string[];
+  sourceRepo: string | null;
+  sourcePath: string | null;
+  status: SkillStatus;
+  checkedAt: string | null;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface SkillCandidate {
+  dir: string;
+  name: string;
+  description: string;
+  hasScripts: boolean;
+  requires: string[];
+  installed: boolean;
+  error: string | null;
+}
+
+export interface SkillLocalScan { root: string; skills: SkillCandidate[]; repos: string[]; }
+
+export interface GithubSkill { path: string; dir: string; hasScripts: boolean; installed: boolean; }
+
+export interface GithubSkillScan { repo: string; skills: GithubSkill[]; }
+
+export interface SkillLinkReport { linked: string[]; differs: string[]; unmatched: string[]; }
+
+export interface SkillDiffEntry { dir: string; added: string[]; removed: string[]; modified: string[]; }
+
 export const uuid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();

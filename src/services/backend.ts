@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CreateDeepReadInput, CustomFieldDefinition, DeepRead, DeepReadDetail, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CreateDeepReadInput, CustomFieldDefinition, DeepRead, DeepReadDetail, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, GithubSkillScan, SkillDiffEntry, SkillEntry, SkillLinkReport, SkillLocalScan, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -531,6 +531,58 @@ export const backend = {
   async deepreadDelete(id: string): Promise<void> {
     if (!isTauri()) return;
     return invoke("deepread_delete", { id });
+  },
+  async skillsList(): Promise<SkillEntry[]> {
+    if (!isTauri()) return [];
+    return invoke("skills_list");
+  },
+  async skillsChooseFolder(): Promise<string | null> {
+    const path = await open({ directory: true, multiple: false });
+    if (!path || Array.isArray(path)) return null;
+    return path;
+  },
+  async skillsScanLocal(root: string): Promise<SkillLocalScan> {
+    return invoke("skills_scan_local", { root });
+  },
+  async skillsImportLocal(root: string, dirs: string[]): Promise<SkillEntry[]> {
+    return invoke("skills_import_local", { root, dirs });
+  },
+  async skillsScanGithub(source: string): Promise<GithubSkillScan> {
+    return invoke("skills_scan_github", { source });
+  },
+  async skillsImportGithub(repo: string, paths: string[]): Promise<SkillEntry[]> {
+    return invoke("skills_import_github", { repo, paths });
+  },
+  async skillsLinkSources(repos: string[], dirs: string[] | null): Promise<SkillLinkReport> {
+    return invoke("skills_link_sources", { repos, dirs });
+  },
+  async skillsCheckUpdates(dirs: string[] | null): Promise<SkillEntry[]> {
+    return invoke("skills_check_updates", { dirs });
+  },
+  async skillsDiff(dirs: string[]): Promise<SkillDiffEntry[]> {
+    return invoke("skills_diff", { dirs });
+  },
+  async skillsUpdate(dirs: string[]): Promise<SkillEntry[]> {
+    return invoke("skills_update", { dirs });
+  },
+  async skillsDelete(dirs: string[]): Promise<SkillEntry[]> {
+    return invoke("skills_delete", { dirs });
+  },
+  async skillsSetEnabled(dir: string, enabled: boolean): Promise<SkillEntry[]> {
+    return invoke("skills_set_enabled", { dir, enabled });
+  },
+  async skillsOpenDir(dir: string | null): Promise<void> {
+    return invoke("skills_open_dir", { dir });
+  },
+  async skillsReadSkillMd(dir: string): Promise<string> {
+    const bytes = await invoke<number[]>("read_managed_file", { path: `skills/${dir}/SKILL.md` });
+    return new TextDecoder().decode(new Uint8Array(bytes));
+  },
+  async skillsGithubTokenSaved(): Promise<boolean> {
+    return invoke("skills_github_token_saved");
+  },
+  async skillsSaveGithubToken(token: string): Promise<boolean> {
+    return invoke("skills_save_github_token", { token });
   },
   async mcpGetInfo(): Promise<McpInfo> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持 MCP");

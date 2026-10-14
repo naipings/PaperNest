@@ -289,10 +289,11 @@ fn skill_status(repo: Option<&str>, tree: Option<&str>, latest: Option<&str>, ch
   } else if checked.is_none() {
     "unchecked"
   } else {
-    match latest {
-      None => "missing",
-      Some(l) if Some(l) == tree => "current",
-      Some(_) => "outdated",
+    match (latest, tree) {
+      (None, _) => "missing",
+      (Some(_), None) => "differs",
+      (Some(l), Some(t)) if l == t => "current",
+      (Some(_), Some(_)) => "outdated",
     }
   }
 }
@@ -802,16 +803,36 @@ async fn linked_entry(pool: &SqlitePool, dir: &str) -> Result<SkillEntry> {
   Ok(entry)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDiffEntry {
+  pub dir: String,
+  #[serde(flatten)]
+  pub diff: SkillDiff,
+}
+
 #[tauri::command]
-pub async fn skills_diff(state: State<'_, AppState>, dir: String) -> Result<SkillDiff> {
-  let entry = linked_entry(&*state.pool.read().await, &dir).await?;
-  let repo = entry.source_repo.as_deref().expect("linked");
-  let path = entry.source_path.as_deref().unwrap_or_default();
-  let tree = GitHub::new()?.tree(repo).await?;
-  if tree.folder_sha(path).is_none() {
-    return Err(format!("{repo} 中已没有目录 {path}"));
+pub async fn skills_diff(state: State<'_, AppState>, dirs: Vec<String>) -> Result<Vec<SkillDiffEntry>> {
+  let root = skills_root(&state.library_dir);
+  let pool = state.pool.read().await;
+  let gh = GitHub::new()?;
+  let mut trees: HashMap<String, RepoTree> = HashMap::new();
+  let mut diffs = Vec::new();
+  for dir in dirs {
+    let entry = linked_entry(&pool, &dir).await?;
+    let repo = entry.source_repo.expect("linked");
+    let path = entry.source_path.unwrap_or_default();
+    if !trees.contains_key(&repo) {
+      trees.insert(repo.clone(), gh.tree(&repo).await?);
+    }
+    let tree = &trees[&repo];
+    if tree.folder_sha(&path).is_none() {
+      return Err(format!("{repo} 中已没有目录 {path}"));
+    }
+    let diff = diff_local(&root.join(&dir), &tree.folder_files(&path))?;
+    diffs.push(SkillDiffEntry { dir, diff });
   }
-  diff_local(&skills_root(&state.library_dir).join(&dir), &tree.folder_files(path))
+  Ok(diffs)
 }
 
 #[tauri::command]
@@ -1058,7 +1079,7 @@ mod tests {
     assert_eq!(skill_status(Some("a/b"), Some("1"), Some("1"), None), "unchecked");
     assert_eq!(skill_status(Some("a/b"), Some("1"), Some("1"), Some("t")), "current");
     assert_eq!(skill_status(Some("a/b"), Some("1"), Some("2"), Some("t")), "outdated");
-    assert_eq!(skill_status(Some("a/b"), None, Some("2"), Some("t")), "outdated");
+    assert_eq!(skill_status(Some("a/b"), None, Some("2"), Some("t")), "differs");
     assert_eq!(skill_status(Some("a/b"), Some("1"), None, Some("t")), "missing");
   }
 
