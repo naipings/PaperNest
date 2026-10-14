@@ -12,15 +12,15 @@
 | `build_paper_index.py`：章节候选 | 移植 `section_candidates`（同一组章节关键词） |
 | `evidence_pack.py`：按阶段关键词打分选段 + 邻段补全 + 预算 | 逐行移植 `build_stage_text_pack` / `estimate_char_budget`，`max_input_chars=120000` |
 | `sectioned.py`：五阶段描述、关键词、逐段生成并带前文 | 移植 `REPORT_STAGES` 与阶段提示词；`stages/*.md` 断点续写 |
-| `SKILL.md` + `references/*.md` 组合成 skill prompt | 原文移植到 `src-tauri/src/deepread_skill/`，删去 pdffigures2 / 插图条款（见 §2） |
-| `validate_report.py`：五节顺序、每节证据锚点、数学定界符、TODO | 移植为 `validate_report`；新增「报告不得含图片」 |
-| pdffigures2 + 看图预读 + 全局选图计划 | V1 不做（§2） |
+| `SKILL.md` + `references/*.md` 组合成 skill prompt | 原文移植到 `src-tauri/src/deepread_skill/`（插图条款随 V2 恢复） |
+| `validate_report.py`：五节顺序、每节证据锚点、数学定界符、TODO | 移植为 `validate_report`（V2 增加插图来源与覆盖校验） |
+| pdffigures2 + 看图预读 + 全局选图计划 | 0.2.51 起实现，见 [V2 计划](paper-deep-read-v2-plan.md) |
 
 ## 2. 与参考项目的差异（已确认）
 
 | 决策 | 内容 | 依据 |
 |------|------|------|
-| 纯文本证据 | 不提取、不插入图表图片。图表通过图注与正文引用定位，写成 `(Evidence: p. 6, Table 2)`；提示词要求不得声称看过图片 | 参考项目只允许 pdffigures2（需 Java + jar），桌面端不捆绑 |
+| 证据与插图 | 0.2.50 为纯文本证据；0.2.51 起捆绑 pdffigures2 与精简 Java 运行时，报告按选图计划插图，见 [V2 计划](paper-deep-read-v2-plan.md) | 与参考项目一致 |
 | LLM | 复用「设置 → 文献调研」的 LLM（流式长输出、自适应超时、Kimi 温度适配） | 五节报告约 4000 字，主 LLM 为非流式短输出 |
 | 任务粒度 | 每篇论文一个任务；多选时批量创建、串行运行 | 对应参考项目「每篇独立输出」 |
 | 外部 PDF | 存入精读工作区；报告页提供「加入论文库」，入库后任务关联该论文 | 不强制污染论文库 |

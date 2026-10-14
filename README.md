@@ -102,7 +102,7 @@ sequenceDiagram
 | 任务日历  | 本地任务，可关联论文；页底阅读打卡（每日新增 + 满 5 分钟阅读）          |
 | 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
 | 文献调研  | ReAct Agent；**单窗口多轮追问** + 附件/链接 + `fetch_url`；对话/轨迹/候选论文三 Tab（DSH 1:1 UI）；`report.md` + `turns/` + `proposals/`；MCP（`papernest-mcp`） |
-| 论文精读  | 论文库 / 知识树邻域 / 本地 PDF 选篇，逐篇生成 What → Why → How → Experiment → Question 证据报告（页码 + 段落锚点、KaTeX 公式、自动校验），报告后多轮追问 |
+| 论文精读  | 论文库 / 知识树邻域 / 本地 PDF 选篇，逐篇生成 What → Why → How → Experiment → Question 证据报告（页码 + 段落锚点、内嵌原图原表、KaTeX 公式、自动校验），对照阅读点击证据跳到原文并高亮，报告后多轮追问 |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 
 
@@ -255,9 +255,11 @@ flowchart LR
 - 使用 **设置 → 文献调研** 的 LLM；流程与提示词移植自 [evidence-grounded-paper-deep-read](https://github.com/MoonKirito/evidence-grounded-paper-deep-read)（MIT）。
 - 侧栏 **论文精读**：从论文库（全部 / 文件夹 / 知识树邻域）勾选多篇，或选择、拖入本地 PDF，点 **开始精读**。每篇一个任务，逐篇排队生成。
 - 本地知识树详情栏 **论文精读**：预选该论文，并列出以它为原点的邻域论文。
-- 报告五节：What（做了什么）→ Why（为什么做）→ How（如何实现）→ Experiment（如何证明有效）→ Question（评价与疑问）。结论附 `(Evidence: p. 5, P0042)` 证据，图表按图注定位，不插图。
-- 报告页显示五阶段进度与校验问题；停止或失败后 **继续生成** 复用已完成阶段。**追问** 页基于报告与原文段落多轮问答。
-- 本地 PDF 只存精读工作区，报告页 **加入论文库** 后可在阅读台打开。工作区：`PaperNestLibrary/deepread/<id>/`。
+- 报告五节：What（做了什么）→ Why（为什么做）→ How（如何实现）→ Experiment（如何证明有效）→ Question（评价与疑问）。结论附 `(Evidence: p. 5, P0042)` 证据。
+- 插图：随包的 [pdffigures2](https://github.com/allenai/pdffigures2)（Apache-2.0）提取图表，模型逐张看图预读后形成选图计划，报告在对应段落内嵌原图原表。**文献调研模型须支持图片输入**，否则任务失败并显示接口错误。
+- 报告页显示八阶段进度（图表提取、看图预读、选图计划、五节）与校验问题；停止或失败后 **继续生成** 复用已完成阶段。**追问** 页基于报告与原文段落多轮问答。
+- **对照阅读**：左侧报告、右侧阅读台原文（可批注），顶部切换精读任务。点击证据锚点跳到对应页并高亮段落，点击插图框出原文图表区域。0.2.51 之前创建的任务只能跳页、不高亮段落。
+- 本地 PDF 只存精读工作区，报告页 **加入论文库** 后可在阅读台打开、可对照阅读。工作区：`PaperNestLibrary/deepread/<id>/`。
 
 
 
@@ -295,7 +297,7 @@ flowchart LR
 ├── research.db             # 文献调研会话索引
 ├── pdf/originals/          # 受管 PDF 原件
 ├── research/               # 默认调研工作区（每任务一子文件夹）
-├── deepread/               # 论文精读工作区（sections.json、stages/、report.md）
+├── deepread/               # 论文精读工作区（sections.json、figures/、visuals/、stages/、report.md）
 ├── figures/                # 方法框架图
 ├── avatars/                # 用户头像
 ├── backups/                # 完整备份包
@@ -322,11 +324,13 @@ flowchart LR
 
 ```powershell
 npm install
+.\scripts\build-pdffigures2.ps1   # 首次：构建论文精读用的 pdffigures2 与精简 JRE（需联网下载 JDK、sbt 与源码）
 npm run dev          # 浏览器预览（localStorage 模拟后端）
 npm run tauri dev    # 桌面端完整功能
 npm run check        # 测试 + 构建
 npm run tauri build  # 生成 paper-reader.exe 与 NSIS 安装包
 Copy-Item src-tauri\target\release\paper-reader.exe release\windows\PaperNest.exe -Force
+Copy-Item src-tauri\target\release\pdffigures2 release\windows\ -Recurse -Force   # 便携版须与 exe 同级
 Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release\windows\ -Force
 ```
 
@@ -343,4 +347,5 @@ Copy-Item src-tauri\target\release\bundle\nsis\PaperNest_*_x64-setup.exe release
 | [阅读台解读](docs/research/reader-pdf-explain-plan.md) | 精读侧栏与 PDF 对话：讲稿 + 多轮问答 |
 | [文献调研计划](docs/research/deep-literature-research-assessment.md) | 深度调研定稿、工作区与 MCP 路线 |
 | [论文精读计划](docs/research/paper-deep-read-plan.md) | 证据驱动五节报告：参考实现复用范围、数据、分步验收 |
+| [论文精读 V2](docs/research/paper-deep-read-v2-plan.md) | 插图（pdffigures2 + 看图预读 + 选图计划）与对照阅读 |
 | [Trajectory 方案](docs/research/research-trajectory-plan.md) | Phase 9：复用 DSH 官方 session + TrajectoryView |

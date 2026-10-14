@@ -31,7 +31,8 @@ scripts/build-pdffigures2.ps1
 - `src-tauri/resources/pdffigures2/` 加入 `.gitignore`，由脚本重建；`tauri.conf.json` 的 `bundle.resources` 引用该目录，缺失时构建失败。
 - 后端从 `app.path().resource_dir()` 定位 `runtime/bin/java.exe` 与 jar。便携版 `release/windows/PaperNest.exe` 需与 `pdffigures2/` 目录同级发布。
 - 调用参数沿用参考项目：`java -Dsun.java2d.cmm=sun.java2d.cmm.kcms.KcmsServiceProvider -jar pdffigures2.jar <输入目录> -s stats.json -m figures/ -d data/`。
-- 预计体积：jar 约 25MB + 运行时约 45MB（未压缩），安装包增加约 30MB。脚本跑通后记录实测值。
+- 实测体积：jar 18.2MB + 运行时 42.9MB，共 61.1MB（未压缩）。
+- `resource_dir()` 在 Windows 返回 `\\?\` 前缀路径，Java 无法打开该形式的 jar 路径，传给 Java 前用 `dunce::simplified` 去掉前缀；Java 加 `-Duser.language=en`，失败日志为英文。
 
 ## 3. 生成流程（`deepread.rs`）
 
@@ -60,6 +61,7 @@ scripts/build-pdffigures2.ps1
 
 - `pdfParagraphs.ts` 切段时为每段记录逐行矩形：用 pdf.js 页面 viewport 把文本项坐标换算成 0–1 归一化矩形，与阅读台批注的 `Rect` 同一坐标系。
 - `sections.json` 段落新增 `rects`；V1 已创建的任务没有该字段，按空数组读取：可跳页，不高亮。
+- `deepread_get` 返回 `paragraphs`（id、page、rects），前端据此把段落 ID 映射到页内位置。
 
 ### 4.3 对照阅读视图
 
@@ -72,9 +74,9 @@ scripts/build-pdffigures2.ps1
 ```
 
 - 入口：报告页按钮「对照阅读」，任务未关联论文库论文时禁用并提示先「加入论文库」。
-- 证据锚点：解析 `(Evidence: …)` 中的页码与段落 ID（含 `P0017–P0019` 区间），渲染为可点击标签；点击 → 跳到首段所在页 → 高亮这些段落的矩形。
-- 插图点击：用 manifest 的 `regionBoundary`（72 DPI 坐标）换算归一化矩形，跳页并高亮图表区域。
-- `PdfReader` 新增 `pane` 布局（嵌入右半屏，侧栏默认收起）与 handle 方法 `reveal(page, rects)`；`ContinuousAnnotatablePdf` 新增临时高亮层，不写入批注。
+- 证据锚点（`src/lib/deepReadEvidence.ts`）：`(Evidence: A; B)` 按分号拆成多个链接；模型沿用提示词示例把锚点写成行内代码，转换时去掉成对反引号。每段解析页码、段落 ID（含 `P0017–P0019` 区间）与 `Fig./Table N`；定位优先级：段落矩形 → 图表区域 → 仅跳页。
+- 插图点击：用 manifest 的 `regionBoundary`（72 DPI 坐标）除以页面尺寸（PDF 点）得到归一化矩形，跳页并高亮图表区域。
+- `PdfReader` 新增 `pane` 布局（嵌入右半屏，侧栏默认收起、无返回按钮）与 handle 方法 `reveal(page, marks)`、`pageSize()`；`ContinuousAnnotatablePdf` 新增临时高亮层（约 3.6 秒淡出），不写入批注。
 - 任务切换：只列已关联论文的任务；切换或退出前沿用 `PdfReaderHandle.isDirty()` 的未保存批注确认。
 
 ## 5. 分步与验收
@@ -86,3 +88,5 @@ scripts/build-pdffigures2.ps1
 | 3 | 插图渲染、阶段进度 | vitest 覆盖图片渲染器；样例论文报告内插图可见 |
 | 4 | 段落坐标、对照阅读视图、证据锚点解析、`reveal` 高亮 | vitest 覆盖锚点解析与矩形换算；桌面端点击锚点跳页高亮正确 |
 | 5 | 文档同步、版本 0.2.51、桌面实测、打包 | 安装包与便携版均能提取图表 |
+
+桌面实测（步骤 2–4，9 页样例论文、`qwen3.8-flash`）：提取 3 图 3 表，逐图预读约 30 秒/张，全流程约 10 分钟；报告插入 5 张图表、27 处证据锚点，校验 0 问题；263 段全部带坐标，点击 `Sec. 3, P0056-P0057` 跳到第 3 页并逐行高亮，点击 Figure 2 跳到第 6 页并框出图表区域。

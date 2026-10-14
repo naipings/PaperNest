@@ -286,8 +286,9 @@ paperReader/
 │   │   ├── pdfCoverMeta.ts
 │   │   ├── pdfSession.ts                  # PDF.js 串行打开 / destroy
 │   │   ├── extractPdfCover.ts             # 导入：单次会话封面+分析文本
-│   │   ├── pdfParagraphs.ts               # 论文精读：pdf.js 文本项 → 页/段落
+│   │   ├── pdfParagraphs.ts               # 论文精读：pdf.js 文本项 → 页/段落 + 逐行矩形
 │   │   ├── deepReadCandidates.ts          # 论文精读：全部 / 文件夹 / 知识树邻域候选
+│   │   ├── deepReadEvidence.ts            # 论文精读：证据锚点解析、图表区域换算
 │   │   └── pdfRenderScale.ts
 │   ├── services/
 │   │   ├── backend.ts          # Tauri invoke 统一入口
@@ -302,8 +303,10 @@ paperReader/
 ├── src-tauri/
 │   ├── src/lib.rs              # Tauri 命令与 SQLite 逻辑
 │   ├── src/explain.rs          # 阅读台解读（page 文 + LLM）
-│   ├── src/deepread.rs         # 论文精读：证据包、五阶段生成、报告校验、追问
+│   ├── src/deepread.rs         # 论文精读：证据包、八阶段生成、报告校验、追问
+│   ├── src/deepread_visuals.rs # 论文精读：pdffigures2 提取、逐图预读、选图计划、插图校验
 │   ├── src/deepread_skill/     # 精读 skill 提示词（移植自 evidence-grounded-paper-deep-read，MIT）
+│   ├── resources/pdffigures2/  # pdffigures2.jar + 精简 JRE（gitignore，scripts/build-pdffigures2.ps1 构建）
 │   ├── src/online_metadata.rs  # Crossref 查询
 │   ├── src/radar.rs            # 论文雷达（radar.db）
 │   ├── src/research.rs         # 文献调研会话与命令（含多轮 continue/export）
@@ -400,7 +403,7 @@ paperReader/
 | `research_dsh_fork` / `research_resume_session` | Phase 9：官方 `SessionStore.fork` + Rust 续跑 |
 | `research_open_workspace` / `research_delete_session` | 打开文件夹 / 删除任务 |
 | `deepread_create` / `deepread_run` / `deepread_cancel` | 论文精读：建任务（写 `sections.json`）/ 后台串行生成（`restart` 清空阶段）/ 当前阶段结束后停止 |
-| `deepread_list` / `deepread_get` / `deepread_delete` / `deepread_open_workspace` | 精读任务列表、详情（报告、已完成阶段、追问）、删除、打开文件夹 |
+| `deepread_list` / `deepread_get` / `deepread_delete` / `deepread_open_workspace` | 精读任务列表、详情（报告、已完成阶段、追问、图表清单、段落位置）、删除、打开文件夹 |
 | `deepread_ask` / `deepread_delete_turn` / `deepread_link_paper` | 精读追问、删单轮、外部 PDF 入库后关联论文 |
 | `save_online_metadata_settings` | 在线元数据开关与联系邮箱 |
 | `save_paper_custom_field_values` | 保存单篇论文的自定义字段值 |
@@ -476,6 +479,7 @@ flowchart TB
 
 ```powershell
 npm install
+.\scripts\build-pdffigures2.ps1   # 首次：生成 src-tauri/resources/pdffigures2（tauri dev/build 依赖）
 npm run dev              # 浏览器预览（localStorage 后端）
 npm run tauri dev        # 桌面端（Vite 开发服默认 http://127.0.0.1:5173）
 npm run test             # Vitest
@@ -509,7 +513,7 @@ cd src-tauri; cargo check
 | 阅读台解读 | 侧栏「解读」：首轮生成讲稿后可多对话；新建对话复用讲稿直接聊；历史按钮切换/删除对话；页码跳转与删单轮 |
 | 阅读台编辑框 | 选区可右键/浮动条复制；「填入当前选区」或「送入编辑框」写入原文；箭头翻译；字号小/中/大；可收为术语 / 加入写作库（无译文时自动翻译，有译文则复用） |
 | 本地知识树 | L1 BM25+TF-IDF；原点可搜索切换；空白取消选中；自适应力导向；先前·衍生·列表 |
-| 论文精读 | 论文库或本地 PDF 选篇后逐篇生成五节报告，阶段进度可见，公式渲染，校验问题置顶；停止后「继续生成」复用已完成阶段；报告完成后可追问、删单轮；外部 PDF 可「加入论文库」；知识树详情栏「论文精读」预选该论文 |
+| 论文精读 | 论文库或本地 PDF 选篇后逐篇生成五节报告，八阶段进度可见（图表提取、看图预读 n/N、选图计划、五节），报告内嵌原图原表，公式渲染，校验问题置顶；停止后「继续生成」复用已完成阶段；报告完成后可追问、删单轮；外部 PDF 可「加入论文库」；「对照阅读」点击证据锚点或插图，右侧原文跳页并高亮段落或图表区域；知识树详情栏「论文精读」预选该论文 |
 | 批注 | 高亮/下划线后 SQLite 有记录，重开仍显示 |
 | 术语收录 | 选中文本 → 侧栏术语库有条目 |
 | 搜索 | 标题、摘要、PDF 正文均可命中 |
@@ -640,24 +644,30 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 
 ```text
 来源：论文库（全部 / 文件夹 / 知识树邻域）或本地 PDF
-  → 前端 pdf.js 抽页文并切段（pdfParagraphs.ts）
-  → deepread_create：sections.json（全局段落 ID P0001…）；外部 PDF 另存 source.pdf
-  → deepread_run：后台任务，全局单许可串行
-       每阶段：阶段关键词选段（预算 48000 字，补邻段）+ 章节候选 + 已生成前文 + skill 提示词
+  → 前端 pdf.js 抽页文并切段，每段记录逐行 0–1 矩形（pdfParagraphs.ts）
+  → deepread_create：sections.json（全局段落 ID P0001… + rects）；外部 PDF 另存 source.pdf
+  → deepread_run：后台任务，全局单许可串行（deepread_visuals.rs）
+       figures：随包 pdffigures2 提取图表 → figures/*.png + figure_manifest.json
+       visuals：逐图多模态预读（图片 + 相邻页与引用段落）→ visuals/NNNN.json → visual_analysis.json
+       visual_plan：全局选图计划，plan_problems 不通过时修正一次 → visual_plan.json
+       五节：阶段关键词选段（预算 48000 字减图表惩罚）+ 章节候选 + 已生成前文 + 预读与计划 + skill 提示词
              → 流式生成 → stages/<key>.md（已存在则跳过，支持继续生成）
-       拼装 report.md → validate_report（五节顺序、每节证据锚点、公式定界符、TODO、图片）
+       拼装 report.md → validate_report（五节顺序、证据锚点、公式定界符、TODO、插图来源、计划覆盖）
   → deepread_ask：报告全文 + 按问题关键词选段（40000 字）+ 最近 12 条对话
 ```
 
 | 约定 | 说明 |
 |------|------|
-| 证据 | 纯文本：`(Evidence: p. 5, P0042)`；图表按图注与正文引用定位，报告不插图 |
+| 证据 | `(Evidence: p. 5, P0042)`；插图 `![Figure 2](figures/paper-Figure2-1.png)` 须出自 manifest 且已预读 |
+| 图表运行时 | `src-tauri/resources/pdffigures2/`（jar + jlink 精简 JRE，61MB，gitignore）由 `scripts/build-pdffigures2.ps1` 构建，`bundle.resources` 打入安装包；便携版需与 `pdffigures2/` 目录同级 |
+| 读图模型 | 「文献调研」模型须支持图片输入，否则任务失败并显示接口错误 |
+| 对照阅读 | 任务关联论文库论文后可用：左报告、右 `PdfReader`（`pane`）；证据锚点与插图经 `deepReadEvidence.ts` 解析，`PdfReaderHandle.reveal` 跳页并临时高亮（不写批注） |
 | 校验 | 问题写入 `validation_json` 并显示在报告顶部，报告照常保存 |
 | 截断 | 阶段输出 `finish_reason=length` 判失败，提示换用输出上限更高的模型后继续生成 |
 | 中断 | 启动时 `queued` / `running` 改为 `failed`，可「继续生成」 |
 | 外部 PDF | 只存精读工作区；「加入论文库」走 `import_pdfs` + 封面元数据 + 重复判定，再 `deepread_link_paper` |
 
-工作区 `PaperNestLibrary/deepread/<id>/` 随资料库备份。实现计划见 [paper-deep-read-plan.md](research/paper-deep-read-plan.md)。
+工作区 `PaperNestLibrary/deepread/<id>/` 随资料库备份。实现计划见 [paper-deep-read-plan.md](research/paper-deep-read-plan.md)（五节报告）与 [paper-deep-read-v2-plan.md](research/paper-deep-read-v2-plan.md)（插图与对照阅读）。
 
 ---
 
