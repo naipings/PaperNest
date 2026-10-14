@@ -1904,7 +1904,8 @@ button.reading-heat-dot { cursor: default; }
 .deepread-bubble { max-width: 100%; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; }
 .deepread-bubble.is-user { align-self: flex-end; max-width: 80%; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
 .deepread-bubble.is-assistant { align-self: stretch; white-space: normal; background: var(--soft); border: 1px solid var(--line); }
-.deepread-turn-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+.deepread-turn-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 6px; }
+.deepread-turn-skills { margin-right: auto; font-size: 11px; color: var(--muted); }
 .deepread-turn-actions button { font-size: 11px; gap: 4px; padding: 2px 8px; color: var(--muted); }
 .deepread-composer { display: grid; gap: 6px; }
 .deepread-composer textarea { width: 100%; resize: vertical; }

@@ -36,6 +36,7 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
             {message.role === "assistant" ? <DeepReadMarkdown text={message.content} /> : message.content}
             {message.role === "assistant" && (
               <div className="deepread-turn-actions">
+                {!!message.skills?.length && <span className="deepread-turn-skills">使用 skill：{message.skills.join("、")}</span>}
                 <button type="button" className="ghost" disabled={answering} title="删除本轮问答" onClick={() => onDeleteTurn(index)}>
                   <Trash2 size={12} />
                   删除本轮

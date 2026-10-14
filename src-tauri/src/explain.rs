@@ -25,6 +25,9 @@ pub struct PaperExplainMessage {
   pub content: String,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub cites: Option<Vec<i64>>,
+  /// 论文精读追问时本轮读取过的 skill 目录名。
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub skills: Vec<String>,
   pub created_at: String,
 }
 
@@ -788,6 +791,7 @@ pub async fn explain_ask(
     role: "user".into(),
     content: question.clone(),
     cites: None,
+    skills: Vec::new(),
     created_at: now.clone(),
   });
   session.messages.push(PaperExplainMessage {
@@ -797,6 +801,7 @@ pub async fn explain_ask(
       let cites = extract_cites(&answer);
       if cites.is_empty() { None } else { Some(cites) }
     },
+    skills: Vec::new(),
     created_at: now,
   });
 
@@ -910,10 +915,10 @@ mod tests {
   #[test]
   fn delete_turn_removes_user_assistant_pair() {
     let mut messages = vec![
-      PaperExplainMessage { role: "user".into(), content: "q1".into(), cites: None, created_at: "t1".into() },
-      PaperExplainMessage { role: "assistant".into(), content: "a1".into(), cites: None, created_at: "t2".into() },
-      PaperExplainMessage { role: "user".into(), content: "q2".into(), cites: None, created_at: "t3".into() },
-      PaperExplainMessage { role: "assistant".into(), content: "a2".into(), cites: None, created_at: "t4".into() },
+      PaperExplainMessage { role: "user".into(), content: "q1".into(), cites: None, skills: Vec::new(), created_at: "t1".into() },
+      PaperExplainMessage { role: "assistant".into(), content: "a1".into(), cites: None, skills: Vec::new(), created_at: "t2".into() },
+      PaperExplainMessage { role: "user".into(), content: "q2".into(), cites: None, skills: Vec::new(), created_at: "t3".into() },
+      PaperExplainMessage { role: "assistant".into(), content: "a2".into(), cites: None, skills: Vec::new(), created_at: "t4".into() },
     ];
     remove_explain_turn(&mut messages, 1).unwrap();
     assert_eq!(messages.len(), 2);

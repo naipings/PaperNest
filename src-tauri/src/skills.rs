@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 const SCRIPT_EXTS: &[&str] = &["py", "sh", "js", "mjs", "cjs", "ts", "ps1", "bat", "cmd", "rb", "pl"];
 const TEXT_EXTS: &[&str] = &["md", "markdown", "yaml", "yml", "json", "txt"];
-pub(crate) const SKILL_READ_CHARS: usize = 40_000;
+const SKILL_READ_CHARS: usize = 40_000;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -1128,6 +1128,25 @@ mod tests {
     let diff = diff_local(&dir, &upstream).unwrap();
     assert_eq!(diff, SkillDiff { added: vec!["new.md".into()], removed: vec!["old.md".into()], modified: vec!["changed.md".into()] });
     fs::remove_dir_all(dir).unwrap();
+  }
+
+  #[test]
+  fn skill_reading_marks_scripts_and_follows_shared_references() {
+    let library = temp_dir("read");
+    let skills = library.join("skills");
+    fs::create_dir_all(skills.join("a").join("scripts")).unwrap();
+    fs::create_dir_all(skills.join("shared")).unwrap();
+    fs::write(skills.join("a").join("SKILL.md"), "---\nname: a\ndescription: d\n---\nbody").unwrap();
+    fs::write(skills.join("a").join("scripts").join("run.py"), "print()").unwrap();
+    fs::write(skills.join("shared").join("guide.md"), "x".repeat(SKILL_READ_CHARS + 5)).unwrap();
+    fs::write(library.join("library.db"), "db").unwrap();
+    let loaded = load_skill_text(&library, "a").unwrap();
+    assert!(loaded.contains("body"));
+    assert!(loaded.contains("- scripts/run.py（脚本，PaperNest 不执行）"));
+    let shared = read_skill_file(&library, "a", "../shared/guide.md").unwrap();
+    assert!(shared.ends_with(&format!("（已截断，全文 {} 字符）", SKILL_READ_CHARS + 5)));
+    assert!(read_skill_file(&library, "a", "../../library.db").unwrap_err().contains("超出"));
+    fs::remove_dir_all(library).unwrap();
   }
 
   #[test]

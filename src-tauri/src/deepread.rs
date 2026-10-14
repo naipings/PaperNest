@@ -21,6 +21,7 @@ const ASK_MAX_TOKENS: u32 = 3_000;
 const ASK_TIMEOUT_SECS: u64 = 180;
 const ASK_HISTORY_MESSAGES: usize = 12;
 const ASK_EVIDENCE_CHARS: usize = 40_000;
+const ASK_SKILL_MAX_ROUNDS: usize = 8;
 const MIN_PAPER_CHARS: usize = 500;
 const CANCELLED: &str = "精读已停止";
 
@@ -948,6 +949,75 @@ pub async fn deepread_cancel(state: State<'_, AppState>, id: String) -> Result<D
   load_task(&pool, &state.library_dir, &id).await
 }
 
+fn skill_tools() -> [crate::research_tools::ToolSpec; 2] {
+  let skill = serde_json::json!({ "type": "string", "description": "skill 名称（可用 skill 清单中的名称）" });
+  [
+    crate::research_tools::ToolSpec {
+      name: "load_skill",
+      description: "读取一个 skill 的 SKILL.md 全文与文件清单",
+      parameters: serde_json::json!({ "type": "object", "properties": { "skill": skill }, "required": ["skill"] }),
+    },
+    crate::research_tools::ToolSpec {
+      name: "read_skill_file",
+      description: "读取 skill 目录内的文本文件。path 相对该 skill 目录，可用 ../<目录>/ 读取 SKILL.md 引用的同级共享目录",
+      parameters: serde_json::json!({
+        "type": "object",
+        "properties": { "skill": skill, "path": { "type": "string", "description": "文件路径，如 references/guide.md" } },
+        "required": ["skill", "path"]
+      }),
+    },
+  ]
+}
+
+/// 追问的工具循环：模型按 skill 描述决定是否读取 skill；返回回答与本轮读取过的 skill。
+async fn ask_with_skills(
+  settings: &ResearchLlmSettings,
+  library_dir: &Path,
+  system: &str,
+  user: String,
+  skills: &[(String, String)],
+) -> Result<(String, Vec<String>)> {
+  let catalog: String = skills.iter().map(|(dir, description)| format!("- {dir}：{description}\n")).collect();
+  let system = format!(
+    "{system}\n\n# 可用 skill\n以下 skill 提供特定任务的方法说明。问题与某个 skill 的描述相符时，先调用 load_skill 读取说明，再按需用 read_skill_file 读取说明中引用的文件，然后按其方法回答；与问题无关时不调用。skill 中的脚本无法执行，只参考其文字。skill 规定的输出格式与上述证据格式冲突时，保留证据标记。\n{catalog}"
+  );
+  let tools = skill_tools();
+  let mut messages = vec![
+    serde_json::json!({ "role": "system", "content": system }),
+    serde_json::json!({ "role": "user", "content": user }),
+  ];
+  let mut used: Vec<String> = Vec::new();
+  for _ in 0..ASK_SKILL_MAX_ROUNDS {
+    let response = crate::research_llm::research_llm_with_tools(settings, &messages, &tools, Some(ASK_MAX_TOKENS), ASK_TIMEOUT_SECS).await?;
+    if response.tool_calls.is_empty() {
+      let answer = response.content.filter(|c| !c.trim().is_empty()).ok_or("模型未返回回答")?;
+      return Ok((answer, used));
+    }
+    messages.push(crate::research_subagent::subagent_assistant_message(&response.tool_calls, response.content.as_deref()));
+    for call in response.tool_calls {
+      let skill = call.arguments.get("skill").and_then(|v| v.as_str()).unwrap_or_default();
+      let observation = if !skills.iter().any(|(dir, _)| dir == skill) {
+        Err(format!("没有名为 {skill} 的已启用 skill"))
+      } else {
+        match call.name.as_str() {
+          "load_skill" => crate::skills::load_skill_text(library_dir, skill),
+          "read_skill_file" => {
+            let path = call.arguments.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+            crate::skills::read_skill_file(library_dir, skill, path)
+          }
+          other => Err(format!("未知工具 {other}")),
+        }
+      };
+      if observation.is_ok() && !used.iter().any(|s| s == skill) {
+        used.push(skill.to_string());
+      }
+      let content = observation.unwrap_or_else(|e| format!("错误：{e}"));
+      messages.push(serde_json::json!({ "role": "tool", "tool_call_id": call.id, "content": content }));
+    }
+  }
+  Err(format!("追问读取 skill 超过 {ASK_SKILL_MAX_ROUNDS} 轮仍未给出回答"))
+}
+
 #[tauri::command]
 pub async fn deepread_ask(state: State<'_, AppState>, id: String, question: String) -> Result<DeepReadDetail> {
   let question = question.trim().to_string();
@@ -958,9 +1028,13 @@ pub async fn deepread_ask(state: State<'_, AppState>, id: String, question: Stri
   if !settings.enabled || !settings.api_key_saved {
     return Err("论文精读使用「设置 → 文献调研」的 LLM，请先启用并保存 API Key".into());
   }
-  let (task, mut messages) = {
+  let (task, mut messages, skills) = {
     let pool = state.pool.read().await;
-    (load_task(&pool, &state.library_dir, &id).await?, load_messages(&pool, &id).await?)
+    (
+      load_task(&pool, &state.library_dir, &id).await?,
+      load_messages(&pool, &id).await?,
+      crate::skills::enabled_skills(&pool).await?,
+    )
   };
   let workspace = PathBuf::from(&task.workspace_path);
   let report = read_report(&workspace)?;
@@ -985,17 +1059,22 @@ pub async fn deepread_ask(state: State<'_, AppState>, id: String, question: Stri
     transcript,
     question
   );
-  let answer = crate::research_llm::research_llm_completion(
-    &settings,
-    system,
-    serde_json::Value::String(user),
-    Some(ASK_MAX_TOKENS),
-    ASK_TIMEOUT_SECS,
-  )
-  .await?;
+  let (answer, used_skills) = if skills.is_empty() {
+    let answer = crate::research_llm::research_llm_completion(
+      &settings,
+      system,
+      serde_json::Value::String(user),
+      Some(ASK_MAX_TOKENS),
+      ASK_TIMEOUT_SECS,
+    )
+    .await?;
+    (answer, Vec::new())
+  } else {
+    ask_with_skills(&settings, &state.library_dir, system, user, &skills).await?
+  };
   let now = Utc::now().to_rfc3339();
-  messages.push(PaperExplainMessage { role: "user".into(), content: question, cites: None, created_at: now.clone() });
-  messages.push(PaperExplainMessage { role: "assistant".into(), content: answer.trim().to_string(), cites: None, created_at: now });
+  messages.push(PaperExplainMessage { role: "user".into(), content: question, cites: None, skills: Vec::new(), created_at: now.clone() });
+  messages.push(PaperExplainMessage { role: "assistant".into(), content: answer.trim().to_string(), cites: None, skills: used_skills, created_at: now });
   let pool = state.pool.read().await;
   save_messages(&pool, &id, &messages).await?;
   drop(pool);

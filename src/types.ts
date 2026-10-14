@@ -426,6 +426,7 @@ export interface PaperExplainMessage {
   role: "user" | "assistant" | string;
   content: string;
   cites?: number[];
+  skills?: string[];
   createdAt: string;
 }
 

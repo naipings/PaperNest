@@ -320,7 +320,7 @@ fn subagent_system_prompt() -> &'static str {
    博客/新闻/行业综述类子问题优先 llm_web_search（若已注册），再 finish_research。不要调用 research_subtopic。"
 }
 
-fn subagent_assistant_message(calls: &[LlmToolCall], content: Option<&str>) -> serde_json::Value {
+pub(crate) fn subagent_assistant_message(calls: &[LlmToolCall], content: Option<&str>) -> serde_json::Value {
   serde_json::json!({
     "role": "assistant",
     "content": content.unwrap_or(""),
