@@ -39,3 +39,11 @@
 - WOFF2 随程序提供，保留完整字形和 100–900 可变权重，字体许可一同归档。
 - WebView2 的 `CSS.getPlatformFontsForNode` 实测：导航与报告中文均使用 Noto Sans SC，`isCustomFont = true`；英文使用 Segoe UI。字体载入后重新检查，未出现字体解码错误。
 - 1440 × 900 与 1100 × 700 的精读截图：`output/playwright/0256-deepread-black*.png`；最小窗口无页面横向溢出。
+
+## 发布检查
+
+- 0.2.55 与 0.2.56 均完成 NSIS 打包；0.2.56 的 TypeScript、Vite 和 Rust 生产构建通过。
+- 当前安装包：`release/windows/PaperNest_0.2.56_x64-setup.exe`，65,594,089 字节，产品版本 0.2.56。
+- 当前 EXE：`release/windows/PaperNest.exe`，42,154,496 字节，产品版本 0.2.56。
+- 启动发布目录 EXE，在 `tauri.localhost` 核验：中文为自带 Noto Sans SC（isCustomFont=true），英文 Segoe UI，字体就绪；1100 × 700 无页面横向溢出，选篇弹窗 880 × 630px，更多菜单 Escape 正常。
+- 生产截图：`output/playwright/release-0256-typography.png`。安装程序未执行覆盖安装。
