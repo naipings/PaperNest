@@ -144,7 +144,7 @@ export function SkillLibraryView() {
   const requiredBy = selected ? skills.filter(skill => skill.requires.includes(selected.dir)).map(skill => skill.name) : [];
 
   return (
-    <main className="content-page research-page skills-page">
+    <main className="content-page research-page skills-page research-workspace">
       <div className="research-layout">
         <header className="research-page-header research-page-header-left page-heading">
           <div className="page-title-block">
@@ -218,6 +218,7 @@ export function SkillLibraryView() {
                   <button type="button" className="secondary" disabled={!!busy} onClick={() => void remove([selected.dir])}><Trash2 size={16} />删除</button>
                 </div>
               </header>
+              <div key={selected.dir} className="skill-content" tabIndex={0} role="region" aria-label="Skill 详情">
               <dl className="skill-detail-grid">
                 {selected.description && <><dt>描述</dt><dd>{selected.description}</dd></>}
                 <dt>来源</dt>
@@ -237,7 +238,8 @@ export function SkillLibraryView() {
                 <dt>导入</dt>
                 <dd>{formatTime(selected.installedAt)}{selected.updatedAt !== selected.installedAt ? `，更新于 ${formatTime(selected.updatedAt)}` : ""}</dd>
               </dl>
-              {skillMd && <div className="skill-md"><DeepReadMarkdown text={stripFrontmatter(skillMd)} /></div>}
+              {skillMd && <article className="skill-md" aria-label="Skill 文档"><DeepReadMarkdown text={stripFrontmatter(skillMd)} /></article>}
+              </div>
             </>
           ) : (
             <div className="research-empty"><p>在左侧选择一个 skill 查看详情。</p></div>

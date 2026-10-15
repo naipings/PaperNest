@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ChevronDown,
   FileDown,
@@ -13,7 +13,6 @@ import { backend, isTauri } from "../services/backend";
 import { linkAttachments, readAttachment, type AttachmentDraft } from "../lib/researchAttachments";
 import { useResearchHarness } from "../research-harness/ResearchHarnessProvider";
 import { ResearchTrajectoryPanel } from "../research-harness/ResearchTrajectoryPanel";
-import { useResearchPageLayout } from "../research-harness/useResearchPageLayout";
 import { ResearchConversationTab } from "./research/ResearchConversationTab";
 import { ResearchNewSessionCard } from "./research/ResearchNewSessionCard";
 import { ResearchProposalsTab } from "./research/ResearchProposalsTab";
@@ -69,16 +68,6 @@ export function ResearchView() {
     );
   }, []);
   const pendingProposals = proposals.filter(item => item.status === "pending").length;
-  const trajectoryActive = detailTab === "trajectory" && !!selected;
-  const reportActive = detailTab === "report" && !!selected;
-  const hasResumeBar =
-    trajectoryActive &&
-    !isRunning &&
-    eventCount > 0 &&
-    !!selected &&
-    (selected.status === "failed" || selected.status === "completed" || selected.status === "cancelled");
-  const pageRef = useRef<HTMLElement>(null);
-  useResearchPageLayout(pageRef, { trajectoryActive, reportActive, hasResumeBar });
 
   const openReport = useCallback((turn?: number) => {
     setReportFocusTurn(turn);
@@ -384,10 +373,7 @@ export function ResearchView() {
   }
 
   return (
-    <main
-      ref={pageRef}
-      className={`content-page research-page${trajectoryActive || reportActive ? " research-page--expanded" : ""}`}
-    >
+    <main className="content-page research-page research-workspace">
       <div className="research-layout">
         <header className="research-page-header research-page-header-left page-heading">
           <div className="page-title-block">
@@ -445,13 +431,12 @@ export function ResearchView() {
           />
         </aside>
 
-        <section className={`research-main${trajectoryActive || reportActive ? " research-main--expanded" : ""}`}>
+        <section className="research-main">
           {selected ? (
             <>
               <header className="research-detail-header">
-                <div>
+                <div className="research-detail-title">
                   <h2 title={selected.title}>{selected.title}</h2>
-                  <details className="research-query"><summary><ChevronDown size={16} />研究问题</summary><p>{selected.query}</p></details>
                 </div>
                 <div className="research-detail-actions">
                   {isRunning ? (
@@ -473,6 +458,7 @@ export function ResearchView() {
                   )}
                   <button type="button" className="secondary" onClick={() => void backend.researchOpenWorkspace(selected.id)}><FolderOpen size={16} />打开文件夹</button>
                 </div>
+                <details className="research-query"><summary><ChevronDown size={16} />研究问题</summary><p>{selected.query}</p></details>
               </header>
               {selected.error && selected.status !== "running" && <p className="inline-notice">{selected.error}</p>}
               {isRunning && (

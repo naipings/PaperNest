@@ -724,3 +724,5 @@ Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-
 导航、概览与表格补充规范见 [0258-ui-corrections.md](design/0258-ui-corrections.md)。概览 JSX 复用 0.2.52 的主题组件结构，纯黑样式补齐同样的网格；各主题自有样式继续负责配色与响应式。
 
 ResearchView 的合并导出复用 Modal，用户确认后调用 researchExportReport；本地 exporting 状态控制禁用和进度，finally 恢复。组件测试覆盖取消、Escape、确认、重复点击与写入失败。
+
+0.2.59 的调研与 Skill 页面通过 research-workspace 的 Grid/Flex 分配视口剩余高度，列表和正文分别滚动。调研标题、操作、研究问题为独立布局项；报告轮次选择保留一处，正文滚动位置随轮次重置。精读与 Skill 的文档面板按任务标识重新挂载，切换文档回到顶部。布局依据和验证见 [0259-reading-workspace.md](design/0259-reading-workspace.md)。

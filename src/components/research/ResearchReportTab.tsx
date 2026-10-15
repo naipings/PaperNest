@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Copy, Check } from "lucide-react";
 import { ResearchMarkdown } from "./ResearchMarkdown";
 import type { ResearchTurnView } from "../../types";
@@ -36,16 +36,24 @@ export function ResearchReportTab({ turns, focusTurn, onOpenConversation }: Prop
   );
   const [activeTurn, setActiveTurn] = useState<number>(() => focusTurn ?? answered.at(-1)?.turn ?? 1);
   const [copied, setCopied] = useState(false);
+  const documentRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (documentRef.current) documentRef.current.scrollTop = 0;
+    setCopied(false);
+  }, [activeTurn]);
 
   useEffect(() => {
     if (focusTurn && answered.some(turn => turn.turn === focusTurn)) {
       setActiveTurn(focusTurn);
-      return;
     }
+  }, [answered, focusTurn]);
+
+  useEffect(() => {
     if (!answered.some(turn => turn.turn === activeTurn)) {
       setActiveTurn(answered.at(-1)?.turn ?? 1);
     }
-  }, [answered, activeTurn, focusTurn]);
+  }, [answered, activeTurn]);
 
   const current = answered.find(turn => turn.turn === activeTurn) ?? answered.at(-1);
   const title = current
@@ -78,8 +86,7 @@ export function ResearchReportTab({ turns, focusTurn, onOpenConversation }: Prop
     <div className="research-report-shell">
       <header className="research-report-toolbar">
         <div className="research-report-toolbar-main">
-          <span className="research-report-kicker">调研报告</span>
-          <h3>{title}</h3>
+          <h3 title={title}>{title}</h3>
           <p>
             第 {current!.turn} 轮 · {current!.answer.length.toLocaleString()} 字
             {answered.length > 1 ? ` · 共 ${answered.length} 份答复` : ""}
@@ -109,26 +116,7 @@ export function ResearchReportTab({ turns, focusTurn, onOpenConversation }: Prop
         </div>
       </header>
 
-      {answered.length > 1 && (
-        <div className="research-report-turn-rail" role="tablist" aria-label="报告轮次">
-          {answered.map(turn => (
-            <button
-              key={turn.turn}
-              type="button"
-              role="tab"
-              aria-selected={turn.turn === current!.turn}
-              className={turn.turn === current!.turn ? "active" : ""}
-              onClick={() => setActiveTurn(turn.turn)}
-              title={previewText(turn.answer, 80)}
-            >
-              <strong>第 {turn.turn} 轮</strong>
-              <span>{answerTitle(turn.answer, turn.question.slice(0, 24) || "答复")}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <article className="research-report-document" aria-label={title}>
+      <article ref={documentRef} className="research-report-document" aria-label={title} tabIndex={0}>
         <ResearchMarkdown text={current!.answer} />
       </article>
     </div>

@@ -16,7 +16,6 @@ vi.mock("../services/backend", () => ({
 }));
 vi.mock("../state/LibraryContext", () => ({ useLibrary: () => ({ researchBusy: "", setResearchBusy: mocks.busy, setResearchNotice: mocks.busy }) }));
 vi.mock("../research-harness/ResearchHarnessProvider", () => ({ useResearchHarness: () => ({ reload: mocks.reload, eventCount: 0, loading: false }) }));
-vi.mock("../research-harness/useResearchPageLayout", () => ({ useResearchPageLayout: () => undefined }));
 vi.mock("../research-harness/ResearchTrajectoryPanel", () => ({ ResearchTrajectoryPanel: () => null }));
 vi.mock("./research/ResearchNewSessionCard", () => ({ ResearchNewSessionCard: () => null }));
 vi.mock("./research/ResearchConversationTab", () => ({ ResearchConversationTab: () => null }));
