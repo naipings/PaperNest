@@ -76,7 +76,7 @@ export function MovePapersDialog({
   };
   return <Modal title={`移动 ${count} 篇论文`} onClose={onClose}>
     <div className="move-folder-dialog">
-      <input aria-label="搜索文件夹" placeholder="搜索文件夹" value={query} onChange={event => setQuery(event.target.value)} />
+      <input className="search-input" aria-label="搜索文件夹" placeholder="搜索文件夹" value={query} onChange={event => setQuery(event.target.value)} />
       <div className="picker-scroll" role="tree">
         <button type="button" className={`folder-row ${pick?.kind === "unfiled" ? "active" : ""}`} onClick={() => setPick({ kind: "unfiled" })}>
           <Folder size={15} /><span className="folder-name">未归档</span>

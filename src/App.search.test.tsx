@@ -23,7 +23,7 @@ describe("global search errors", () => {
     vi.spyOn(backend, "search").mockRejectedValue(new Error("索引不可用"));
     render(<LibraryProvider><App /></LibraryProvider>);
 
-    const input = await screen.findByPlaceholderText("搜索标题、作者、摘要、术语、批注或 PDF 正文…");
+    const input = await screen.findByRole("textbox", { name: "搜索论文" });
     fireEvent.change(input, { target: { value: "Transformer" } });
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("全文搜索失败：索引不可用"));

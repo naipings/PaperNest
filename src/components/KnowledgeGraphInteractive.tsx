@@ -221,7 +221,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper, onDeepRead }: { onOpenP
       <div className="page-heading-actions">
         <label className="knowledge-search">
           <Search size={17} />
-          <input value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="筛选左侧列表…" />
+          <input aria-label="筛选知识树列表" value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="筛选左侧列表…" />
         </label>
       </div>
     </header>
@@ -232,6 +232,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper, onDeepRead }: { onOpenP
         <strong>原点</strong>
         <div className="cp-origin-field">
           <input
+            className="search-input"
             ref={originInputRef}
             value={originMenuOpen ? originDraft : (originPaper ? (originPaper.titleZh || originPaper.titleEn) : "")}
             placeholder="搜索本地论文并设为原点…"

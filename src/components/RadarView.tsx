@@ -405,7 +405,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
 
   const hasKeywords = (settings?.keywords?.length ?? 0) > 0;
   const hasInterest = hasKeywords || (settings?.categories?.length ?? 0) > 0;
-  const filtering = !showAll && (settings?.defaultFilterEnabled ?? true) && hasInterest && tab !== "interest";
+  const filtering = !showAll && hasInterest && tab !== "interest";
 
   const renderFilterBar = () => {
     if (tab !== "hot" && tab !== "new" && tab !== "interest" && tab !== "recommend") return null;
@@ -416,7 +416,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
           {showHidden
             ? `已隐藏视图 · ${visible} 篇`
             : filtering
-              ? `兴趣过滤 · 显示 ${visible}${tab !== "recommend" && feedTotal > visible ? ` / ${feedTotal}` : ""}`
+              ? `兴趣匹配 ${visible} 篇${tab !== "recommend" ? ` · 已采集 ${feedTotal} 篇` : ""}`
               : `显示全部 · ${visible} 篇`}
           {hasKeywords && <small>关键词：{settings!.keywords!.join(" · ")}</small>}
         </span>
@@ -427,9 +427,10 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
             </button>
           )}
           {hasInterest && tab !== "interest" && (
-            <button type="button" className="secondary" onClick={() => setShowAll(current => !current)}>
-              {showAll ? "启用兴趣过滤" : "显示全部"}
-            </button>
+            <label className="radar-interest-toggle">
+              <input type="checkbox" checked={!showAll} onChange={event => setShowAll(!event.target.checked)} />
+              仅看兴趣匹配
+            </label>
           )}
         </div>
       </div>
@@ -563,7 +564,15 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
                 <p className="radar-empty">当前没有已隐藏论文。</p>
               )}
               {date && cards.length === 0 && filtering && feedTotal > 0 && !showHidden && (
-                <p className="radar-empty">兴趣过滤后暂无匹配。可点击「显示全部」，或到设置添加/调整关键词。</p>
+                <div className="radar-empty radar-filter-empty" role="status">
+                  <RadarIcon size={24} />
+                  <h3>已采集 {feedTotal} 篇，当前兴趣条件下无匹配</h3>
+                  <p>{hasKeywords ? (settings.categories.length ? "当前按关键词短语和订阅领域共同筛选。" : "当前按关键词短语筛选。") : "当前按订阅领域筛选。"}可以查看完整榜单{hasKeywords ? "，或切换到「兴趣召回」查看关键词检索结果。" : "。"}</p>
+                  <div>
+                    <button type="button" className="primary" onClick={() => setShowAll(true)}>查看全部 {feedTotal} 篇</button>
+                    {hasKeywords && <button type="button" className="secondary" onClick={() => setTab("interest")}>查看兴趣召回</button>}
+                  </div>
+                </div>
               )}
               {date && cards.length === 0 && !(filtering && feedTotal > 0) && !(tab === "interest" && !hasKeywords) && !showHidden && (
                 <p className="radar-empty">该日暂无{tab === "hot" ? "alphaxiv 热点" : tab === "new" ? "arXiv 新稿" : "兴趣召回"}数据。</p>

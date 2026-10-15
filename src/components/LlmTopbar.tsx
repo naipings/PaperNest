@@ -98,7 +98,7 @@ export function Topbar({ search, searchError, onSearch, onCreate, onRefresh, imp
     } finally { setBusy(""); }
   };
   return <header className="topbar">
-    <label className="search-box"><Search size={17} /><input value={search} onChange={e => onSearch(e.target.value)} placeholder="搜索标题、作者、摘要、术语、批注或 PDF 正文…" /><kbd>Ctrl K</kbd></label>
+    <label className="search-box"><Search size={17} /><input aria-label="搜索论文" title="搜索标题、作者、摘要、术语、批注或 PDF 正文" value={search} onChange={e => onSearch(e.target.value)} placeholder="搜索论文、作者或全文" /><kbd>Ctrl K</kbd></label>
     {searchError && <span className="search-error" role="alert">{searchError}</span>}
     {busy && <span className="import-status"><LoaderCircle className="spin" size={15} />{busy}</span>}{notice && !busy && <span className="import-status">{notice}</span>}
     <div className="topbar-actions">

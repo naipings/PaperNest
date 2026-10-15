@@ -13,7 +13,7 @@ function PickList({ items, picked, onToggle }: { items: Pickable[]; picked: Set<
   const needle = query.trim().toLowerCase();
   const visible = needle ? items.filter(item => `${item.label} ${item.detail}`.toLowerCase().includes(needle)) : items;
   return <>
-    <input placeholder="按名称或描述筛选" value={query} onChange={event => setQuery(event.target.value)} />
+    <input className="search-input" aria-label="筛选 Skill" placeholder="按名称或描述筛选" value={query} onChange={event => setQuery(event.target.value)} />
     <ul className="skill-pick-list">
       {visible.map(item => (
         <li key={item.key}>
