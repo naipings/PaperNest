@@ -129,7 +129,7 @@ export interface SavedView {
   density: "compact" | "comfortable";
 }
 
-export interface Profile { displayName: string; researchField: string; avatarPath?: string; theme: "light" | "dark" | "system"; visualTheme?: "workbench" | "lilac" | "mist" | "willow"; }
+export interface Profile { displayName: string; researchField: string; avatarPath?: string; theme: "light" | "dark" | "system"; visualTheme?: "workbench" | "lilac" | "mist" | "willow" | "black"; }
 
 /** The key itself is deliberately never returned to the webview or stored in SQLite. */
 export type TaxonomyStrictness = "strict" | "standard" | "relaxed";

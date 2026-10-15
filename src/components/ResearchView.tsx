@@ -386,9 +386,8 @@ export function ResearchView() {
             <div className="page-title-row">
               <span className="page-title-icon"><Search size={18} /></span>
               <h1>文献调研</h1>
-              <span className="page-kicker">主题深潜</span>
             </div>
-            <p>产出 report.md；过程文件保存在项目文件夹。默认关闭，需在设置中启用调研 LLM。</p>
+            <p>检索文献、整理报告和继续追问。</p>
           </div>
         </header>
         <div className="research-page-header research-page-header-right page-heading-actions">
@@ -443,8 +442,8 @@ export function ResearchView() {
             <>
               <header className="research-detail-header">
                 <div>
-                  <h2>{selected.title}</h2>
-                  <p>{selected.query}</p>
+                  <h2 title={selected.title}>{selected.title}</h2>
+                  <details className="research-query"><summary>研究问题</summary><p>{selected.query}</p></details>
                 </div>
                 <div className="research-detail-actions">
                   {isRunning ? (

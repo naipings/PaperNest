@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsView } from "./SettingsView";
@@ -18,5 +18,16 @@ describe("profile settings errors", () => {
     fireEvent.click(await screen.findByRole("button", { name: "保存个人资料" }));
 
     expect(await screen.findByText("保存个人资料失败：数据库不可写")).toBeInTheDocument();
+  });
+
+  it("saves pure black and restores the selected theme when settings reopen", async () => {
+    const { unmount } = render(<LibraryProvider><SettingsView /></LibraryProvider>);
+    const picker = await screen.findByRole("combobox", { name: "主题" });
+    fireEvent.change(picker, { target: { value: "black-dark" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存个人资料" }));
+    await waitFor(async () => expect((await backend.initialize()).profile).toMatchObject({ theme: "dark", visualTheme: "black" }));
+    unmount();
+    render(<LibraryProvider><SettingsView /></LibraryProvider>);
+    expect(await screen.findByRole("combobox", { name: "主题" })).toHaveValue("black-dark");
   });
 });

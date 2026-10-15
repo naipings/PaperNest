@@ -215,7 +215,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper, onDeepRead }: { onOpenP
           <span className="page-kicker">Connected Papers 风格</span>
         </div>
         <p>
-          以原点论文为中心的力导向邻域图。可在「原点」栏本地搜索切换核心；初始默认一篇。单击节点查看，点空白取消选中。
+          查看论文间的本地关联，在「原点」中切换论文。
         </p>
       </div>
       <div className="page-heading-actions">
@@ -367,7 +367,7 @@ export function KnowledgeGraphInteractive({ onOpenPaper, onDeepRead }: { onOpenP
             <button type="button" className="secondary" disabled={!selected.paper.pdfPath} title={selected.paper.pdfPath ? "以该论文为原点打开论文精读" : "该论文没有 PDF"} onClick={() => onDeepRead(selected.paper)}><BookOpenCheck size={16} />论文精读</button>
           </div>
           <small>单击节点查看；点空白取消选中；双击打开。非原点可「设为原点重建图」，或在上方原点栏搜索切换。</small>
-        </> : <p className="cp-inspector-idle">单击图中节点或左侧列表查看详情；点击画布空白处可取消选中。原点请用上方搜索框切换。</p>}
+        </> : <p className="cp-inspector-idle">选择论文查看详情。</p>}
       </aside>
     </div>
   </main>;

@@ -17,11 +17,19 @@ describe("appearance theme unification", () => {
     expect(next.visualTheme).toBe("lilac");
   });
 
-  it("exposes twelve labeled theme options for settings", () => {
-    expect(APPEARANCE_OPTIONS).toHaveLength(12);
-    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("柔光紫"))).toBe(true);
-    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("雾蓝日程"))).toBe(true);
-    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("苔绿暖黄"))).toBe(true);
+  it("exposes labeled theme options including pure black", () => {
+    expect(APPEARANCE_OPTIONS).toHaveLength(13);
+    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("紫色"))).toBe(true);
+    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("蓝灰"))).toBe(true);
+    expect(APPEARANCE_OPTIONS.some(item => item.label.includes("苔绿"))).toBe(true);
+    expect(APPEARANCE_OPTIONS.find(item => item.id === "black-dark")?.label).toBe("纯黑 · 夜间");
+  });
+
+  it("persists pure black as a dark theme and restores its selection", () => {
+    const profile = { displayName: "a", researchField: "b", theme: "light" as const };
+    const next = applyAppearance(profile, "black-dark");
+    expect(next).toMatchObject({ visualTheme: "black", theme: "dark" });
+    expect(appearanceFromProfile(JSON.parse(JSON.stringify(next)))).toBe("black-dark");
   });
 });
 
@@ -102,7 +110,7 @@ describe("visual theme selection", () => {
     expect(settings).not.toContain("明暗主题");
     expect(settings).not.toContain("界面风格");
     expect(settings).toContain("APPEARANCE_OPTIONS");
-    expect(readFileSync("src/lib/appearance.ts", "utf8")).toContain("柔光紫仪表盘");
+    expect(readFileSync("src/lib/appearance.ts", "utf8")).toContain("紫色 ·");
     expect(theme).toContain(':root[data-ui-theme="lilac"]');
     expect(theme).toContain(':root[data-ui-theme="lilac"][data-theme="dark"]');
     expect(theme).toMatch(/\.research-overview\s*\{[^}]*display:\s*grid/);
@@ -126,7 +134,7 @@ describe("visual theme selection", () => {
     const theme = readFileSync("src/mist-dashboard-theme.css", "utf8");
     const appearance = readFileSync("src/lib/appearance.ts", "utf8");
 
-    expect(appearance).toContain("雾蓝日程面板");
+    expect(appearance).toContain("蓝灰 ·");
     expect(theme).toContain(':root[data-ui-theme="mist"]');
     expect(theme).toContain(':root[data-ui-theme="mist"][data-theme="dark"]');
     expect(theme).toMatch(/--accent:\s*#5a6f7d/);
@@ -144,7 +152,7 @@ describe("visual theme selection", () => {
     const appearance = readFileSync("src/lib/appearance.ts", "utf8");
     const main = readFileSync("src/main.tsx", "utf8");
 
-    expect(appearance).toContain("苔绿暖黄面板");
+    expect(appearance).toContain("苔绿 ·");
     expect(main).toContain("willow-dashboard-theme.css");
     expect(theme).toContain(':root[data-ui-theme="willow"]');
     expect(theme).toContain(':root[data-ui-theme="willow"][data-theme="dark"]');

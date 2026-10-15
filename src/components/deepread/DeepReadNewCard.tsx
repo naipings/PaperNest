@@ -72,7 +72,7 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
       <header className="research-new-card-head">
         <div>
           <h3 id="deepread-new-heading">选择要读的论文</h3>
-          <p>按篇排队生成报告，包含研究问题、方法、实验与评价，每条结论附原文证据。</p>
+          <p>每篇论文单独生成报告，多篇按顺序处理。</p>
         </div>
         <span className="research-new-card-badge" aria-hidden>
           <BookOpenCheck size={14} />

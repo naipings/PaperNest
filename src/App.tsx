@@ -163,7 +163,7 @@ export default function App() {
   if (loading) return <div className="splash"><LoaderCircle className="spin" /><strong>正在打开本地论文库…</strong></div>;
   if (error || !data) return <div className="splash error"><AlertTriangle /><strong>无法打开资料库</strong><p>{error}</p><button className="primary" onClick={refresh}>重试</button></div>;
   const openPdf = (paper: Paper, page?: number) => { setReaderPaper(page ? { ...paper, readingPage: page } : paper); setScreen("library"); };
-  const theme = async () => saveProfile({ ...data.profile, theme: data.profile.theme === "dark" ? "light" : "dark" });
+  const theme = async () => saveProfile({ ...data.profile, ...(data.profile.visualTheme === "black" ? { visualTheme: "workbench" as const } : {}), theme: data.profile.theme === "dark" ? "light" : "dark" });
   const pageFallback = <div className="splash"><LoaderCircle className="spin" /><strong>正在加载页面…</strong></div>;
   const defaultFolderId = importFolderId(folderSelection);
   return <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>

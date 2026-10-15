@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, MessageSquare, SendHorizontal, Trash2 } from "lucide-react";
+import { LoaderCircle, SendHorizontal, Trash2 } from "lucide-react";
 import type { PaperExplainMessage } from "../../types";
 import { DeepReadMarkdown } from "./DeepReadMarkdown";
 
@@ -30,7 +30,7 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
     <div className="deepread-chat">
       <div className="deepread-chat-flow">
         {!messages.length && !answering && (
-          <div className="deepread-chat-empty"><MessageSquare size={28} strokeWidth={1.5} /><h3>把论文里的疑问，继续问清楚</h3><p className="deepread-chat-hint">{canAsk ? "基于精读报告与原文回答，附页码与段落证据。" : "报告生成完成后可追问。"}</p></div>
+          <div className="deepread-chat-empty"><h3>暂无问答</h3><p className="deepread-chat-hint">{canAsk ? "输入有关这篇论文的问题，回答将引用原文。" : "生成报告后可提问。"}</p></div>
         )}
         {messages.map((message, index) => (
           <article className={`deepread-bubble ${message.role === "user" ? "is-user" : "is-assistant"}`} key={`${message.createdAt}-${index}`}>
@@ -46,7 +46,7 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
             )}
           </article>
         ))}
-        {answering && <article className="deepread-bubble is-assistant deepread-answering" role="status"><LoaderCircle className="spin" size={15} />正在结合报告与原文回答…</article>}
+        {answering && <article className="deepread-bubble is-assistant deepread-answering" role="status"><LoaderCircle className="spin" size={15} />正在回答…</article>}
         <div ref={bottomRef} />
       </div>
       <div className="deepread-composer">
@@ -55,7 +55,7 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
           rows={3}
           aria-label="精读追问"
           value={draft}
-          placeholder="就这篇论文继续追问…"
+          placeholder="输入问题…"
           disabled={!canAsk || answering}
           onChange={event => setDraft(event.target.value)}
           onKeyDown={event => {

@@ -1,0 +1,70 @@
+:root[data-ui-theme="black"][data-theme="dark"] {
+  color-scheme: dark;
+  color: #c8c8c8;
+  background: #000;
+  --text: #c8c8c8;
+  --bg: #000;
+  --app-bg: #000;
+  --sidebar: #000;
+  --panel: #000;
+  --soft: #101010;
+  --line: #272727;
+  --muted: #919191;
+  --accent: #b9c8db;
+  --accent-hover: #cbd6e4;
+  --accent-soft: #1b2026;
+  --brand: #aaa;
+  --brand-soft: #171717;
+  --sky: #9caec5;
+  --sky-soft: #14191f;
+  --shadow: none;
+  --scrollbar-thumb: #333;
+  --scrollbar-thumb-hover: #555;
+  --scrollbar-track: #000;
+  --knowledge-edge: #555;
+  --dsw-alias-bg-base: #000;
+  --dsw-alias-bg-layer-1: #000;
+  --dsw-alias-bg-layer-2: #101010;
+  --dsw-alias-bg-module-platform: #000;
+  --dsw-alias-label-primary: #c8c8c8;
+  --dsw-alias-label-secondary: #919191;
+  --dsw-alias-border-l1: #272727;
+  --dsw-alias-border-l2: #272727;
+}
+:root[data-ui-theme="black"][data-theme="dark"] :is(body, .app-shell, .sidebar, .workspace, .content-page, .settings-page, .deepread-compare, .reader-screen, .pdf-stage, .research-overview, .settings-content, .modal) { background: #000; }
+:root[data-ui-theme="black"][data-theme="dark"] :is(.deepread-main, .deepread-page .research-sidebar, .research-main, .research-new-card, .research-report-document, .research-progress-banner, .cp-layout, .knowledge-graph-page, .knowledge-map, .cp-list, .cp-list-panel, .knowledge-inspector, .task-list-panel, .calendar-panel, .task-summary-card, .reading-heatmap-board, .excerpt-card, .vocab-card, .detail-panel, .study-sidebar, .deepread-composer) { background: #000; }
+:root[data-ui-theme="black"][data-theme="dark"] .paper-table :is(th, td) { background: #000; border-color: var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] .paper-table tr:is(:hover, .selected, .checked) td { background: #151515; }
+:root[data-ui-theme="black"][data-theme="dark"] :is(.summary-card, .path-box, .privacy-grid article, .info-card, .radar-card, .research-report-empty, .reader-zoom-tools, .reader-annotate-tools, .explain-composer) { background: #080808; border-color: var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] :is(.research-session-status.status-completed, .deepread-stages li.done, .deepread-picker-list em.done) { color: #83bda3; }
+:root[data-ui-theme="black"][data-theme="dark"] .research-session-status.status-failed { color: #d39292; }
+:root[data-ui-theme="black"][data-theme="dark"] .deepread-validation { color: #c6aa79; background: #151109; }
+:root[data-ui-theme="black"][data-theme="dark"] :is(input, textarea, select) { background: #080808; color: var(--text); border-color: var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] .reader-screen:not(.pdf-original-colors) .canvasWrapper { filter: invert(1) hue-rotate(180deg) brightness(.82); }
+:root[data-ui-theme="black"][data-theme="dark"] .reader-screen:not(.pdf-original-colors) .continuous-page-host,
+:root[data-ui-theme="black"][data-theme="dark"] .reader-screen:not(.pdf-original-colors) .pdfViewer .page { background: #000; box-shadow: none; }
+:root[data-ui-theme="black"][data-theme="dark"] .deepread-figure { filter: brightness(.72); border-color: var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] .reader-toolbar button:is(:hover, .active) { background: #202020; color: var(--text); }
+:root[data-ui-theme="black"][data-theme="dark"] .markdown-body :is(th, td, pre, code) { border-color: var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] .calendar-day time { color: #aaa; }
+:root[data-ui-theme="black"][data-theme="dark"] .calendar-day.other-month time { color: #666; }
+:root[data-ui-theme="black"][data-theme="dark"] .calendar-day.today time { color: #d0d0d0; }
+:root[data-ui-theme="black"][data-theme="dark"] .task-list-panel small { color: var(--muted); }
+:root[data-ui-theme="black"][data-theme="dark"] .research-trajectory-shell {
+  --dsw-alias-bg-base: #000;
+  --dsw-alias-bg-layer-1: #000;
+  --dsw-alias-bg-layer-2: #101010;
+  --dsw-alias-bg-module-platform: #000;
+  --dsw-specific-sidebar-fill: #000;
+  --dsw-alias-border-l1: #272727;
+  --dsw-alias-border-l2: #272727;
+  --dsw-alias-border-l3: #404040;
+  --dsw-alias-label-primary: #c8c8c8;
+  --dsw-alias-label-secondary: #919191;
+  --dsw-alias-label-tertiary: #888;
+  --dsw-alias-markdown-code-block: #101010;
+  --dsw-alias-scrollbar-bg-l2: #333;
+  --dsw-alias-scrollbar-hover-l2: #555;
+}
+:root[data-ui-theme="black"][data-theme="dark"] .research-trajectory-resume-bar { background: #080808; }
+

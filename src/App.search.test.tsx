@@ -27,6 +27,6 @@ describe("global search errors", () => {
     fireEvent.change(input, { target: { value: "Transformer" } });
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("全文搜索失败：索引不可用"));
-    expect(screen.getByRole("heading", { name: "今天，从一篇论文开始" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "论文库", exact: true })).toBeInTheDocument();
   });
 });

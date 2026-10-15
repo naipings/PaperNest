@@ -33,4 +33,20 @@ describe("精读任务切换", () => {
     expect(screen.getByText("报告正文 B")).toBeInTheDocument();
     expect(screen.queryByText("报告正文 A")).not.toBeInTheDocument();
   });
+
+  it("closes the report actions menu with Escape or an outside click", async () => {
+    list.mockResolvedValue([task("A")]);
+    get.mockResolvedValue(detail("A"));
+    render(<DeepReadView onOpenPaper={() => undefined} />);
+    await screen.findByText("报告正文 A");
+    const trigger = screen.getByRole("button", { name: "更多操作" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menuitem", { name: "打开文件夹" })).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 });

@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Download, FileText, Highlighter, MessageSquarePlus, MousePointer2, PanelRightOpen, Pencil, Plus, Redo2, SidebarClose, Trash2, Underline, Undo2, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, FileText, Highlighter, MessageSquarePlus, MousePointer2, PanelRightOpen, Pencil, Plus, Redo2, SidebarClose, Sun, Trash2, Underline, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from "pdfjs-dist";
 import { PDFDocument, rgb } from "pdf-lib";
 import { backend } from "../services/backend";
@@ -57,6 +57,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   const [message, setMessage] = useState("正在打开 PDF…");
   const [pageText, setPageText] = useState<Record<number, string>>({});
   const [rightOpen, setRightOpen] = useState(!pane);
+  const [originalColors, setOriginalColors] = useState(false);
   const [flash, setFlash] = useState<RevealFlash>();
   const [readerTool, setReaderToolState] = useState<ReaderTool>("select");
   const [toolHint, setToolHint] = useState("");
@@ -717,7 +718,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     </main>;
   }
 
-  return <main className={"reader-screen pdfjs-reader" + (embedded ? " embedded" : "") + (pane ? " pane" : "")}>
+  return <main className={"reader-screen pdfjs-reader" + (embedded ? " embedded" : "") + (pane ? " pane" : "") + (originalColors ? " pdf-original-colors" : "")}>
     <header className="reader-toolbar">
       {!pane && <button className="reader-back" onClick={onBack}><ArrowLeft size={17} />返回论文库</button>}
       <div className="reader-title"><strong>{paper.titleZh || paper.titleEn}</strong><small>{paper.venue || "本地论文"} · P{page}{pdf ? ` / ${pdf.numPages}` : ""}</small></div>
@@ -740,6 +741,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
         <button title="重做（Ctrl+Shift+Z）" disabled={!canRedo} onClick={() => void redoAnnotation()}><Redo2 size={16} /></button>
       </div>
       <div className="reader-tools">
+        {data?.profile.visualTheme === "black" && <button aria-label="PDF 原色" title="切换 PDF 原色显示" aria-pressed={originalColors} className={originalColors ? "active" : ""} onClick={() => setOriginalColors(value => !value)}><Sun size={17} /></button>}
         {!paper.hasTextLayer && <button disabled={busy} onClick={() => void runOcr()} title="对扫描版执行本地 OCR"><FileText size={17} /></button>}
         <button onClick={() => void exportAnnotated()} title="导出带批注副本"><Download size={17} /></button>
         <button className={rightOpen ? "active" : ""} onClick={() => setRightOpen(value => !value)} title={rightOpen ? "收起学习侧栏" : "展开学习侧栏"}>

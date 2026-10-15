@@ -151,9 +151,8 @@ export function SkillLibraryView() {
             <div className="page-title-row">
               <span className="page-title-icon"><Puzzle size={18} /></span>
               <h1>Skill 库</h1>
-              <span className="page-kicker">追问自动选用</span>
             </div>
-            <p>从本地目录或 GitHub 仓库导入 Agent Skill，复制到资料库 skills/ 目录统一管理。论文精读追问时，模型按描述自动读取已启用的 skill；skill 中的脚本不会执行。</p>
+            <p>管理精读追问时可用的 Skill。支持本地目录和 GitHub 导入，脚本不会执行。</p>
           </div>
         </header>
         <div className="research-page-header research-page-header-right page-heading-actions">

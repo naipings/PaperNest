@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, MessageSquare, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, MessageSquare, MoreHorizontal, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import { extractPdfParagraphs } from "../lib/pdfParagraphs";
@@ -58,7 +58,26 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [detailRevision, setDetailRevision] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
   const selected = tasks.find(task => task.id === selectedId);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    moreRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    const close = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreOpen(false);
+        moreRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [moreOpen]);
 
   const showError = useCallback((error: unknown) => setNotice(messageOf(error)), []);
 
@@ -288,11 +307,8 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
         <header className="deepread-heading page-heading">
           <div className="page-title-block">
             <div className="page-title-row">
-              <span className="page-title-icon"><BookOpenCheck size={18} /></span>
               <h1>论文精读</h1>
-              <span className="page-kicker">证据驱动</span>
             </div>
-            <p>从研究问题到实验证据，让每一篇论文读得更透彻。</p>
           </div>
         <div className="page-heading-actions">
           <button type="button" className="secondary" disabled={!!busy || refreshing} onClick={async () => {
@@ -345,7 +361,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             <ul className="research-session-list">
               {tasks.map(task => (
                 <li key={task.id}>
-                  <button type="button" aria-current={selectedId === task.id ? "true" : undefined} title={task.title} className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => { setSelectedId(task.id); setTab("report"); }}>
+                  <button type="button" aria-current={selectedId === task.id ? "true" : undefined} title={task.title} className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => { setSelectedId(task.id); setTab("report"); setMoreOpen(false); }}>
                     <span className="research-session-item-top">
                       <strong>{task.title}</strong>
                       <span className={`research-session-status ${STATUS_CLASS[task.status]}`}>{STATUS_LABEL[task.status]}</span>
@@ -384,9 +400,6 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                           <Play size={16} />{stagesDone.length ? "继续生成" : "开始生成"}
                         </button>
                       )}
-                      {stagesDone.length > 0 && (
-                        <button type="button" className="secondary" disabled={!ready} onClick={() => void run(true)}><RotateCcw size={16} />重新生成</button>
-                      )}
                     </>
                   )}
                   {hasReport && (
@@ -403,13 +416,21 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                   >
                     <Columns2 size={16} />对照阅读
                   </button>
-                  {linkedPaper && (
-                    <button type="button" className="secondary" onClick={() => onOpenPaper(linkedPaper)}><BookOpenText size={16} />阅读台打开</button>
-                  )}
                   {selected.sourceKind === "external" && (
                     <button type="button" className="secondary" disabled={!!busy} onClick={() => void addToLibrary()}><Library size={16} />加入论文库</button>
                   )}
-                  <button type="button" className="secondary" onClick={() => void backend.deepreadOpenWorkspace(selected.id).catch(showError)}><FolderOpen size={16} />打开文件夹</button>
+                  <div className="deepread-more" ref={moreRef}>
+                    <button type="button" className="secondary" aria-label="更多操作" aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen(value => !value)}><MoreHorizontal size={16} /></button>
+                    {moreOpen && <div className="deepread-action-menu" role="menu" aria-label="报告操作" onBlur={event => { if (!moreRef.current?.contains(event.relatedTarget as Node)) setMoreOpen(false); }} onKeyDown={event => {
+                      const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+                      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus(); }
+                    }}>
+                      {linkedPaper && <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onOpenPaper(linkedPaper); }}><BookOpenText size={15} />打开原文</button>}
+                      <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); void backend.deepreadOpenWorkspace(selected.id).catch(showError); }}><FolderOpen size={15} />打开文件夹</button>
+                      {stagesDone.length > 0 && !isActive(selected) && <button type="button" role="menuitem" disabled={!ready} onClick={() => { setMoreOpen(false); void run(true); }}><RotateCcw size={15} />重新生成报告</button>}
+                    </div>}
+                  </div>
                 </div>
               </header>
               {selected.error && <p className="inline-notice">{selected.error}</p>}
@@ -447,12 +468,9 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             </>
           ) : (
             <div className="deepread-welcome">
-              <span className="deepread-welcome-icon"><BookOpenCheck size={34} strokeWidth={1.4} /></span>
-              <span className="deepread-eyebrow">你的论文阅读工作区</span>
-              <h2>读懂一篇论文，从问题到证据</h2>
-              <p>选择论文，生成结构化报告；对照原文核验证据，再围绕你的研究继续追问。</p>
+              <h2>暂无精读报告</h2>
+              <p>从论文库或本地 PDF 选择论文。</p>
               <button type="button" className="primary" onClick={() => setCreating(true)}><Plus size={16} />选择论文开始</button>
-              <div className="deepread-welcome-steps"><span>01 选择论文</span><span>02 生成报告</span><span>03 对照与追问</span></div>
             </div>
           )}
         </section>

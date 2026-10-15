@@ -41,10 +41,10 @@ export function Sidebar({
       >
         <BookOpen size={18} />
       </button>
-      <div><strong>PaperNest</strong><small>本地论文工作台</small></div>
+      <div><strong>PaperNest</strong><small>论文管理</small></div>
     </div>
     <nav>{items.map(({ id, label, icon: Icon }) => (
-      <button key={id} title={label} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}>
+      <button key={id} title={label} aria-current={screen === id ? "page" : undefined} className={screen === id ? "active" : ""} onClick={() => onNavigate(id)}>
         <Icon size={17} /><span className="nav-label">{label}</span>
       </button>
     ))}</nav>

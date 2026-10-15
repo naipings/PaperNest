@@ -42,8 +42,8 @@ export function WritingLibrary({ onOpenPaper }: { onOpenPaper(paper: Paper, page
   };
   return <main className="content-page"><header className="page-heading">
     <div className="page-title-block">
-      <div className="page-title-row"><span className="page-title-icon"><Feather size={18} /></span><h1>写作资料库</h1><span className="page-kicker">学术写作</span></div>
-      <p>将阅读中的好句子沉淀为可追溯、可复用的写作素材。</p>
+      <div className="page-title-row"><span className="page-title-icon"><Feather size={18} /></span><h1>写作资料库</h1></div>
+      <p>管理摘录、译文和写作用途。</p>
     </div>
     <div className="page-heading-actions"><div className="stat-card"><strong>{data.excerpts.length}</strong><small>已收藏佳句</small></div></div>
   </header>

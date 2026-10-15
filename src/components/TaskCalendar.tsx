@@ -146,8 +146,7 @@ export function TaskCalendar() {
   return <main className="content-page tasks-page">
     <header className="page-heading">
       <div className="page-title-block">
-        <div className="page-title-row"><span className="page-title-icon"><CalendarDays size={18} /></span><h1>任务与日历</h1><span className="page-kicker">研究计划</span></div>
-        <p>清单只列今日与未来任务；逾期与已完成可从上方卡片打开。</p>
+        <div className="page-title-row"><span className="page-title-icon"><CalendarDays size={18} /></span><h1>任务与日历</h1></div>
       </div>
       <div className="page-heading-actions"><button className="primary" onClick={() => { setEditing(undefined); setNewDate(today); }}><Plus size={15} />新建任务</button></div>
     </header>
@@ -174,7 +173,7 @@ export function TaskCalendar() {
         </header>
         <div className="task-list">
           {buckets.agenda.length === 0
-            ? <div className="task-empty">暂无今日或未来任务。逾期项请点上方「已逾期」查看。</div>
+            ? <div className="task-empty">暂无待办任务。</div>
             : buckets.agenda.map(task => (
               <TaskRow
                 key={task.id}

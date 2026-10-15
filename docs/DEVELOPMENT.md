@@ -108,6 +108,8 @@ sequenceDiagram
 - 浏览器预览模式（`npm run dev`）使用 `localStorage` 模拟后端，见 `backend.ts` 中 `isTauri()` 分支。
 - 按需加载页面由 `LazyScreenBoundary` 包裹；模块请求失败时显示重新加载入口。
 - 论文精读的选篇弹窗复用 `Modal` body portal；任务列表、报告与追问各自在分配的面板内滚动，样式集中于 `components/deepread/DeepRead.css`。详情请求在任务切换时取消旧响应的写入。
+- `desktop.css` 统一桌面壳层、导航、紧凑控件、分栏与阅读排版，优先级高于各配色主题；`black-theme.css` 提供纯黑主题，并覆盖日历与 DSH 轨迹的局部颜色令牌。设置保存 `visualTheme: black`、`theme: dark`，Rust Profile 使用字符串持久化。纯黑阅读台使用 canvas 显示滤镜，可临时切回原色，PDF 字节与导出流程不变。
+- `Modal` 将键盘焦点限制在当前窗口，Escape 只关闭最上层窗口，卸载时恢复入口焦点；精读「更多操作」支持外部点击、Escape 和上下方向键。
 - PDF.js 样式经 `vite.config.ts` 的 PostCSS 处理，仅作用于 `.continuous-page-host`；`:root` 变量落在该容器，关键帧保持原样，防止官方 `.sidebar` 等选择器污染应用。Vite 文件监听忽略 `src-tauri/`，避免 Windows PDB 锁导致服务退出。
 
 ### 3.2 PDF 导入

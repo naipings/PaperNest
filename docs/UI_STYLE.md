@@ -1,34 +1,34 @@
 # 界面风格
 
-PaperNest 通过设置中的单一「主题」选择界面外观，服务于论文管理与阅读任务。
-
-页眉对齐 [Helios Page Header](https://helios.hashicorp.design/components/page-header) 与 [Boreal PageHeader](https://www.borealui.ca/docs/components/pageheader)：标题与右侧操作同一基线，说明单行跟在标题下；页眉平铺在页面背景上，无嵌套白卡片。
+PaperNest 使用固定侧栏、分栏列表、正文与工具栏组织桌面界面。
 
 | 元素 | 规则 |
 |---|---|
-| 壳层 | 浅蓝灰渐变背景，侧栏与工作区使用大圆角白卡片。点击左上角品牌图标可展开完整导航标题，或收起为仅图标并缩窄侧栏。 |
-| 颜色 | 海军蓝用于主操作，柔和红用于品牌点缀，天蓝与粉紫渐变用于智能研读模块。 |
-| 论文库概览 | 顶部单行紧凑条：状态数字与标签同行；优先保证表格可视高度。 |
-| 各页页眉 | `图标 + 标题 + 分类胶囊` 同一行；说明一行；右侧放操作或计数。结构类名：`page-heading` / `page-title-block` / `page-title-row`。 |
-| 对话框 | `Modal` 挂到 `document.body` 居中显示，圆角白卡片 + 遮罩模糊；新建任务、编辑论文、写作用途、逾期/已完成任务列表等共用。 |
-| 任务页 | 概览为今天待办、已逾期、已完成；清单只含今日与未来任务；逾期与已完成经卡片打开弹窗查看。 |
-| 阅读打卡 | 任务页底部圆形热力图；悬停显示「新增 / 阅读」；阅读=当日阅读台累计 ≥5 分钟；统计在卡片右下角。 |
-| 控件 | 使用圆角筛选器、轻边框和低对比阴影，强调当前操作而不遮挡数据；论文库支持收藏、状态与领域筛选。 |
-| 文案 | 页面标题、导航、分组标签和操作按钮均使用中文。 |
+| 壳层 | 全高平铺；导航宽 200px，收起后 56px；面板以分隔线划分 |
+| 配色 | 主题决定配色，公共布局位于 src/desktop.css；控件使用实色与轻边框 |
+| 控件 | 按钮高度约 30px，圆角 4–5px；选中、悬停与键盘焦点分别可辨 |
+| 页头 | 功能标题、必要说明与右侧操作；文字陈述当前功能和状态 |
+| 论文库 | 标题与全部/在读/已读/未读计数同行，文件夹与表格分栏 |
+| 精读 | 任务列表与正文分栏；常用操作为复制和对照阅读，原文、文件夹、重新生成放在更多菜单；正文避免重复显示论文标题 |
+| 追问 | 问答滚动，输入区位于底部；空状态和进度使用直接说明 |
+| 对照阅读 | PDF 工具栏按面板宽度换行；证据定位与批注保留原有行为 |
+| 对话框 | body portal 居中显示，8px 圆角；Tab 限于当前窗口，Escape 关闭最上层窗口，关闭后焦点返回入口 |
+| 任务与日历 | 今日、逾期、完成计数与清单、日历并列；日期文字随主题保持可读 |
 
-## 主题选项
+## 主题
 
-论文精读使用完整页头、任务侧栏与阅读面板。新建选篇通过 `Modal` 的 body portal 居中显示；报告和任务各自滚动，追问输入区位于面板底部。八阶段进度在报告完成后默认收起。对照阅读中，PDF 工具栏按右侧容器宽度折行，窄面板学习侧栏覆盖在原文区域内。
+在「设置 → 个人资料 → 主题」选择并保存。
 
-PDF.js 官方样式在 Vite/PostCSS 中加上 `.continuous-page-host` 作用域，避免其 `.sidebar` 等选择器覆盖应用导航。精读专用样式见 `src/components/deepread/DeepRead.css`，实施与验证见 [精读工作区](design/deepread-workspace.md)。
-
-在「设置 → 个人资料 → 主题」一次选择界面风格与明暗：
-
-| 选项 | 说明 |
+| 选项 | 实现 |
 |---|---|
-| 经典工作台 · 跟随系统 / 浅色 / 深色 | 默认海军蓝工作台；`reference-theme.css` + `styles.css` |
-| 柔光紫仪表盘 · 跟随系统 / 浅色 / 深色 | 暖丁香壳层 + orchid 主色 + 玫粉品牌色；保留侧栏文字导航；`lilac-dashboard-theme.css` |
-| 雾蓝日程面板 · 跟随系统 / 浅色 / 深色 | 石板雾灰壳层 + 冷蓝灰主色 + 暖石品牌色；保留侧栏文字；`mist-dashboard-theme.css` |
-| 苔绿暖黄面板 · 跟随系统 / 浅色 / 深色 | 鼠尾草绿壳层 + 暖芥末黄品牌色；保留侧栏文字；`willow-dashboard-theme.css` |
+| 标准 · 跟随系统 / 浅色 / 深色 | styles.css + reference-theme.css |
+| 紫色 · 跟随系统 / 浅色 / 深色 | lilac-dashboard-theme.css |
+| 蓝灰 · 跟随系统 / 浅色 / 深色 | mist-dashboard-theme.css |
+| 苔绿 · 跟随系统 / 浅色 / 深色 | willow-dashboard-theme.css |
+| 纯黑 · 夜间 | black-theme.css；主体与阅读背景 #000，控件深灰，正文浅灰 |
 
-底层仍写入 `profile.theme` 与 `profile.visualTheme`，由 `html[data-theme]` / `html[data-ui-theme]` 落地。
+纯黑主题保存为 profile.visualTheme = black、profile.theme = dark，重启后恢复。侧栏切换明暗时进入标准浅色主题。PDF 默认反色显示，阅读工具栏「PDF 原色」可临时切回原色；该变化仅影响显示。
+
+PDF.js 官方样式经 Vite/PostCSS 限定在 .continuous-page-host 内。精读面板内部样式在 components/deepread/DeepRead.css；公共桌面样式与主题依次覆盖布局和颜色。
+
+实施记录：[桌面界面与纯黑主题](design/desktop-refinement.md)。

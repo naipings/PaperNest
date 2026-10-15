@@ -13,21 +13,23 @@ export type AppearanceId =
   | "mist-dark"
   | "willow-system"
   | "willow-light"
-  | "willow-dark";
+  | "willow-dark"
+  | "black-dark";
 
 export const APPEARANCE_OPTIONS: { id: AppearanceId; label: string }[] = [
-  { id: "workbench-system", label: "经典工作台 · 跟随系统" },
-  { id: "workbench-light", label: "经典工作台 · 浅色" },
-  { id: "workbench-dark", label: "经典工作台 · 深色" },
-  { id: "lilac-system", label: "柔光紫仪表盘 · 跟随系统" },
-  { id: "lilac-light", label: "柔光紫仪表盘 · 浅色" },
-  { id: "lilac-dark", label: "柔光紫仪表盘 · 深色" },
-  { id: "mist-system", label: "雾蓝日程面板 · 跟随系统" },
-  { id: "mist-light", label: "雾蓝日程面板 · 浅色" },
-  { id: "mist-dark", label: "雾蓝日程面板 · 深色" },
-  { id: "willow-system", label: "苔绿暖黄面板 · 跟随系统" },
-  { id: "willow-light", label: "苔绿暖黄面板 · 浅色" },
-  { id: "willow-dark", label: "苔绿暖黄面板 · 深色" }
+  { id: "workbench-system", label: "标准 · 跟随系统" },
+  { id: "workbench-light", label: "标准 · 浅色" },
+  { id: "workbench-dark", label: "标准 · 深色" },
+  { id: "lilac-system", label: "紫色 · 跟随系统" },
+  { id: "lilac-light", label: "紫色 · 浅色" },
+  { id: "lilac-dark", label: "紫色 · 深色" },
+  { id: "mist-system", label: "蓝灰 · 跟随系统" },
+  { id: "mist-light", label: "蓝灰 · 浅色" },
+  { id: "mist-dark", label: "蓝灰 · 深色" },
+  { id: "willow-system", label: "苔绿 · 跟随系统" },
+  { id: "willow-light", label: "苔绿 · 浅色" },
+  { id: "willow-dark", label: "苔绿 · 深色" },
+  { id: "black-dark", label: "纯黑 · 夜间" }
 ];
 
 export function appearanceFromProfile(profile: Pick<Profile, "theme" | "visualTheme">): AppearanceId {
