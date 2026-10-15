@@ -719,4 +719,4 @@ Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-
 
 ## 界面字号与反馈（0.2.55）
 
-公共字体通过 `styles.css` 的 `--font-ui` / `--font-code` 提供，调研轨迹复用同一字体。`desktop.css` 统一文字尺度、统计栏、菜单状态和响应式布局；`black-theme.css` 覆盖夜间配色。筛选菜单管理选项焦点并阻止 Escape 继续关闭外层对话框。表格密度由 LibraryView 状态同步到根节点，CSS 控制行高，按钮提供 aria-pressed。实施和实测见 [interface-polish.md](design/interface-polish.md)。
+公共字体通过 `styles.css` 的 `--font-ui` / `--font-code` 提供；0.2.56 起中文使用本地 `public/fonts/NotoSansSC.woff2` 可变字体，随包提供 OFL 许可，调研轨迹复用同一字体。`desktop.css` 统一文字尺度、统计栏、菜单状态和响应式布局；`black-theme.css` 覆盖夜间配色。筛选菜单管理选项焦点并阻止 Escape 继续关闭外层对话框。表格密度由 LibraryView 状态同步到根节点，CSS 控制行高，按钮提供 aria-pressed。实施和实测见 [interface-polish.md](design/interface-polish.md)。
