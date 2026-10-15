@@ -18,7 +18,7 @@
   border-radius: 0; box-shadow: none; backdrop-filter: none; background: var(--soft);
 }
 :root[data-ui-theme][data-theme] .brand { padding: 0 8px 26px; gap: 9px; }
-:root[data-ui-theme][data-theme] .brand-mark { width: 28px; height: 28px; border: 0; border-radius: 4px; color: var(--text); background: transparent; box-shadow: none; }
+:root[data-ui-theme][data-theme] .brand-mark { width: 34px; height: 34px; border: 0; border-radius: 8px; color: #fff; background: var(--accent); box-shadow: none; }
 :root[data-ui-theme][data-theme] .brand strong { font-size: 15px; font-weight: 650; color: var(--text); letter-spacing: -.25px; }
 :root[data-ui-theme][data-theme] .brand small { font-size: 12px; margin-top: 3px; }
 :root[data-ui-theme][data-theme] .sidebar nav { gap: 3px; }
@@ -27,8 +27,8 @@
 :root[data-ui-theme][data-theme] .sidebar nav button svg { width: 18px; height: 18px; color: inherit; }
 :root[data-ui-theme][data-theme] .sidebar nav button.active { color: var(--text); background: var(--accent-soft); box-shadow: none; font-weight: 600; }
 :root[data-ui-theme][data-theme] .sidebar nav button:not(.active):hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
-:root[data-ui-theme][data-theme] .sidebar nav button:nth-child(6),
-:root[data-ui-theme][data-theme] .sidebar nav button:last-child { margin-top: 14px; }
+:root[data-ui-theme][data-theme] .sidebar nav button { height: 42px; margin: 0; }
+:root[data-ui-theme][data-theme="dark"] .brand-mark { color: #111; }
 :root[data-ui-theme][data-theme] .profile-mini { margin-top: 10px; padding: 12px 8px 0; border-top: 1px solid var(--line); }
 :root[data-ui-theme][data-theme] .profile-mini > span { width: 26px; height: 26px; border-radius: 4px; background: var(--accent-soft); color: var(--muted); font-size: 11px; }
 :root[data-ui-theme][data-theme] .profile-mini strong { font-size: 13px; font-weight: 500; }
@@ -65,27 +65,21 @@
 :root[data-ui-theme][data-theme] .modal > header { height: 48px; }
 :root[data-ui-theme][data-theme] .filter-menu-panel { max-height: min(360px, 50vh); overflow-y: auto; border-radius: 6px; box-shadow: 0 4px 14px #0002; }
 
-/* 论文库：标题和计数占一行，将高度留给表格。 */
-:root[data-ui-theme][data-theme] .research-overview { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 10px 20px; gap: 24px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 0; }
-:root[data-ui-theme][data-theme] .research-overview::before { content: none; }
-:root[data-ui-theme][data-theme] .overview-intro h1 { font-size: 20px; font-weight: 600; }
-:root[data-ui-theme][data-theme] .overview-metrics { display: flex; gap: 20px; }
-:root[data-ui-theme][data-theme] .overview-metrics article { min-height: 0; border: 0; padding: 0; background: transparent; box-shadow: none; }
-:root[data-ui-theme][data-theme] .overview-metrics article div { display: flex; align-items: baseline; gap: 8px; }
-:root[data-ui-theme][data-theme] .overview-metrics strong { font-size: 16px; font-weight: 600; color: var(--text); }
-:root[data-ui-theme][data-theme] .overview-metrics small { font-size: 13px; }
+/* 论文库概览沿用各主题的 0.2.52 布局。 */
+:root[data-ui-theme][data-theme] .overview-intro h1 { font-size: 22px; font-weight: 600; }
+:root[data-ui-theme][data-theme] .overview-metrics article div { gap: 8px; }
 :root[data-ui-theme][data-theme] .view-header { height: auto; min-height: 64px; padding: 12px 18px; gap: 10px; flex-wrap: wrap; }
 :root[data-ui-theme][data-theme] .view-header h1 { font-size: 14px; font-weight: 600; }
 :root[data-ui-theme][data-theme] .view-header p { font-size: 13px; margin-top: 4px; }
 :root[data-ui-theme][data-theme] .view-tools { flex-wrap: wrap; gap: 8px; }
 :root[data-ui-theme][data-theme] .view-tools .ghost { display: inline-flex; }
-:root[data-ui-theme][data-theme] .paper-table th { height: 38px; font-size: 13px; background: var(--soft); border-right: 0; }
-:root[data-ui-theme][data-theme] .paper-table td { height: 56px; background: var(--panel); font-size: 14px; white-space: nowrap; border-right: 0; }
+:root[data-ui-theme][data-theme] .paper-table th { height: 38px; font-size: 13px; background: var(--soft); border-right: 1px solid var(--line); }
+:root[data-ui-theme][data-theme] .paper-table td { height: 56px; background: var(--panel); font-size: 14px; white-space: nowrap; border-right: 1px solid var(--line); }
 :root[data-ui-theme][data-theme] .paper-table tr:hover td { background: var(--soft); }
 :root[data-ui-theme][data-theme] .paper-table tr.selected td { background: var(--accent-soft); }
 :root[data-ui-theme][data-theme][data-table-density="compact"] .paper-table td { height: 48px; padding-top: 3px; padding-bottom: 3px; }
 :root[data-ui-theme][data-theme] .view-tools [aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
-:root[data-ui-theme][data-theme] .title-cell strong { font-size: 14px; font-weight: 500; }
+:root[data-ui-theme][data-theme] .title-cell strong { font-size: 14px; font-weight: 600; }
 :root[data-ui-theme][data-theme] .title-cell small { font-size: 13px; }
 
 /* 精读：列表、工具栏与正文使用分隔线组织。 */
@@ -170,7 +164,6 @@
   :root[data-ui-theme][data-theme] .deepread-main .research-detail-header { padding: 16px 22px 0; }
   :root[data-ui-theme][data-theme] .deepread-main .research-detail-tabs { margin: 0 22px; }
   :root[data-ui-theme][data-theme] .deepread-report .research-report-document { padding: 20px 24px 32px; }
-  :root[data-ui-theme][data-theme] .overview-metrics { gap: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root[data-ui-theme][data-theme] *, :root[data-ui-theme][data-theme] *::before, :root[data-ui-theme][data-theme] *::after { scroll-behavior: auto; transition: none; }

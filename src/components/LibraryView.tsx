@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookmarkPlus, Filter, Heart, LayoutList, RefreshCw, Rows3, Tags } from "lucide-react";
+import { BookOpenCheck, BookmarkPlus, Clock3, Filter, Heart, LayoutList, Library, RefreshCw, Rows3, Tags } from "lucide-react";
 import { useLibrary } from "../state/LibraryContext";
 import type { Folder, FolderSelection, Paper, PaperStatus, SavedView } from "../types";
 import { now, uuid } from "../types";
@@ -194,13 +194,13 @@ export function LibraryView({
   const crumbs = folderBreadcrumb(data.folders, folderSelection);
   return <main className="library-view">
     <section className="research-overview" aria-label="论文库概览">
-      <div className="overview-intro"><h1>论文库</h1></div>
+      <div className="overview-intro"><span className="eyebrow"><Library size={14} />文献管理</span><h1>论文库</h1><p>收录文献，查看阅读进度与笔记。</p></div>
       <div className="overview-metrics">
-        <article><div><strong>{data.papers.filter(paper => !paper.deletedAt).length}</strong><small>全部</small></div></article>
-        <article><div><strong>{readingCount}</strong><small>在读</small></div></article>
-        <article><div><strong>{completedCount}</strong><small>已读</small></div></article>
-        <article><div><strong>{unreadCount}</strong><small>未读</small></div></article>
+        <article><span className="metric-icon blue"><BookOpenCheck size={18} /></span><div><strong>{data.papers.filter(paper => !paper.deletedAt).length}</strong><small>已收录论文</small></div></article>
+        <article><span className="metric-icon coral"><Clock3 size={18} /></span><div><strong>{readingCount}</strong><small>正在阅读</small></div></article>
+        <article><span className="metric-icon mint"><BookOpenCheck size={18} /></span><div><strong>{completedCount}</strong><small>已完成阅读</small></div></article>
       </div>
+      <aside className="overview-assistant"><div><span className="assistant-label"><Clock3 size={15} />阅读概况</span><strong>{unreadCount ? `有 ${unreadCount} 篇论文等待开始` : "论文库已整理完成"}</strong><small>选择论文可查看摘要、笔记与关联资料。</small></div><span className="assistant-orb" aria-hidden="true" /></aside>
     </section>
     <div className="library-body">
       <FolderTree

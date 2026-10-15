@@ -720,3 +720,5 @@ Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-
 ## 界面字号与反馈（0.2.57）
 
 界面以 0.2.54 为基底，`styles.css` 与调研轨迹使用同一系统字体配置。`desktop.css` 维护导航和控件尺度、表格选中状态、研究问题展开区与窄窗工具栏；`black-theme.css` 提供夜间配色。筛选菜单管理选项焦点，Escape 关闭后恢复焦点。表格密度由 LibraryView 状态同步到根节点，按钮提供 aria-pressed；论文定位仅对新的 selectedId 调整筛选，用户后续筛选继续生效。实施、来源与实测见 [0254-refinement.md](design/0254-refinement.md)。
+
+导航、概览与表格补充规范见 [0258-ui-corrections.md](design/0258-ui-corrections.md)。概览 JSX 复用 0.2.52 的主题组件结构，纯黑样式补齐同样的网格；各主题自有样式继续负责配色与响应式。
