@@ -35,6 +35,8 @@
 :root[data-ui-theme="black"][data-theme="dark"] :is(.deepread-main, .deepread-page .research-sidebar, .research-main, .research-new-card, .research-report-document, .research-progress-banner, .cp-layout, .knowledge-graph-page, .knowledge-map, .cp-list, .cp-list-panel, .knowledge-inspector, .task-list-panel, .calendar-panel, .task-summary-card, .reading-heatmap-board, .excerpt-card, .vocab-card, .detail-panel, .study-sidebar, .deepread-composer) { background: #000; }
 :root[data-ui-theme="black"][data-theme="dark"] .paper-table :is(th, td) { background: #000; border-color: var(--line); }
 :root[data-ui-theme="black"][data-theme="dark"] .paper-table tr:is(:hover, .selected, .checked) td { background: #151515; }
+:root[data-ui-theme="black"][data-theme="dark"] .paper-table .status { background: #171717; color: #aaa; border: 1px solid var(--line); }
+:root[data-ui-theme="black"][data-theme="dark"] .paper-table .status-reading { color: #b9c8db; border-color: #3c4958; }
 :root[data-ui-theme="black"][data-theme="dark"] :is(.summary-card, .path-box, .privacy-grid article, .info-card, .radar-card, .research-report-empty, .reader-zoom-tools, .reader-annotate-tools, .explain-composer) { background: #080808; border-color: var(--line); }
 :root[data-ui-theme="black"][data-theme="dark"] :is(.research-session-status.status-completed, .deepread-stages li.done, .deepread-picker-list em.done) { color: #83bda3; }
 :root[data-ui-theme="black"][data-theme="dark"] .research-session-status.status-failed { color: #d39292; }

@@ -59,14 +59,12 @@ export function LibraryView({
   const [category, setCategory] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [compact, setCompact] = useState(() => document.documentElement.dataset.tableDensity === "compact");
   const [clearChecksToken, setClearChecksToken] = useState(0);
   const [movePaperIds, setMovePaperIds] = useState<string[]>();
   useEffect(() => {
-    const toggleDensity = () => { document.documentElement.dataset.tableDensity = document.documentElement.dataset.tableDensity !== "compact" ? "compact" : "comfortable"; };
-    const button = document.querySelector<HTMLButtonElement>(".view-tools .icon-button");
-    button?.addEventListener("click", toggleDensity);
-    return () => button?.removeEventListener("click", toggleDensity);
-  }, []);
+    document.documentElement.dataset.tableDensity = compact ? "compact" : "comfortable";
+  }, [compact]);
   useEffect(() => {
     if (!selectedId || !data) return;
     const paper = data.papers.find(item => item.id === selectedId && !item.deletedAt);
@@ -232,9 +230,9 @@ export function LibraryView({
               { id: "uncategorized", label: "未分类" },
               ...data.categories.map(item => ({ id: item.id, label: item.name }))
             ] }]} />
-            <button className="ghost" onClick={saveCurrent}><BookmarkPlus size={15} />保存视图</button>
-            <button className="ghost" disabled={refreshing} onClick={() => void refreshLibrary()} title="从资料库重新加载"><RefreshCw size={15} className={refreshing ? "spin" : undefined} />刷新</button>
-            <button className="icon-button" title="切换表格密度"><Rows3 size={17} /></button>
+            <button className="ghost view-save" aria-label="保存视图" title="保存视图" onClick={saveCurrent}><BookmarkPlus size={15} /><span>保存视图</span></button>
+            <button className="ghost view-refresh" disabled={refreshing} aria-busy={refreshing} aria-label={refreshing ? "刷新中…" : "刷新"} onClick={() => void refreshLibrary()} title={refreshing ? "刷新中…" : "从资料库重新加载"}><RefreshCw size={15} className={refreshing ? "spin" : undefined} /><span>{refreshing ? "刷新中…" : "刷新"}</span></button>
+            <button className="icon-button" title="切换表格密度" aria-pressed={compact} onClick={() => setCompact(value => !value)}><Rows3 size={17} /></button>
           </div>
         </div>
         <PaperTable

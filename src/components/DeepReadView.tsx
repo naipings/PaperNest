@@ -311,14 +311,14 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             </div>
           </div>
         <div className="page-heading-actions">
-          <button type="button" className="secondary" disabled={!!busy || refreshing} onClick={async () => {
+          <button type="button" className="secondary" disabled={!!busy || refreshing} aria-busy={refreshing} onClick={async () => {
             setRefreshing(true);
-            try { await loadTasks(); setDetailRevision(value => value + 1); }
+            try { await loadTasks(); setDetailRevision(value => value + 1); setNotice("精读列表已刷新"); }
             catch (error) { showError(error); }
             finally { setRefreshing(false); }
           }}>
             <RefreshCw size={15} className={refreshing ? "spin" : ""} />
-            刷新
+            {refreshing ? "刷新中…" : "刷新"}
           </button>
           <button type="button" className="primary" disabled={!!busy} onClick={() => { setNotice(""); setCreating(true); }}><Plus size={16} />新建精读</button>
         </div>

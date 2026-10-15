@@ -22,6 +22,20 @@ const task = (id: string): DeepRead => ({
 const detail = (id: string): DeepReadDetail => ({ task: task(id), report: `报告正文 ${id}`, messages: [], stagesDone: [], figures: [], paragraphs: [] });
 
 describe("精读任务切换", () => {
+  it("shows refresh progress and completion", async () => {
+    list.mockResolvedValue([task("A")]);
+    get.mockResolvedValue(detail("A"));
+    render(<DeepReadView onOpenPaper={() => undefined} />);
+    await screen.findByText("报告正文 A");
+    let finish!: (value: DeepRead[]) => void;
+    list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新", exact: true }));
+    expect(screen.getByRole("button", { name: "刷新中…" })).toBeDisabled();
+    await act(async () => finish([task("A")]));
+    expect(screen.getByRole("status")).toHaveTextContent("精读列表已刷新");
+    expect(screen.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+  });
+
   it("较慢的旧请求返回后仍显示新选任务", async () => {
     let resolveA!: (value: DeepReadDetail) => void;
     list.mockResolvedValue([task("A"), task("B")]);
