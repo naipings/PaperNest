@@ -20,6 +20,7 @@ import { ResearchProposalsTab } from "./research/ResearchProposalsTab";
 import { ResearchReportTab } from "./research/ResearchReportTab";
 import { ResearchSessionList } from "./research/ResearchSessionList";
 import { useLibrary } from "../state/LibraryContext";
+import { Modal } from "./Modal";
 import type {
   ResearchAttachmentInput,
   ResearchProposal,
@@ -50,6 +51,8 @@ export function ResearchView() {
   const [steps, setSteps] = useState<ResearchStepSummary[]>([]);
   const [proposals, setProposals] = useState<ResearchProposal[]>([]);
   const [notice, setNotice] = useState("");
+  const [exportConfirm, setExportConfirm] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [showProcess, setShowProcess] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>("trajectory");
   const [reportFocusTurn, setReportFocusTurn] = useState<number>();
@@ -258,11 +261,15 @@ export function ResearchView() {
 
   const exportReport = async () => {
     if (!selectedId) return;
+    setExportConfirm(false);
+    setExporting(true);
     try {
       const path = await backend.researchExportReport(selectedId);
       setNotice(`已合并导出：${path}`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -459,9 +466,9 @@ export function ResearchView() {
                     </button>
                   )}
                   {turns.length > 1 && (
-                    <button type="button" className="secondary" onClick={() => void exportReport()}>
-                      <FileDown size={16} />
-                      合并导出
+                    <button type="button" className="secondary" disabled={exporting} aria-busy={exporting} onClick={() => setExportConfirm(true)}>
+                      {exporting ? <LoaderCircle className="spin" size={16} /> : <FileDown size={16} />}
+                      {exporting ? "导出中…" : "合并导出"}
                     </button>
                   )}
                   <button type="button" className="secondary" onClick={() => void backend.researchOpenWorkspace(selected.id)}><FolderOpen size={16} />打开文件夹</button>
@@ -581,6 +588,24 @@ export function ResearchView() {
           )}
         </section>
       </div>
+      {exportConfirm && selected && (
+        <Modal title="合并导出报告" onClose={() => setExportConfirm(false)}>
+          <div className="paper-editor research-export-confirm">
+            <p>将“{selected.title}”中已有回答的 {answeredTurns} 轮内容按顺序合并为 Markdown 报告。</p>
+            <div className="research-export-destination">
+              <span>保存文件</span>
+              <strong>report-full.md</strong>
+              <span>所在文件夹</span>
+              <p>{selected.workspacePath}</p>
+            </div>
+            <p>同名报告将更新为本次合并的内容。</p>
+            <footer>
+              <button type="button" className="secondary" onClick={() => setExportConfirm(false)}>取消</button>
+              <button type="button" className="primary" onClick={() => void exportReport()}><FileDown size={16} />确认导出</button>
+            </footer>
+          </div>
+        </Modal>
+      )}
     </main>
   );
 }

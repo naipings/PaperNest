@@ -165,6 +165,12 @@
   :root[data-ui-theme][data-theme] .deepread-main .research-detail-tabs { margin: 0 22px; }
   :root[data-ui-theme][data-theme] .deepread-report .research-report-document { padding: 20px 24px 32px; }
 }
+.research-export-confirm { font-size: 14px; line-height: 1.7; }
+.research-export-confirm p { margin: 0; overflow-wrap: anywhere; }
+.research-export-destination { display: grid; gap: 5px; padding: 14px 16px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; }
+.research-export-destination > span { color: var(--muted); font-size: 13px; }
+.research-export-destination > span:nth-of-type(2) { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) {
   :root[data-ui-theme][data-theme] *, :root[data-ui-theme][data-theme] *::before, :root[data-ui-theme][data-theme] *::after { scroll-behavior: auto; transition: none; }
 }
+
