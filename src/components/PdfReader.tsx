@@ -124,9 +124,9 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
     const stage = stageRef.current;
     if (!stage || zoomPreset === "custom") return;
     const { width, height } = pageSizeRef.current;
-    const pad = 50;
-    const availW = Math.max(200, stage.clientWidth - pad);
-    const availH = Math.max(200, stage.clientHeight - pad);
+    const style = getComputedStyle(stage);
+    const availW = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const availH = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
     setScale(zoomPreset === "fit-page"
       ? Math.min(fitPdfScale(availW, width), fitPdfScale(availH, height))
       : fitPdfScale(availW, width));
@@ -165,7 +165,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   }, []);
 
   const bumpScale = (delta: number) => {
-    pendingScale.current = Math.max(0.55, Math.min(2.5, pendingScale.current + delta));
+    pendingScale.current = Math.max(0.1, Math.min(2.5, pendingScale.current + delta));
     if (scaleTimer.current !== undefined) window.clearTimeout(scaleTimer.current);
     scaleTimer.current = window.setTimeout(() => {
       scaleTimer.current = undefined;

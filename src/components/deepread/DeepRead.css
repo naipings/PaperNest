@@ -1,0 +1,178 @@
+/* 精读工作区：由容器分配高度，任务和正文分别滚动。 */
+.deepread-page.content-page {
+  --research-sidebar-w: 244px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 26px 28px 24px;
+}
+.deepread-page .deepread-heading {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  align-items: center;
+}
+.deepread-heading .page-title-block { min-width: 0; }
+.deepread-heading .page-title-block > p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.deepread-heading .page-heading-actions { display: flex; flex-shrink: 0; gap: 8px; }
+.deepread-page .deepread-layout {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  gap: 18px;
+  align-items: stretch;
+}
+.deepread-page .research-sidebar {
+  min-height: 0;
+  padding: 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+}
+.deepread-page .research-history { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.deepread-history-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 14px; color: var(--muted); font-size: 11px; }
+.deepread-page .research-history h3 { margin: 0; color: inherit; font-size: 12px; }
+.deepread-page .research-session-list { overflow: auto; min-height: 0; padding: 2px; align-content: start; }
+.deepread-page .research-session-list > li { position: relative; min-width: 0; }
+.deepread-page .research-session-item { min-width: 0; padding: 13px 12px; gap: 8px; border-color: transparent; background: transparent; }
+.deepread-page .research-session-item.active { border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); box-shadow: inset 3px 0 var(--accent); }
+.deepread-page .research-session-item-top { flex-direction: column; gap: 8px; padding-right: 14px; }
+.deepread-page .research-session-item strong { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.6; font-size: 12px; }
+.deepread-page .research-session-delete { position: absolute; right: 4px; bottom: 7px; width: 24px; height: 26px; opacity: .4; }
+.deepread-page .research-session-delete:is(:hover, :focus-visible) { opacity: 1; color: #c45c5c; }
+.deepread-page .deepread-main { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; box-shadow: 0 4px 20px color-mix(in srgb, var(--accent) 3%, transparent); }
+.deepread-main .research-detail-header { flex: 0 0 auto; display: block; padding: 22px 24px 0; margin: 0; }
+.deepread-document-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+.deepread-main .research-detail-header h2 { font-size: 19px; line-height: 1.5; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.deepread-main .research-detail-header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; margin-top: 5px; }
+.deepread-main .research-detail-actions { margin-top: 16px; gap: 6px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.deepread-main .research-detail-actions button { min-height: 32px; padding: 6px 10px; font-size: 11px; border-radius: 8px; }
+.deepread-main .research-detail-actions button svg { width: 14px; height: 14px; }
+.deepread-main .research-detail-tabs { flex: 0 0 auto; margin: 14px 24px; }
+.deepread-main .research-detail-tabs button { display: inline-flex; gap: 6px; align-items: center; padding: 7px 13px; font-size: 12px; }
+.deepread-detail-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.deepread-loading { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.deepread-main > .inline-notice, .deepread-main > .research-progress-banner { margin: 10px 24px 0; flex-shrink: 0; }
+.deepread-notice { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); font-size: 12px; line-height: 1.5; }
+.deepread-notice > span { flex: 1; overflow-wrap: anywhere; }
+.deepread-notice > svg { flex-shrink: 0; color: var(--accent); }
+.deepread-page .research-disabled-banner { flex-shrink: 0; margin: 0; max-width: none; }
+.deepread-page .research-disabled-banner p { margin-bottom: 0; }
+.deepread-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 32px; background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 65%); }
+.deepread-welcome-icon { display: grid; place-items: center; width: 76px; height: 76px; color: var(--accent); background: var(--accent-soft); border-radius: 24px; margin-bottom: 8px; }
+.deepread-eyebrow { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
+.deepread-welcome h2 { margin: 0; font-size: 23px; letter-spacing: -.04em; }
+.deepread-welcome p { max-width: 370px; font-size: 13px; line-height: 1.9; color: var(--muted); margin: 0 0 6px; }
+.deepread-welcome-steps { display: flex; gap: 24px; margin-top: 25px; color: var(--muted); font-size: 11px; }
+
+/* 选篇弹窗沿用全局 body portal，不受工作区裁剪。 */
+.deepread-new-card {
+  --research-input-bg: color-mix(in srgb, var(--soft) 72%, var(--panel));
+  --research-input-border: var(--line);
+  --research-input-focus: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.modal .deepread-new-card { overflow: auto; min-height: 0; padding: 22px 24px; border: 0; border-radius: 0; box-shadow: none; gap: 16px; }
+.deepread-new-card .research-new-card-head { align-items: center; }
+.deepread-new-card .research-new-card-head h3 { font-size: 16px; }
+.deepread-new-card .research-new-card-head p { max-width: 560px; line-height: 1.7; }
+.deepread-new-card .deepread-source-tabs { display: flex; width: 100%; margin: 0; }
+.deepread-new-card .deepread-source-tabs button { flex: 1; }
+.deepread-new-card .deepread-picker-filters { grid-template-columns: minmax(150px, 1fr) minmax(200px, 2fr); }
+.deepread-new-card .deepread-picker-filters:has(select[aria-label="知识树原点"]) { grid-template-columns: 1fr 1fr; }
+.deepread-new-card .deepread-picker-filters:has(select[aria-label="知识树原点"]) .deepread-picker-search { grid-column: 1 / -1; }
+.deepread-picker-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.deepread-new-card .deepread-picker-list { max-height: min(42vh, 380px); min-height: 120px; padding: 6px; align-content: start; }
+.deepread-new-card .deepread-picker-list li { min-width: 0; }
+.deepread-new-card .deepread-picker-list label { padding: 12px; gap: 12px; align-items: center; font-size: 13px; }
+.deepread-new-card .deepread-picker-list label span { overflow-wrap: anywhere; }
+.deepread-new-card .deepread-picker-list label.is-selected { background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+.deepread-new-card .deepread-picker-list input { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
+.deepread-new-footer { border-top: 1px solid var(--line); padding-top: 16px; }
+.deepread-new-footer button { flex-shrink: 0; }
+.deepread-new-card .deepread-dropzone { min-height: 230px; align-content: center; gap: 12px; background: var(--soft); transition: background .15s, border-color .15s; }
+.deepread-dropzone > p { font-size: 15px; color: inherit; }
+.deepread-dropzone.is-dragging { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.deepread-file-notice { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deepread-create-progress { display: flex; align-items: center; gap: 8px; padding: 12px 24px; margin: 0; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
+
+.deepread-report { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: auto; }
+.deepread-progress { flex: 0 0 auto; margin: 0 24px 10px; padding: 0 12px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; }
+.deepread-progress summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; cursor: pointer; color: var(--muted); font-size: 11px; list-style: none; }
+.deepread-progress summary::-webkit-details-marker { display: none; }
+.deepread-progress summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.deepread-progress summary > span:last-child::after { content: "展开"; margin-left: 12px; color: var(--accent); }
+.deepread-progress[open] summary > span:last-child::after { content: "收起"; }
+.deepread-progress .deepread-stages { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-bottom: 12px; }
+.deepread-progress .deepread-stages li { display: flex; gap: 6px; align-items: center; text-align: left; font-size: 10px; padding: 7px 6px; background: var(--panel); }
+.deepread-stage-index { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 9px; }
+.deepread-report .research-report-document { flex: 1 0 auto; min-height: 0; max-height: none; overflow: visible; padding: 22px clamp(24px, 4vw, 64px) 36px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: var(--panel); }
+.deepread-report .research-report-document .markdown-body { max-width: 780px; font-size: 14px; line-height: 1.95; overflow-wrap: anywhere; }
+.deepread-report .markdown-body h1 { font-size: 22px; line-height: 1.5; letter-spacing: -.025em; margin-bottom: 28px; }
+.deepread-report .markdown-body h2 { margin: 28px 0 14px; font-size: 18px; line-height: 1.5; }
+.deepread-report .markdown-body h3 { font-size: 14px; margin: 20px 0 10px; }
+.deepread-md table { display: block; max-width: 100%; overflow-x: auto; }
+.deepread-md pre { max-width: 100%; }
+.deepread-md a { overflow-wrap: anywhere; }
+.deepread-report .research-report-empty { flex: 1 0 auto; min-height: 180px; border: 0; border-radius: 0; }
+.deepread-report .deepread-validation { margin: 0 24px 12px; flex-shrink: 0; }
+.deepread-validation > svg { flex-shrink: 0; }
+
+.deepread-chat { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 0; }
+.deepread-chat-flow { flex: 1; min-height: 0; max-height: none; overflow: auto; padding: 12px 24px 20px; gap: 18px; }
+.deepread-chat-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; color: var(--muted); padding: 24px; }
+.deepread-chat-empty h3 { margin: 0; font-size: 16px; color: inherit; }
+.deepread-chat-empty p { max-width: 350px; line-height: 1.7; }
+.deepread-bubble { overflow-wrap: anywhere; flex-shrink: 0; padding: 14px 18px; border-radius: 14px; }
+.deepread-bubble.is-user { border-bottom-right-radius: 4px; }
+.deepread-bubble.is-assistant { background: transparent; border-color: var(--line); border-bottom-left-radius: 4px; }
+.deepread-answering { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.deepread-composer { flex: 0 0 auto; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--panel); }
+.deepread-composer textarea { min-height: 74px; max-height: 150px; resize: vertical; border-radius: 12px; font-size: 13px; line-height: 1.7; }
+.deepread-composer-bar { font-size: 11px; padding-top: 4px; }
+.deepread-composer-bar button { font-size: 12px; min-height: 32px; }
+.deepread-turn-actions { flex-wrap: wrap; }
+.deepread-turn-skills { overflow-wrap: anywhere; }
+.deepread-page :is(button, summary, a, input, select, textarea):focus-visible,
+.deepread-compare :is(button, summary, a, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.deepread-compare { overflow: hidden; min-width: 0; background: var(--panel); }
+.deepread-compare-bar { flex-wrap: wrap; padding: 14px 20px; background: var(--panel); }
+.deepread-compare-bar > svg { flex-shrink: 0; }
+.deepread-compare-bar select { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); padding: 7px 10px; font-size: 12px; }
+.deepread-compare-bar button { flex-shrink: 0; font-size: 12px; }
+.deepread-compare-body { overflow: hidden; }
+.deepread-compare-report { min-width: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.deepread-compare-report .deepread-progress { margin: 16px 16px 10px; }
+.deepread-compare-report .deepread-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.deepread-compare-report .deepread-report .research-report-document { padding: 20px 24px 36px; }
+.deepread-compare-reader { container-type: inline-size; overflow: hidden; }
+.deepread-compare-reader .reader-title { flex: 1 0 100%; max-width: none; width: 100%; }
+.deepread-compare-reader .reader-toolbar { padding: 12px 14px; height: auto; flex-shrink: 0; }
+.deepread-compare-reader .reader-annotate-tools { margin: 0; }
+.deepread-compare-reader .reader-annotate-tools button span { display: none; }
+.deepread-compare-reader .pdfjs-reader .pdf-stage { background: var(--soft); padding: 24px 16px 40px; }
+@container (max-width: 640px) {
+  .deepread-compare-reader .reader-annotate-tools { order: 4; width: 100%; justify-content: center; }
+  .deepread-compare-reader .reader-tools { margin-left: auto; }
+  .deepread-compare-reader .pdfjs-reader.pane .reader-layout.pdfjs-layout:not(.right-closed) { grid-template-columns: minmax(0, 1fr); position: relative; }
+  .deepread-compare-reader .study-sidebar:not(.is-closed) { position: absolute; inset: 0 0 0 auto; z-index: 10; width: min(300px, 90%); box-shadow: -8px 0 24px #0002; }
+}
+@media (max-width: 1200px) {
+  .deepread-page.content-page { --research-sidebar-w: 208px; padding: 20px; gap: 14px; }
+  .deepread-page .deepread-layout { gap: 12px; }
+  .deepread-main .research-detail-header { padding: 16px 18px 0; }
+  .deepread-main .research-detail-header h2 { font-size: 17px; }
+  .deepread-main .research-detail-tabs { margin: 12px 18px; }
+  .deepread-heading .page-title-block > p { font-size: 12px; }
+}
+@media (max-height: 760px) {
+  .deepread-page.content-page { padding-top: 18px; padding-bottom: 16px; gap: 12px; }
+  .deepread-main .research-detail-header { padding-top: 14px; }
+  .deepread-main .research-detail-actions { margin-top: 10px; padding-bottom: 10px; }
+  .deepread-document-meta { margin-bottom: 6px; }
+  .deepread-composer { padding-top: 10px; padding-bottom: 10px; }
+}

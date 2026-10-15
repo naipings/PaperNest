@@ -13,4 +13,9 @@ describe("pdfRenderScale", () => {
     expect(fitPdfScale(800, 612)).toBeCloseTo(800 / 612 / (96 / 72));
     expect(pageCssSize(612, 792, 1).height).toBeCloseTo(792 * (96 / 72));
   });
+
+  it("fits a full page into the narrow PDF pane used by comparison reading", () => {
+    const scale = fitPdfScale(379, 612);
+    expect(pageCssSize(612, 792, scale).width).toBeCloseTo(379);
+  });
 });

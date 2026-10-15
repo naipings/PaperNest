@@ -18,6 +18,10 @@ PaperNest 通过设置中的单一「主题」选择界面外观，服务于论�
 
 ## 主题选项
 
+论文精读使用完整页头、任务侧栏与阅读面板。新建选篇通过 `Modal` 的 body portal 居中显示；报告和任务各自滚动，追问输入区位于面板底部。八阶段进度在报告完成后默认收起。对照阅读中，PDF 工具栏按右侧容器宽度折行，窄面板学习侧栏覆盖在原文区域内。
+
+PDF.js 官方样式在 Vite/PostCSS 中加上 `.continuous-page-host` 作用域，避免其 `.sidebar` 等选择器覆盖应用导航。精读专用样式见 `src/components/deepread/DeepRead.css`，实施与验证见 [精读工作区](design/deepread-workspace.md)。
+
 在「设置 → 个人资料 → 主题」一次选择界面风格与明暗：
 
 | 选项 | 说明 |

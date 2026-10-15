@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpenCheck, FileUp, Search, X } from "lucide-react";
+import { BookOpenCheck, FileUp, LoaderCircle, Search, X } from "lucide-react";
 import { deepReadCandidates, type DeepReadScope } from "../../lib/deepReadCandidates";
 import type { Folder, Paper } from "../../types";
 
@@ -27,6 +27,8 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [fileNotice, setFileNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const activePapers = useMemo(() => papers.filter(paper => !paper.deletedAt), [papers]);
   const candidates = useMemo(() => deepReadCandidates(papers, scope, query), [papers, scope, query]);
@@ -49,7 +51,9 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
     setSelected(current => (current.includes(id) ? current.filter(item => item !== id) : [...current, id]));
 
   const addFiles = (list: FileList | null) => {
-    const pdfs = Array.from(list ?? []).filter(file => file.name.toLowerCase().endsWith(".pdf"));
+    const incoming = Array.from(list ?? []);
+    const pdfs = incoming.filter(file => file.name.toLowerCase().endsWith(".pdf"));
+    setFileNotice(incoming.length !== pdfs.length ? "仅支持 PDF 文件，其他文件未添加。" : "");
     setFiles(current => [...current, ...pdfs]);
   };
 
@@ -67,8 +71,8 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
     <section className="research-new-card deepread-new-card" aria-labelledby="deepread-new-heading">
       <header className="research-new-card-head">
         <div>
-          <h3 id="deepread-new-heading">新建精读</h3>
-          <p>每篇论文生成一份 What → Why → How → Experiment → Question 证据报告，完成后可继续追问。</p>
+          <h3 id="deepread-new-heading">选择要读的论文</h3>
+          <p>按篇排队生成报告，包含研究问题、方法、实验与评价，每条结论附原文证据。</p>
         </div>
         <span className="research-new-card-badge" aria-hidden>
           <BookOpenCheck size={14} />
@@ -104,7 +108,8 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
             )}
             <label className="deepread-picker-search">
               <Search size={14} />
-              <input value={query} placeholder="搜索标题或作者" onChange={event => setQuery(event.target.value)} />
+              <input aria-label="搜索候选论文" value={query} placeholder="搜索标题或作者" onChange={event => setQuery(event.target.value)} />
+              {query && <button type="button" className="ghost icon-only" aria-label="清空论文搜索" onClick={() => setQuery("")}><X size={14} /></button>}
             </label>
           </div>
           <ul className="deepread-picker-list" aria-label="候选论文">
@@ -112,8 +117,8 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
               const disabled = !paper.pdfPath;
               return (
                 <li key={paper.id}>
-                  <label className={disabled ? "disabled" : ""} title={disabled ? "该论文没有 PDF" : paper.titleEn}>
-                    <input type="checkbox" disabled={disabled} checked={selected.includes(paper.id)} onChange={() => toggle(paper.id)} />
+                  <label className={disabled ? "disabled" : selected.includes(paper.id) ? "is-selected" : ""} title={disabled ? "该论文没有 PDF" : paper.titleEn}>
+                    <input type="checkbox" disabled={disabled || busy} checked={selected.includes(paper.id)} onChange={() => toggle(paper.id)} />
                     <span>{paper.titleZh || paper.titleEn}</span>
                     {disabled && <em>无 PDF</em>}
                     {readPaperIds.has(paper.id) && <em className="done">已精读</em>}
@@ -124,45 +129,50 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
             {!candidates.length && <li className="research-session-empty">没有符合条件的论文。</li>}
           </ul>
           <footer className="deepread-new-footer">
-            <span>已选 {selected.length} 篇</span>
+            <span aria-live="polite">已选 {selected.length} 篇</span>
             <button type="button" className="primary" disabled={busy || !ready || !selected.length} onClick={() => void createFromLibrary()}>
-              开始精读
+              {busy && <LoaderCircle className="spin" size={15} />}开始精读
             </button>
           </footer>
         </>
       ) : (
         <>
           <div
-            className="deepread-dropzone"
-            onDragOver={event => event.preventDefault()}
+            className={`deepread-dropzone${dragging ? " is-dragging" : ""}`}
+            onDragOver={event => { event.preventDefault(); if (!busy) setDragging(true); }}
+            onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
             onDrop={event => {
               event.preventDefault();
-              addFiles(event.dataTransfer.files);
+              setDragging(false);
+              if (!busy) addFiles(event.dataTransfer.files);
             }}
           >
-            <FileUp size={18} />
-            <p>拖入 PDF，或</p>
-            <button type="button" className="secondary" onClick={() => fileInput.current?.click()}>选择 PDF</button>
+            <FileUp size={30} strokeWidth={1.5} />
+            <p>{dragging ? "松开以添加 PDF" : "将论文 PDF 拖到这里"}</p>
+            <span>支持同时选择多篇论文</span>
+            <button type="button" className="secondary" disabled={busy} onClick={() => fileInput.current?.click()}>选择 PDF</button>
             <input ref={fileInput} type="file" accept=".pdf,application/pdf" multiple hidden onChange={event => { addFiles(event.target.files); event.target.value = ""; }} />
           </div>
+          {fileNotice && <p className="deepread-file-notice" role="status">{fileNotice}</p>}
           <ul className="deepread-file-list">
             {files.map((file, index) => (
               <li key={`${file.name}-${index}`}>
                 <span>{file.name}</span>
-                <button type="button" className="ghost icon-only" title="移除" onClick={() => setFiles(current => current.filter((_, i) => i !== index))}>
+                <button type="button" className="ghost icon-only" disabled={busy} title="移除" aria-label={`移除 ${file.name}`} onClick={() => setFiles(current => current.filter((_, i) => i !== index))}>
                   <X size={13} />
                 </button>
               </li>
             ))}
           </ul>
           <footer className="deepread-new-footer">
-            <span>外部 PDF 仅存入精读工作区，报告页可「加入论文库」</span>
+            <span>已选 {files.length} 篇 · 报告生成后可加入论文库</span>
             <button type="button" className="primary" disabled={busy || !ready || !files.length} onClick={() => void createFromFiles()}>
-              开始精读
+              {busy && <LoaderCircle className="spin" size={15} />}开始精读
             </button>
           </footer>
         </>
       )}
+      {!ready && <p className="deepread-file-notice">开始前请在「设置 → 文献调研」启用模型并保存 API Key。</p>}
     </section>
   );
 }

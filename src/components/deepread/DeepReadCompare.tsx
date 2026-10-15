@@ -9,7 +9,7 @@ import { DeepReadReportTab } from "./DeepReadReportTab";
 import type { DeepRead, DeepReadDetail } from "../../types";
 
 /** 对照阅读：左侧精读报告，右侧阅读台；只列出已关联论文库论文的任务。 */
-export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[]; initialId: string; onExit(): void }) {
+export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[]; initialId: string; onExit(id: string): void }) {
   const { data } = useLibrary();
   const readerRef = useRef<PdfReaderHandle>(null);
   const leaveAfterRef = useRef<(() => void) | undefined>(undefined);
@@ -17,15 +17,21 @@ export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[
   const [detail, setDetail] = useState<DeepReadDetail>();
   const [notice, setNotice] = useState("");
   const [leavePrompt, setLeavePrompt] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const linked = tasks.filter(task => task.paperId && data?.papers.some(paper => paper.id === task.paperId && !paper.deletedAt));
   const task = linked.find(item => item.id === taskId);
   const paper = data?.papers.find(item => item.id === task?.paperId);
 
   useEffect(() => {
+    let current = true;
     setDetail(undefined);
     setNotice("");
-    void backend.deepreadGet(taskId).then(setDetail).catch(error => setNotice(error instanceof Error ? error.message : String(error)));
+    setLoading(true);
+    void backend.deepreadGet(taskId).then(next => { if (current) setDetail(next); })
+      .catch(error => { if (current) setNotice(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
   }, [taskId]);
 
   const guard = (after: () => void) => {
@@ -76,17 +82,17 @@ export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[
         <select aria-label="切换精读报告" value={taskId} onChange={event => { const next = event.target.value; guard(() => setTaskId(next)); }}>
           {linked.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
-        {notice && <span className="inline-notice">{notice}</span>}
-        <button type="button" className="secondary" onClick={() => guard(onExit)}><X size={16} />退出对照</button>
+        <button type="button" className="secondary" onClick={() => guard(() => onExit(taskId))}><X size={16} />退出对照</button>
       </header>
+      {notice && <div className="deepread-notice" role="status">{notice}</div>}
       <div className="deepread-compare-body">
-        <section className="deepread-compare-report">
+        <section className="deepread-compare-report" aria-label="精读报告">
           {detail?.task.id === taskId
             ? <DeepReadReportTab detail={detail} onEvidence={revealEvidence} onFigure={revealFigure} />
-            : <div className="research-report-empty"><LoaderCircle className="spin" size={22} /></div>}
+            : <div className="research-report-empty" role="status">{loading ? <><LoaderCircle className="spin" size={22} /><p>正在加载报告…</p></> : <p>报告加载失败，请切换任务后重试。</p>}</div>}
         </section>
-        <section className="deepread-compare-reader">
-          {paper && <PdfReader key={paper.id} ref={readerRef} pane paper={paper} onBack={() => guard(onExit)} />}
+        <section className="deepread-compare-reader" aria-label="论文原文">
+          {paper && <PdfReader key={paper.id} ref={readerRef} pane paper={paper} onBack={() => guard(() => onExit(taskId))} />}
         </section>
       </div>
       {leavePrompt && <Modal title="离开阅读台" onClose={() => { leaveAfterRef.current = undefined; setLeavePrompt(false); }}>

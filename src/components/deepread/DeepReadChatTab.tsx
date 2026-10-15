@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SendHorizontal, Trash2 } from "lucide-react";
+import { LoaderCircle, MessageSquare, SendHorizontal, Trash2 } from "lucide-react";
 import type { PaperExplainMessage } from "../../types";
 import { DeepReadMarkdown } from "./DeepReadMarkdown";
 
@@ -16,12 +16,13 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
+    const flow = bottomRef.current?.parentElement;
+    if (flow) flow.scrollTop = flow.scrollHeight;
   }, [messages.length, answering]);
 
   const send = async () => {
     const question = draft.trim();
-    if (!question) return;
+    if (!question || !canAsk || answering) return;
     if (await onAsk(question)) setDraft("");
   };
 
@@ -29,7 +30,7 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
     <div className="deepread-chat">
       <div className="deepread-chat-flow">
         {!messages.length && !answering && (
-          <p className="deepread-chat-hint">{canAsk ? "基于精读报告与原文段落继续追问，回答会给出页码与段落证据。" : "报告生成完成后可追问。"}</p>
+          <div className="deepread-chat-empty"><MessageSquare size={28} strokeWidth={1.5} /><h3>把论文里的疑问，继续问清楚</h3><p className="deepread-chat-hint">{canAsk ? "基于精读报告与原文回答，附页码与段落证据。" : "报告生成完成后可追问。"}</p></div>
         )}
         {messages.map((message, index) => (
           <article className={`deepread-bubble ${message.role === "user" ? "is-user" : "is-assistant"}`} key={`${message.createdAt}-${index}`}>
@@ -45,19 +46,20 @@ export function DeepReadChatTab({ messages, canAsk, answering, onAsk, onDeleteTu
             )}
           </article>
         ))}
-        {answering && <article className="deepread-bubble is-assistant deepread-chat-hint">正在回答…</article>}
+        {answering && <article className="deepread-bubble is-assistant deepread-answering" role="status"><LoaderCircle className="spin" size={15} />正在结合报告与原文回答…</article>}
         <div ref={bottomRef} />
       </div>
       <div className="deepread-composer">
         <textarea
           className="research-input"
           rows={3}
+          aria-label="精读追问"
           value={draft}
           placeholder="就这篇论文继续追问…"
           disabled={!canAsk || answering}
           onChange={event => setDraft(event.target.value)}
           onKeyDown={event => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
               event.preventDefault();
               void send();
             }

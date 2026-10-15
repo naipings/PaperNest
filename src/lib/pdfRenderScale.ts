@@ -6,7 +6,7 @@ export function pdfRenderScale(devicePixelRatio: number): number {
 }
 
 export function fitPdfScale(availablePx: number, pageSizePx: number) {
-  return Math.max(0.55, Math.min(availablePx / pageSizePx / PDF_TO_CSS_UNITS, 2.5));
+  return Math.max(0.1, Math.min(availablePx / pageSizePx / PDF_TO_CSS_UNITS, 2.5));
 }
 
 export function pageCssSize(pageWidth: number, pageHeight: number, scale: number) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, Play, RefreshCw, RotateCcw, Square, Trash2 } from "lucide-react";
+import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, MessageSquare, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import { extractPdfParagraphs } from "../lib/pdfParagraphs";
@@ -10,6 +10,8 @@ import { DeepReadNewCard } from "./deepread/DeepReadNewCard";
 import { DeepReadReportTab, stageLabel } from "./deepread/DeepReadReportTab";
 import { DeepReadChatTab } from "./deepread/DeepReadChatTab";
 import { DeepReadCompare } from "./deepread/DeepReadCompare";
+import { Modal } from "./Modal";
+import "./deepread/DeepRead.css";
 import type { DeepRead, DeepReadDetail, DeepReadStatus, Paper } from "../types";
 
 type Tab = "report" | "chat";
@@ -52,6 +54,11 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const [answering, setAnswering] = useState(false);
   const [copied, setCopied] = useState(false);
   const [compareId, setCompareId] = useState<string>();
+  const [creating, setCreating] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [detailRevision, setDetailRevision] = useState(0);
+  const selected = tasks.find(task => task.id === selectedId);
 
   const showError = useCallback((error: unknown) => setNotice(messageOf(error)), []);
 
@@ -61,7 +68,9 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
     setSelectedId(current => current ?? list[0]?.id);
   }, []);
 
-  const loadDetail = useCallback(async (id: string) => setDetail(await backend.deepreadGet(id)), []);
+  useEffect(() => {
+    if (seed) setCreating(true);
+  }, [seed]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -74,10 +83,17 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
       setDetail(undefined);
       return;
     }
-    void loadDetail(selectedId).catch(showError);
-  }, [selectedId, loadDetail, showError]);
+    let current = true;
+    setDetail(currentDetail => currentDetail?.task.id === selectedId ? currentDetail : undefined);
+    setLoadingDetail(true);
+    void backend.deepreadGet(selectedId).then(next => {
+      if (current) setDetail(next);
+    }).catch(error => { if (current) showError(error); }).finally(() => {
+      if (current) setLoadingDetail(false);
+    });
+    return () => { current = false; };
+  }, [selectedId, selected?.updatedAt, detailRevision, showError]);
 
-  const selected = tasks.find(task => task.id === selectedId);
   const hasActive = tasks.some(isActive);
 
   useEffect(() => {
@@ -85,12 +101,6 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
     const timer = window.setInterval(() => void loadTasks().catch(showError), 2000);
     return () => window.clearInterval(timer);
   }, [hasActive, loadTasks, showError]);
-
-  useEffect(() => {
-    if (selected && detail?.task.id === selected.id && selected.updatedAt > detail.task.updatedAt) {
-      void loadDetail(selected.id).catch(showError);
-    }
-  }, [selected, detail, loadDetail, showError]);
 
   const readPaperIds = useMemo(
     () => new Set(tasks.filter(task => task.status === "completed" && task.paperId).map(task => task.paperId!)),
@@ -100,6 +110,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const queueCreated = async (createdIds: string[], notes: string[]) => {
     await loadTasks();
     if (createdIds.length) {
+      setCreating(false);
       setSelectedId(createdIds[0]);
       setTab("report");
     }
@@ -191,7 +202,8 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
     if (!selected) return false;
     setAnswering(true);
     try {
-      setDetail(await backend.deepreadAsk(selected.id, question));
+      const next = await backend.deepreadAsk(selected.id, question);
+      setDetail(current => current?.task.id === next.task.id ? next : current);
       return true;
     } catch (error) {
       showError(error);
@@ -204,7 +216,8 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const deleteTurn = async (messageIndex: number) => {
     if (!selected) return;
     try {
-      setDetail(await backend.deepreadDeleteTurn(selected.id, messageIndex));
+      const next = await backend.deepreadDeleteTurn(selected.id, messageIndex);
+      setDetail(current => current?.task.id === next.task.id ? next : current);
     } catch (error) {
       showError(error);
     }
@@ -212,9 +225,13 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
 
   const copyReport = async () => {
     if (!detail?.report) return;
-    await navigator.clipboard.writeText(detail.report);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    try {
+      await navigator.clipboard.writeText(detail.report);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      showError(error);
+    }
   };
 
   const addToLibrary = async () => {
@@ -260,33 +277,42 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const hasReport = !!detail?.report.trim() && detail.task.id === selected?.id;
 
   if (compareId) {
-    return <DeepReadCompare tasks={tasks} initialId={compareId} onExit={() => {
-      setSelectedId(compareId);
+    return <DeepReadCompare tasks={tasks} initialId={compareId} onExit={id => {
+      setSelectedId(id);
       setCompareId(undefined);
     }} />;
   }
 
   return (
     <main className="content-page research-page deepread-page">
-      <div className="research-layout">
-        <header className="research-page-header research-page-header-left page-heading">
+        <header className="deepread-heading page-heading">
           <div className="page-title-block">
             <div className="page-title-row">
               <span className="page-title-icon"><BookOpenCheck size={18} /></span>
               <h1>论文精读</h1>
               <span className="page-kicker">证据驱动</span>
             </div>
-            <p>逐篇生成 What → Why → How → Experiment → Question 精读报告，每条结论附页码与段落证据；使用「设置 → 文献调研」的 LLM。</p>
+            <p>从研究问题到实验证据，让每一篇论文读得更透彻。</p>
           </div>
-        </header>
-        <div className="research-page-header research-page-header-right page-heading-actions">
-          {notice && <span className="inline-notice research-inline-notice">{notice}</span>}
-          {busy && <span className="inline-notice research-inline-notice"><LoaderCircle className="spin" size={14} />{busy}</span>}
-          <button type="button" className="secondary" disabled={!!busy} onClick={() => void loadTasks().catch(showError)}>
-            <RefreshCw size={16} />
+        <div className="page-heading-actions">
+          <button type="button" className="secondary" disabled={!!busy || refreshing} onClick={async () => {
+            setRefreshing(true);
+            try { await loadTasks(); setDetailRevision(value => value + 1); }
+            catch (error) { showError(error); }
+            finally { setRefreshing(false); }
+          }}>
+            <RefreshCw size={15} className={refreshing ? "spin" : ""} />
             刷新
           </button>
+          <button type="button" className="primary" disabled={!!busy} onClick={() => { setNotice(""); setCreating(true); }}><Plus size={16} />新建精读</button>
         </div>
+        </header>
+
+        {!creating && (notice || busy) && <div className="deepread-notice" role="status">
+          {busy && <LoaderCircle className="spin" size={16} />}
+          <span>{busy || notice}</span>
+          {!busy && <button type="button" className="ghost icon-only" aria-label="关闭提示" onClick={() => setNotice("")}><X size={15} /></button>}
+        </div>}
 
         {!ready && (
           <div className="info-card research-disabled-banner research-layout-full">
@@ -298,7 +324,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
           </div>
         )}
 
-        <aside className="research-sidebar">
+        {creating && <Modal title="新建精读" wide onClose={() => setCreating(false)}>
           <DeepReadNewCard
             papers={data?.papers ?? []}
             folders={data?.folders ?? []}
@@ -309,12 +335,17 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             onCreateFromLibrary={createFromLibrary}
             onCreateFromFiles={createFromFiles}
           />
+          {busy && <p className="deepread-create-progress" role="status"><LoaderCircle className="spin" size={15} />{busy}</p>}
+          {!busy && notice && <p className="deepread-create-progress" role="alert">{notice}</p>}
+        </Modal>}
+      <div className="research-layout deepread-layout">
+        <aside className="research-sidebar">
           <section className="research-history" aria-labelledby="deepread-history-heading">
-            <h3 id="deepread-history-heading">精读任务</h3>
+            <div className="deepread-history-head"><h3 id="deepread-history-heading">精读任务</h3><span>{tasks.length} 篇</span></div>
             <ul className="research-session-list">
               {tasks.map(task => (
                 <li key={task.id}>
-                  <button type="button" className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => setSelectedId(task.id)}>
+                  <button type="button" aria-current={selectedId === task.id ? "true" : undefined} title={task.title} className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => { setSelectedId(task.id); setTab("report"); }}>
                     <span className="research-session-item-top">
                       <strong>{task.title}</strong>
                       <span className={`research-session-status ${STATUS_CLASS[task.status]}`}>{STATUS_LABEL[task.status]}</span>
@@ -324,12 +355,12 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                       {task.status === "running" && task.stage ? ` · ${stageLabel(task.stage)}` : ""}
                     </small>
                   </button>
-                  <button type="button" className="ghost icon-only research-session-delete" title="删除" onClick={() => void remove(task.id)}>
+                  <button type="button" className="ghost icon-only research-session-delete" title="删除" aria-label={`删除精读：${task.title}`} onClick={() => void remove(task.id)}>
                     <Trash2 size={14} />
                   </button>
                 </li>
               ))}
-              {!tasks.length && <li className="research-session-empty">暂无精读任务，在上方选择论文开始。</li>}
+              {!tasks.length && <li className="research-session-empty">还没有精读任务<br />点击「新建精读」选择论文。</li>}
             </ul>
           </section>
         </aside>
@@ -339,8 +370,9 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             <>
               <header className="research-detail-header">
                 <div>
+                  <div className="deepread-document-meta"><span className={`research-session-status ${STATUS_CLASS[selected.status]}`}>{STATUS_LABEL[selected.status]}</span><span>{selected.sourceKind === "external" ? "本地 PDF" : "来自论文库"}</span><span>{formatTime(selected.updatedAt)}</span></div>
                   <h2>{selected.title}</h2>
-                  <p>{selected.sourceName}{selected.model ? ` · ${selected.model}` : ""}</p>
+                  <p title={selected.sourceName}>{selected.model || selected.sourceName}</p>
                 </div>
                 <div className="research-detail-actions">
                   {isActive(selected) ? (
@@ -391,15 +423,19 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                 </div>
               )}
               <div className="research-detail-tabs research-segmented-tabs" role="tablist" aria-label="精读详情">
-                <button type="button" role="tab" aria-selected={tab === "report"} className={tab === "report" ? "active" : ""} onClick={() => setTab("report")}>报告</button>
-                <button type="button" role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>
-                  追问
-                  {!!detail?.messages.length && <span className="research-tab-badge">{detail.messages.length / 2}</span>}
+                <button type="button" role="tab" aria-controls="deepread-detail-panel" aria-selected={tab === "report"} className={tab === "report" ? "active" : ""} onClick={() => setTab("report")}><BookOpenText size={15} />精读报告</button>
+                <button type="button" role="tab" aria-controls="deepread-detail-panel" aria-selected={tab === "chat"} className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>
+                  <MessageSquare size={15} />继续追问
+                  {detail?.task.id === selected.id && !!detail.messages.length && <span className="research-tab-badge">{Math.ceil(detail.messages.length / 2)}</span>}
                 </button>
               </div>
+              <div className="deepread-detail-panel" id="deepread-detail-panel" role="tabpanel" aria-label={tab === "report" ? "精读报告" : "继续追问"} aria-busy={loadingDetail}>
+              {loadingDetail && detail?.task.id !== selected.id && <div className="deepread-loading" role="status"><LoaderCircle className="spin" size={22} /><span>正在加载精读内容…</span></div>}
+              {!loadingDetail && !detail && <div className="deepread-loading"><p>精读内容加载失败，请点击刷新重试。</p></div>}
               {detail?.task.id === selected.id && tab === "report" && <DeepReadReportTab detail={detail} />}
               {detail?.task.id === selected.id && tab === "chat" && (
                 <DeepReadChatTab
+                  key={selected.id}
                   messages={detail.messages}
                   canAsk={hasReport && ready}
                   answering={answering}
@@ -407,9 +443,17 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                   onDeleteTurn={index => void deleteTurn(index)}
                 />
               )}
+              </div>
             </>
           ) : (
-            <div className="research-empty"><p>在左侧选择论文开始精读，或从「本地知识树」详情栏进入。</p></div>
+            <div className="deepread-welcome">
+              <span className="deepread-welcome-icon"><BookOpenCheck size={34} strokeWidth={1.4} /></span>
+              <span className="deepread-eyebrow">你的论文阅读工作区</span>
+              <h2>读懂一篇论文，从问题到证据</h2>
+              <p>选择论文，生成结构化报告；对照原文核验证据，再围绕你的研究继续追问。</p>
+              <button type="button" className="primary" onClick={() => setCreating(true)}><Plus size={16} />选择论文开始</button>
+              <div className="deepread-welcome-steps"><span>01 选择论文</span><span>02 生成报告</span><span>03 对照与追问</span></div>
+            </div>
           )}
         </section>
       </div>

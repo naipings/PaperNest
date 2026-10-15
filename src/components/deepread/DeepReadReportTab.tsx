@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, LoaderCircle } from "lucide-react";
 import type { DeepReadDetail } from "../../types";
 import { DeepReadMarkdown } from "./DeepReadMarkdown";
 
@@ -26,12 +26,15 @@ export function DeepReadReportTab({ detail, onEvidence, onFigure }: { detail: De
   const runningKey = task.stage?.split(":")[0];
   return (
     <div className="research-report-shell deepread-report">
+      <details className="deepread-progress" open={active || !report.trim()}>
+      <summary><span>{active ? <LoaderCircle className="spin" size={14} /> : task.status === "completed" ? <Check size={14} /> : <BookOpen size={14} />} {active ? stageLabel(task.stage) || "等待生成" : "报告生成进度"}</span><span>{stagesDone.length} / {DEEP_READ_STAGES.length} 步骤</span></summary>
       <ol className="deepread-stages" aria-label="生成进度">
-        {DEEP_READ_STAGES.map(stage => {
+        {DEEP_READ_STAGES.map((stage, index) => {
           const state = stagesDone.includes(stage.key) ? "done" : active && runningKey === stage.key ? "active" : "pending";
-          return <li key={stage.key} className={state}>{state === "active" ? stageLabel(task.stage) : stage.label}</li>;
+          return <li key={stage.key} className={state} aria-current={state === "active" ? "step" : undefined}><span className="deepread-stage-index">{state === "done" ? <Check size={12} /> : index + 1}</span><span>{state === "active" ? stageLabel(task.stage) : stage.label}</span></li>;
         })}
       </ol>
+      </details>
       {task.validation.length > 0 && (
         <div className="deepread-validation" role="status">
           <AlertTriangle size={16} />
