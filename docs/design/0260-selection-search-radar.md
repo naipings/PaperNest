@@ -23,3 +23,9 @@
 - 1100 与 1440 窗口下论文搜索输入区宽度 284px，输入层无内框，整框显示主题焦点；知识树与写作搜索采用相同反馈。输入 memory 返回 64 条论文结果，随后清空搜索。
 - npm run check：60 个测试文件、228 项通过，TypeScript/Vite 构建通过。新增测试覆盖筛选后零匹配、完整榜单入口、两榜切换、手动筛选状态与真正无快照数据。
 - 截图：output/playwright/0260-search-focus.png、0260-radar-filtered.png、0260-deepread-1440.png、0260-deepread-1100.png、0260-deepread-black.png。
+
+## 发布验证
+
+- NSIS 构建通过，release/windows/PaperNest_0.2.60_x64-setup.exe 为 57,709,265 字节；发布程序和安装包 ProductVersion 均为 0.2.60。
+- 启动发布程序复测：完整热点 30 篇、新稿 50 篇；搜索输入 14px、无内层焦点框；精读步骤 14px/500，页签点击正常切换。
+- 1100 × 700 无页面横向溢出。发布截图：output/playwright/0260-release-search.png、0260-release-deepread.png。
