@@ -21,3 +21,31 @@
 ## 视觉方向
 
 沿用现有主题配色，使用低对比边框、紧凑工具栏、明确的选中态和较宽的正文留白。优先解决阅读任务中的空间分配与反馈。
+
+调研入口：[VibePrompt](https://vibeprompts.dev/) 的应用页头、可收起侧栏与 dashboard 布局分类；[Kyla 提示词库](https://prompt.kyla.cloud/library.html) 的 Dashboard、ReUI 与组件索引。页面结构基于现有 React 组件和主题实现。
+
+## 验证记录（2026-10-15）
+
+| 检查 | 结果 |
+|---|---|
+| 自动测试 | 56 个文件、215 项测试通过；新增任务请求竞态、输入法回车、失败保留草稿、窄面板适应宽度回归 |
+| 生产前端 | `npm run build` 通过；保留现有较大代码块提示 |
+| 桌面环境 | 在 Tauri/WebView2 中加载本机已有的三项精读任务、真实长报告与九页 PDF |
+| 窗口布局 | 1440 × 900、1100 × 700：任务/报告独立滚动，追问输入区完整可见，无页面横向溢出 |
+| 主题 | 经典、柔光紫、雾蓝、苔绿的浅色与深色均截图检查；加载 PDF 后经典深色侧栏为 `rgb(24, 29, 40)` |
+| 新建选篇 | 搜索 Mem0 仅匹配一篇，勾选后显示已选 1 篇并启用开始按钮；本地 PDF 拒绝文本文件且显示原因；最小窗口弹窗边界在视区内 |
+| 对照阅读 | 最小窗口 PDF 容器 `clientWidth = scrollWidth = 404`；证据点击产生 29 个段落高亮矩形；原文学习侧栏在右侧面板内打开 |
+| 样式隔离 | PDF canvas 有实际高度，文本层与证据定位保留；退出对照后侧栏圆角、尺寸、深色背景均保持应用主题 |
+
+截图位于 `output/playwright/`，包括 `before-deepread.png`、`after-deepread.png`、`after-new-dialog.png`、`after-1100-chat.png`、`after-1100-compare.png` 与 `theme-*.png`。
+
+本轮围绕已有真实报告和 PDF 验证界面，未重新发起模型生成或付费追问。
+
+## 发布验证
+
+- `npm run tauri build -- --bundles nsis` 成功，版本 0.2.53；保留现有 Rust 可见性/未使用字段提示。
+- 安装程序：`release/windows/PaperNest_0.2.53_x64-setup.exe`，57,706,478 字节，文件产品版本 0.2.53。
+- 可执行文件：`release/windows/PaperNest.exe`，34,363,904 字节，文件产品版本 0.2.53；同级保留 `pdffigures2/`。
+- 已从发布目录启动生产程序（`http://tauri.localhost/`），重新打开真实精读报告、PDF 对照与追问页；1100 × 700 下 PDF 容器 `clientWidth = scrollWidth = 411`，证据点击产生 29 个高亮矩形，追问输入区完整位于视区内。
+- 生产截图：`output/playwright/release-0253-report.png`、`output/playwright/release-0253-compare.png`。
+- 安装程序已构建，未覆盖安装本机现有版本。
