@@ -63,7 +63,7 @@
 :root[data-ui-theme][data-theme] .modal-backdrop { background: #0008; backdrop-filter: none; }
 :root[data-ui-theme][data-theme] .modal { border-radius: 8px; border-color: var(--line); box-shadow: 0 12px 44px #0004; }
 :root[data-ui-theme][data-theme] .modal > header { height: 48px; }
-:root[data-ui-theme][data-theme] .filter-menu-panel { border-radius: 6px; box-shadow: 0 4px 14px #0002; }
+:root[data-ui-theme][data-theme] .filter-menu-panel { max-height: min(360px, 50vh); overflow-y: auto; border-radius: 6px; box-shadow: 0 4px 14px #0002; }
 
 /* 论文库：标题和计数占一行，将高度留给表格。 */
 :root[data-ui-theme][data-theme] .research-overview { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 10px 20px; gap: 24px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 0; }

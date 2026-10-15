@@ -39,3 +39,5 @@
 - 最终完整测试：58 个文件、223 项通过；TypeScript / Vite 生产构建通过。
 - 导航中文实际使用 Microsoft YaHei UI Bold（系统字体）；表格密度实测为 56px / 48px。
 - 其余七个主要页面在 1100 × 700 均无页面横向溢出。
+
+- 长领域列表参考 [WAI 可滚动列表框](https://www.w3.org/WAI/ARIA/apg/patterns/listbox/examples/listbox-scrollable/)：限制菜单高度并允许内部滚动。1100 × 700 实测从 694px 超长面板调整为 350px，End 可滚动到最后选项并保持可见，Escape 返回入口。
