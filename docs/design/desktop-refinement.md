@@ -29,3 +29,12 @@
 - 截图位于 `output/playwright/0254-*.png`，包括浅色精读、纯黑精读、PDF 对照、最小窗口追问/选篇和各页面。
 
 本轮界面测试使用已有报告与 PDF，未发起模型生成和付费追问。
+
+## 发布验证
+
+- `npm run tauri build -- --bundles nsis` 成功；保留现有 Rust 可见性/未使用字段及前端较大代码块提示。
+- 安装程序：`release/windows/PaperNest_0.2.54_x64-setup.exe`，57,700,977 字节，产品版本 0.2.54。
+- 可执行文件：`release/windows/PaperNest.exe`，34,368,000 字节，同级保留 `pdffigures2/`。
+- 从发布目录启动生产 EXE，自动恢复纯黑主题；精读正文背景为 `rgb(0, 0, 0)`；更多菜单可用，Escape 正常关闭。
+- 生产版 PDF 夜间与原色切换有效；1100 × 700 下 PDF 容器宽度与滚动宽度均为 440px，证据点击产生 29 个高亮矩形。
+- 生产截图：`output/playwright/release-0254-black.png`、`output/playwright/release-0254-compare.png`。安装程序已生成，未执行覆盖安装。

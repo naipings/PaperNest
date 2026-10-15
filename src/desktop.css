@@ -156,5 +156,3 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-ui-theme][data-theme] *, :root[data-ui-theme][data-theme] *::before, :root[data-ui-theme][data-theme] *::after { scroll-behavior: auto; transition: none; }
 }
-
-
