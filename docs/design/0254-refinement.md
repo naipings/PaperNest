@@ -41,3 +41,11 @@
 - 其余七个主要页面在 1100 × 700 均无页面横向溢出。
 
 - 长领域列表参考 [WAI 可滚动列表框](https://www.w3.org/WAI/ARIA/apg/patterns/listbox/examples/listbox-scrollable/)：限制菜单高度并允许内部滚动。1100 × 700 实测从 694px 超长面板调整为 350px，End 可滚动到最后选项并保持可见，Escape 返回入口。
+
+## 发布验证
+
+- NSIS 安装包：release/windows/PaperNest_0.2.57_x64-setup.exe，57,712,927 字节，产品版本 0.2.57。
+- 发布 EXE：release/windows/PaperNest.exe，34,368,000 字节，产品版本 0.2.57。
+- 从发布目录启动 EXE，在 tauri.localhost 核验导航 15px / 600、精读正文 16px，1100 × 700 无页面横向溢出。
+- 发布版领域菜单高度 350px，End 聚焦末项并保持可见；PDF 容器宽与滚动宽均为 440px。
+- 生产截图：output/playwright/release-0257-library.png、release-0257-deepread.png。安装包已生成，未执行覆盖安装。
