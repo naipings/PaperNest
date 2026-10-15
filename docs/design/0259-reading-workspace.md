@@ -23,3 +23,10 @@
 - 纯黑精读文档背景为 rgb(0, 0, 0)，边界为 rgb(39, 39, 39)。
 - npm run check 通过：59 个测试文件、225 项测试，TypeScript 与 Vite 构建通过。报告组件测试覆盖轮次切换、对话指定轮次后的自由切换与回到顶部。
 - 截图位于 output/playwright/0259-research-1440.png、0259-deepread-1440.png、0259-deepread-black.png、0259-skill-narrow.png、0259-compare-narrow.png。
+
+## 发布验证
+
+- NSIS 构建通过，安装包 release/windows/PaperNest_0.2.59_x64-setup.exe，57,705,566 字节；release/windows/PaperNest.exe 的 ProductVersion 为 0.2.59。
+- 启动发布程序后复测 2560 × 1380 与 1100 × 700：三个调研操作按钮均为 36px，研究问题展开前后坐标相同。
+- 发布版报告滚动约 850px，工具栏保持原位；切换轮次 scrollTop 回到 0。精读与 Skill 文档列边界生效，无横向溢出。
+- 发布截图：output/playwright/0259-release-research.png、0259-release-deepread.png、0259-release-skill.png。
