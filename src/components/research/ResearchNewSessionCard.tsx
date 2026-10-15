@@ -36,7 +36,7 @@ export function ResearchNewSessionCard({
       <header className="research-new-card-head">
         <div>
           <h3 id="research-new-heading">新建调研</h3>
-          <p>描述研究问题，可附上图片、PDF、Office 文档与网址。创建后可在右侧继续多轮追问。</p>
+          <p>输入问题，可附上文档、图片或网址。</p>
         </div>
         <span className="research-new-card-badge" aria-hidden>
           <Sparkles size={14} />

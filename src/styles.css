@@ -1,14 +1,5 @@
-@font-face {
-  font-family: "PaperNest Sans SC";
-  src: url("/fonts/NotoSansSC.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-}
 :root {
-  --font-ui: "Segoe UI", "PaperNest Sans SC", "Microsoft YaHei UI", "PingFang SC", sans-serif, "Segoe UI Emoji";
-  --font-code: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
-  font-family: var(--font-ui);
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   color: #1c2438;
   background: #eef3f9;
   font-synthesis: none;

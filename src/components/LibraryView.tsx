@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookmarkPlus, Filter, Heart, LayoutList, RefreshCw, Rows3, Tags } from "lucide-react";
 import { useLibrary } from "../state/LibraryContext";
 import type { Folder, FolderSelection, Paper, PaperStatus, SavedView } from "../types";
@@ -62,13 +62,16 @@ export function LibraryView({
   const [compact, setCompact] = useState(() => document.documentElement.dataset.tableDensity === "compact");
   const [clearChecksToken, setClearChecksToken] = useState(0);
   const [movePaperIds, setMovePaperIds] = useState<string[]>();
+  const locatedId = useRef<string>();
   useEffect(() => {
     document.documentElement.dataset.tableDensity = compact ? "compact" : "comfortable";
   }, [compact]);
   useEffect(() => {
-    if (!selectedId || !data) return;
+    if (!selectedId) { locatedId.current = undefined; return; }
+    if (!data || locatedId.current === selectedId) return;
     const paper = data.papers.find(item => item.id === selectedId && !item.deletedAt);
     if (!paper) return;
+    locatedId.current = selectedId;
     const allViews = [...builtinViews, ...data.views];
     const baseView = allViews.find(view => view.id === viewId) ?? builtinViews[0];
     const filter = applyFolderFilter({ ...baseView.filter }, folderSelection);

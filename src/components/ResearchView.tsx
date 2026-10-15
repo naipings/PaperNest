@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronDown,
   FileDown,
   FolderOpen,
   LoaderCircle,
@@ -443,7 +444,7 @@ export function ResearchView() {
               <header className="research-detail-header">
                 <div>
                   <h2 title={selected.title}>{selected.title}</h2>
-                  <details className="research-query"><summary>研究问题</summary><p>{selected.query}</p></details>
+                  <details className="research-query"><summary><ChevronDown size={16} />研究问题</summary><p>{selected.query}</p></details>
                 </div>
                 <div className="research-detail-actions">
                   {isRunning ? (

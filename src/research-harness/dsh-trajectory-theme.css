@@ -3,7 +3,7 @@
  * 色值对齐 DeepSeek Harness 暗色轨迹视图。
  */
 .research-trajectory-shell {
-  --dsw-font-family: var(--font-ui);
+  --dsw-font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   --dsw-font-xxxs-11: 12px / 1.4 var(--dsw-font-family);
   --dsw-font-xxs-12: 13px / 1.45 var(--dsw-font-family);
   --dsw-font-xs-13: 14px / 1.5 var(--dsw-font-family);

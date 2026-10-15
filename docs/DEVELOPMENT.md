@@ -717,6 +717,6 @@ PaperNest 自行保存一份 Agent Skill（[规范](https://agentskills.io/speci
 
 Crossref 元数据、Word/浏览器插件、PDF 正文编辑边界见 [metadata-and-extension-assessment.md](research/metadata-and-extension-assessment.md)。
 
-## 界面字号与反馈（0.2.55）
+## 界面字号与反馈（0.2.57）
 
-公共字体通过 `styles.css` 的 `--font-ui` / `--font-code` 提供；0.2.56 起中文使用本地 `public/fonts/NotoSansSC.woff2` 可变字体，随包提供 OFL 许可，调研轨迹复用同一字体。`desktop.css` 统一文字尺度、统计栏、菜单状态和响应式布局；`black-theme.css` 覆盖夜间配色。筛选菜单管理选项焦点并阻止 Escape 继续关闭外层对话框。表格密度由 LibraryView 状态同步到根节点，CSS 控制行高，按钮提供 aria-pressed。实施和实测见 [interface-polish.md](design/interface-polish.md)。
+界面以 0.2.54 为基底，`styles.css` 与调研轨迹使用同一系统字体配置。`desktop.css` 维护导航和控件尺度、表格选中状态、研究问题展开区与窄窗工具栏；`black-theme.css` 提供夜间配色。筛选菜单管理选项焦点，Escape 关闭后恢复焦点。表格密度由 LibraryView 状态同步到根节点，按钮提供 aria-pressed；论文定位仅对新的 selectedId 调整筛选，用户后续筛选继续生效。实施、来源与实测见 [0254-refinement.md](design/0254-refinement.md)。
