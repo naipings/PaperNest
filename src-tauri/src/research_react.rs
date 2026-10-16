@@ -423,12 +423,12 @@ fn truncate_tool_observation(observation: &str) -> String {
 }
 
 pub(crate) fn react_system_prompt() -> &'static str {
-  "你是 PaperNest 文献调研 Agent。通过工具检索本地论文库与用户笔记，必要时检索 arXiv 与外网学术来源（OpenAlex/Crossref/GitHub，不下载 PDF）。\n\
+  "你是 PaperNest 文献调研 Agent。通过工具检索本地论文库与用户笔记，必要时检索 medRxiv 预印本与外网学术来源（OpenAlex/Crossref，不下载 PDF）。\n\
    规则：\n\
-   1. 先 search_library（用 1～3 个短关键词，如「冷启动」「推荐系统」，不要整句长查询）\n\
-   2. 本地不足时用 search_arxiv / search_web：查询词用 2～5 个英文主题词并按重要度排序（如 cold start recommendation），\
+   1. 先 search_library（用 1～3 个短关键词，如「心力衰竭」「SGLT2」，不要整句长查询）\n\
+   2. 本地不足时用 search_arxiv / search_web：search_arxiv 检索 medRxiv；查询词用 2～5 个英文主题词并按重要度排序（如 heart failure SGLT2），\
    所有词按 AND 组合；调研「最新进展」时给 search_web 传 fromYear\n\
-   3. 博客、新闻、技术综述、行业动态等通用网页用 llm_web_search（若已注册）；学术元数据仍用 search_web / search_arxiv\n\
+   3. 指南解读、新闻、临床综述等通用网页用 llm_web_search（若已注册）；已发表论文的学术元数据用 search_web，预印本用 search_arxiv\n\
    4. get_paper 的 paperId 来自 search_library 行内 paper: 后的 ID，或传入已登记的 [src-xxx]（本地与外网来源均可）；\
    同一篇论文只取一次，重复调用不会返回新信息\n\
    5. 用户消息里给出链接时用 fetch_url 读取正文\n\

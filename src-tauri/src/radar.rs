@@ -268,11 +268,11 @@ fn default_settings() -> RadarSettings {
     enabled: false,
     mailto: None,
     categories: vec![
-      "cs.LG".into(),
-      "cs.CL".into(),
-      "cs.CV".into(),
-      "cs.AI".into(),
-      "cs.IR".into(),
+      "cardiovascular medicine".into(),
+      "oncology".into(),
+      "infectious diseases".into(),
+      "epidemiology".into(),
+      "intensive care and critical care medicine".into(),
     ],
     keywords: vec![],
     default_filter_enabled: true,
@@ -286,29 +286,55 @@ fn default_settings() -> RadarSettings {
 // 日窗因此以订阅类目里最新一篇的投稿日为终点，而不是以今天为终点。
 const NEW_WINDOW_DAYS: i64 = 3;
 const INTEREST_WINDOW_DAYS: i64 = 4;
-const INTEREST_PER_KEYWORD: i64 = 50;
 const INTEREST_TOTAL_CAP: usize = 150;
 
 pub fn category_catalog() -> Vec<(String, String)> {
   vec![
-    ("cs.AI", "人工智能"),
-    ("cs.CL", "计算与语言"),
-    ("cs.CV", "计算机视觉"),
-    ("cs.LG", "机器学习"),
-    ("cs.IR", "信息检索"),
-    ("cs.NE", "神经与进化计算"),
-    ("cs.RO", "机器人"),
-    ("cs.SE", "软件工程"),
-    ("cs.CR", "密码学与安全"),
-    ("cs.DB", "数据库"),
-    ("cs.DC", "分布式计算"),
-    ("cs.HC", "人机交互"),
-    ("cs.MA", "多智能体"),
-    ("cs.MM", "多媒体"),
-    ("cs.NI", "网络"),
-    ("cs.PL", "编程语言"),
-    ("cs.SI", "社会与信息网络"),
-    ("cs.SY", "系统与控制"),
+    ("addiction medicine", "成瘾医学"),
+    ("anesthesia", "麻醉学"),
+    ("cardiovascular medicine", "心血管医学"),
+    ("dentistry and oral medicine", "口腔医学"),
+    ("dermatology", "皮肤病学"),
+    ("emergency medicine", "急诊医学"),
+    ("endocrinology", "内分泌学"),
+    ("epidemiology", "流行病学"),
+    ("gastroenterology", "消化病学"),
+    ("genetic and genomic medicine", "遗传与基因组医学"),
+    ("health economics", "卫生经济学"),
+    ("health informatics", "卫生信息学"),
+    ("health policy", "卫生政策"),
+    ("health systems and quality improvement", "卫生体系与质量改进"),
+    ("hematology", "血液学"),
+    ("hiv aids", "艾滋病"),
+    ("infectious diseases", "感染病学"),
+    ("intensive care and critical care medicine", "重症医学"),
+    ("medical education", "医学教育"),
+    ("nephrology", "肾病学"),
+    ("neurology", "神经病学"),
+    ("nursing", "护理学"),
+    ("nutrition", "营养学"),
+    ("obstetrics and gynecology", "妇产科学"),
+    ("occupational and environmental health", "职业与环境卫生"),
+    ("oncology", "肿瘤学"),
+    ("ophthalmology", "眼科学"),
+    ("orthopedics", "骨科学"),
+    ("otolaryngology", "耳鼻咽喉科学"),
+    ("pain medicine", "疼痛医学"),
+    ("pathology", "病理学"),
+    ("pediatrics", "儿科学"),
+    ("pharmacology and therapeutics", "药理学与治疗学"),
+    ("primary care research", "全科医学"),
+    ("psychiatry and clinical psychology", "精神病学与临床心理学"),
+    ("public and global health", "公共卫生与全球健康"),
+    ("radiology and imaging", "影像医学"),
+    ("rehabilitation medicine and physical therapy", "康复医学"),
+    ("respiratory medicine", "呼吸病学"),
+    ("rheumatology", "风湿病学"),
+    ("sexual and reproductive health", "性与生殖健康"),
+    ("sports medicine", "运动医学"),
+    ("surgery", "外科学"),
+    ("toxicology", "毒理学"),
+    ("transplantation", "移植医学"),
   ]
   .into_iter()
   .map(|(a, b)| (a.into(), b.into()))
@@ -374,6 +400,9 @@ fn today() -> String {
 }
 
 pub(crate) fn clean_arxiv_id(value: &str) -> String {
+  if let Some(id) = extract_medrxiv_id(value) {
+    return id;
+  }
   let bytes = value.as_bytes();
   let mut i = 0;
   while i + 9 <= bytes.len() {
@@ -396,6 +425,45 @@ pub(crate) fn clean_arxiv_id(value: &str) -> String {
     i += 1;
   }
   String::new()
+}
+
+fn extract_medrxiv_id(value: &str) -> Option<String> {
+  let lower = value.to_ascii_lowercase();
+  let start = ["10.1101/", "10.64898/"].iter().find_map(|prefix| lower.find(prefix))?;
+  let rest = &value[start..];
+  let end = rest
+    .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '/' | '-' | '_')))
+    .unwrap_or(rest.len());
+  let mut id = rest[..end].trim_end_matches('.').to_string();
+  if let Some(stripped) = id.strip_suffix(".full.pdf") {
+    id = stripped.to_string();
+  } else if let Some(stripped) = id.strip_suffix(".pdf") {
+    id = stripped.to_string();
+  }
+  let tail = id.rsplit('/').next().unwrap_or("");
+  if tail.len() < 6 { return None; }
+  Some(id)
+}
+
+fn is_medrxiv_id(id: &str) -> bool {
+  let lower = id.to_ascii_lowercase();
+  lower.starts_with("10.1101/") || lower.starts_with("10.64898/")
+}
+
+pub(crate) fn preprint_page_url(id: &str) -> String {
+  if is_medrxiv_id(id) {
+    format!("https://www.medrxiv.org/content/{id}")
+  } else {
+    format!("https://arxiv.org/abs/{id}")
+  }
+}
+
+fn preprint_pdf_url(id: &str) -> String {
+  if is_medrxiv_id(id) {
+    format!("https://www.medrxiv.org/content/{id}.full.pdf")
+  } else {
+    format!("https://arxiv.org/pdf/{id}.pdf")
+  }
 }
 
 fn squash(text: &str) -> String {
@@ -447,33 +515,9 @@ async fn upsert_paper_meta(
   .bind(primary_category)
   .bind(serde_json::to_string(categories).map_err(err)?)
   .bind(published_date)
-  .bind(format!("https://arxiv.org/abs/{arxiv_id}"))
-  .bind(format!("https://www.alphaxiv.org/abs/{arxiv_id}"))
+  .bind(preprint_page_url(arxiv_id))
+  .bind(if is_medrxiv_id(arxiv_id) { None } else { Some(format!("https://www.alphaxiv.org/abs/{arxiv_id}")) })
   .bind(now)
-  .execute(pool)
-  .await
-  .map_err(err)?;
-  Ok(())
-}
-
-async fn upsert_ai_summary(pool: &SqlitePool, arxiv_id: &str, title: Option<&str>, summary: Option<&str>, tags: &[String]) -> Result<()> {
-  if summary.is_none() && tags.is_empty() && title.is_none() {
-    return Ok(());
-  }
-  sqlx::query(
-    "INSERT INTO radar_ai_summaries(arxiv_id,title,summary_text,tags_json,captured_at)
-     VALUES(?,?,?,?,?)
-     ON CONFLICT(arxiv_id) DO UPDATE SET
-       title=COALESCE(excluded.title, radar_ai_summaries.title),
-       summary_text=COALESCE(excluded.summary_text, radar_ai_summaries.summary_text),
-       tags_json=CASE WHEN excluded.tags_json!='[]' THEN excluded.tags_json ELSE radar_ai_summaries.tags_json END,
-       captured_at=excluded.captured_at",
-  )
-  .bind(arxiv_id)
-  .bind(title)
-  .bind(summary)
-  .bind(serde_json::to_string(tags).map_err(err)?)
-  .bind(today())
   .execute(pool)
   .await
   .map_err(err)?;
@@ -497,64 +541,90 @@ async fn insert_snapshot(pool: &SqlitePool, date: &str, arxiv_id: &str, feed: &s
   Ok(())
 }
 
-async fn fetch_alphaxiv_hot(limit: i64) -> Result<Vec<(String, String, Option<String>, Vec<String>, Option<i64>)>> {
+fn medrxiv_entry(item: &serde_json::Value) -> Option<ArxivEntry> {
+  let doi = item.get("doi")?.as_str()?.trim();
+  if doi.is_empty() { return None; }
+  let version = item.get("version").and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")).filter(|s| !s.is_empty()).map(str::to_string))
+    .or_else(|| item.get("version").and_then(|v| v.as_i64()).map(|n| n.to_string()))
+    .unwrap_or_else(|| "1".into());
+  let id = if doi.to_ascii_lowercase().contains('v') && doi.rsplit('v').next().is_some_and(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit())) {
+    doi.to_string()
+  } else {
+    format!("{doi}v{version}")
+  };
+  let title = squash(item.get("title")?.as_str()?);
+  if title.is_empty() { return None; }
+  let summary = item.get("abstract").and_then(|v| v.as_str()).map(|text| squash(text)).unwrap_or_default();
+  let authors = item.get("authors").and_then(|v| v.as_str()).map(|raw| {
+    raw.split(';').map(str::trim).filter(|name| !name.is_empty()).map(str::to_string).collect()
+  }).unwrap_or_default();
+  let category = item.get("category").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+  let categories = if category.is_empty() { vec![] } else { vec![category.clone()] };
+  let primary = if category.is_empty() { None } else { Some(category) };
+  let published = item.get("date").and_then(|v| v.as_str()).map(str::to_string);
+  Some((id, title, summary, authors, categories, primary, published))
+}
+
+fn json_i64(value: Option<&serde_json::Value>) -> i64 {
+  value.and_then(|item| item.as_i64().or_else(|| item.as_str().and_then(|text| text.parse().ok()))).unwrap_or(0)
+}
+
+async fn fetch_medrxiv_interval(start: chrono::NaiveDate, end: chrono::NaiveDate, max_pages: usize) -> Result<Vec<ArxivEntry>> {
   let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
-  let url = format!(
-    "https://api.alphaxiv.org/papers/v3/feed?sort=Hot&pageNum=0&pageSize={}&interval={}",
-    limit.clamp(5, 50),
-    urlencoding_encode("7 Days")
-  );
-  let response = client
-    .get(&url)
-    .header("User-Agent", "PaperNest-Radar/0.2.1")
-    .header("Accept", "application/json")
-    .send()
-    .await
-    .map_err(err)?;
-  let status = response.status();
-  let body: serde_json::Value = response.json().await.map_err(err)?;
-  if !status.is_success() {
-    return Err(format!("alphaxiv feed 失败（{status}）"));
-  }
-  let papers = body.get("papers").and_then(|v| v.as_array()).ok_or_else(|| "alphaxiv 响应缺少 papers".to_string())?;
+  let mut cursor = 0i64;
   let mut out = Vec::new();
-  for paper in papers {
-    let raw_id = paper
-      .get("universal_paper_id")
-      .and_then(|v| v.as_str())
-      .or_else(|| paper.get("canonical_id").and_then(|v| v.as_str()))
-      .unwrap_or("");
-    let arxiv_id = clean_arxiv_id(raw_id);
-    if arxiv_id.is_empty() {
-      continue;
+  for _ in 0..max_pages.max(1) {
+    let url = format!(
+      "https://api.biorxiv.org/details/medrxiv/{}/{}/{}",
+      start.format("%Y-%m-%d"),
+      end.format("%Y-%m-%d"),
+      cursor
+    );
+    let response = client
+      .get(&url)
+      .header("User-Agent", "PaperNest-Radar/0.2.65")
+      .header("Accept", "application/json")
+      .send()
+      .await
+      .map_err(err)?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(err)?;
+    if !status.is_success() {
+      return Err(format!("medRxiv API 失败（{status}）"));
     }
-    let title = paper.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-    if title.is_empty() {
-      continue;
-    }
-    let summary = paper
-      .pointer("/paper_summary/summary")
-      .and_then(|v| v.as_str())
-      .map(str::trim)
-      .filter(|v| !v.is_empty())
-      .map(str::to_string);
-    let tags = paper
-      .get("topics")
-      .and_then(|v| v.as_array())
-      .map(|arr| {
-        arr
-          .iter()
-          .filter_map(|item| item.as_str().map(str::to_string))
-          .collect::<Vec<_>>()
-      })
-      .unwrap_or_default();
-    let upvotes = paper
-      .pointer("/metrics/public_total_votes")
-      .and_then(|v| v.as_i64())
-      .or_else(|| paper.pointer("/metrics/total_votes").and_then(|v| v.as_i64()));
-    out.push((arxiv_id, title, summary, tags, upvotes));
+    let message = body.get("messages").and_then(|v| v.as_array()).and_then(|items| items.first());
+    let count = json_i64(message.and_then(|item| item.get("count")));
+    let total = json_i64(message.and_then(|item| item.get("total")));
+    let collection = body.get("collection").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    if collection.is_empty() { break; }
+    out.extend(collection.iter().filter_map(medrxiv_entry));
+    cursor += count.max(collection.len() as i64);
+    if count == 0 || cursor >= total { break; }
   }
   Ok(out)
+}
+
+fn entries_in_categories(entries: Vec<ArxivEntry>, categories: &[String]) -> Vec<ArxivEntry> {
+  if categories.is_empty() { return vec![]; }
+  entries.into_iter().filter(|entry| category_matches(categories, entry.5.as_deref(), &entry.4, &[])).collect()
+}
+
+fn sort_newest(entries: &mut [ArxivEntry]) {
+  entries.sort_by(|left, right| entry_date(right).cmp(&entry_date(left)).then_with(|| left.0.cmp(&right.0)));
+}
+
+fn entry_date(entry: &ArxivEntry) -> Option<chrono::NaiveDate> {
+  let published = entry.6.as_deref()?;
+  chrono::NaiveDate::parse_from_str(published.get(..10)?, "%Y-%m-%d").ok()
+}
+
+fn keep_newest_window(entries: Vec<ArxivEntry>) -> (Vec<ArxivEntry>, Option<chrono::NaiveDate>) {
+  let Some(newest) = entries.iter().filter_map(entry_date).max() else {
+    return (entries, None);
+  };
+  let start = newest - chrono::Duration::days(NEW_WINDOW_DAYS);
+  let kept = entries.into_iter().filter(|entry| entry_date(entry).is_some_and(|date| date >= start)).collect();
+  (kept, Some(newest))
 }
 
 fn urlencoding_encode(value: &str) -> String {
@@ -570,160 +640,6 @@ fn urlencoding_encode(value: &str) -> String {
 
 type ArxivEntry = (String, String, String, Vec<String>, Vec<String>, Option<String>, Option<String>);
 
-async fn arxiv_query(search_query: &str, limit: i64, mailto: Option<&str>) -> Result<Vec<ArxivEntry>> {
-  let client = Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
-  let url = format!(
-    "https://export.arxiv.org/api/query?search_query={}&sortBy=submittedDate&sortOrder=descending&max_results={}",
-    urlencoding_encode(search_query),
-    limit.clamp(5, 200)
-  );
-  let mut last_transport = String::new();
-  for attempt in 0..5 {
-    if attempt > 0 {
-      tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
-    }
-    let response = crate::arxiv_client::with_arxiv_throttle(|| {
-      let client = client.clone();
-      let url = url.clone();
-      let mailto = mailto.map(str::to_string);
-      async move {
-        client
-          .get(&url)
-          .header("User-Agent", crate::arxiv_client::arxiv_user_agent(mailto.as_deref()))
-          .send()
-          .await
-      }
-    })
-    .await;
-    let response = match response {
-      Ok(response) => response,
-      Err(error) => {
-        if attempt < 4 && (error.is_connect() || error.is_timeout() || error.is_request() || error.is_body() || error.is_decode()) {
-          last_transport = error.to_string();
-          continue;
-        }
-        return Err(err(error));
-      }
-    };
-    let status = response.status();
-    let text = match response.text().await {
-      Ok(text) => text,
-      Err(error) => {
-        if attempt < 4 {
-          last_transport = error.to_string();
-          continue;
-        }
-        return Err(err(error));
-      }
-    };
-    if status.is_success() {
-      return Ok(parse_arxiv_atom(&text));
-    }
-    if matches!(status.as_u16(), 429 | 502 | 503) && attempt < 4 {
-      continue;
-    }
-    return Err(format!("arXiv API 失败（{status}）"));
-  }
-  if !last_transport.is_empty() {
-    return Err(last_transport);
-  }
-  Err("arXiv API 失败（429 Too Many Requests）".into())
-}
-
-fn submitted_date_range(end: chrono::NaiveDate, window_days: i64) -> String {
-  let start = end - chrono::Duration::days(window_days.max(0));
-  format!(
-    "submittedDate:[{}0000 TO {}2359]",
-    start.format("%Y%m%d"),
-    end.format("%Y%m%d")
-  )
-}
-
-fn category_or_query(categories: &[String]) -> String {
-  categories.iter().map(|c| format!("cat:{c}")).collect::<Vec<_>>().join(" OR ")
-}
-
-fn escape_arxiv_phrase(value: &str) -> String {
-  value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn build_interest_query(keyword: &str, categories: &[String], end: chrono::NaiveDate, window_days: i64) -> String {
-  let phrase = escape_arxiv_phrase(keyword.trim());
-  let kw = format!("(ti:\"{phrase}\" OR abs:\"{phrase}\")");
-  let mut parts = vec![kw];
-  if !categories.is_empty() {
-    parts.push(format!("({})", category_or_query(categories)));
-  }
-  parts.push(submitted_date_range(end, window_days));
-  parts.join(" AND ")
-}
-
-fn entry_date(entry: &ArxivEntry) -> Option<chrono::NaiveDate> {
-  let published = entry.6.as_deref()?;
-  chrono::NaiveDate::parse_from_str(published.get(..10)?, "%Y-%m-%d").ok()
-}
-
-/// 按投稿日倒序取订阅类目的最新稿，只保留最新投稿日往前 `NEW_WINDOW_DAYS` 天内的稿件。
-/// 同时返回最新投稿日，供兴趣召回对齐同一日窗。
-fn keep_newest_window(entries: Vec<ArxivEntry>) -> (Vec<ArxivEntry>, Option<chrono::NaiveDate>) {
-  let Some(newest) = entries.iter().filter_map(entry_date).max() else {
-    return (entries, None);
-  };
-  let start = newest - chrono::Duration::days(NEW_WINDOW_DAYS);
-  let kept = entries
-    .into_iter()
-    .filter(|entry| entry_date(entry).is_some_and(|date| date >= start))
-    .collect();
-  (kept, Some(newest))
-}
-
-async fn fetch_arxiv_new(
-  categories: &[String],
-  limit: i64,
-  mailto: Option<&str>,
-) -> Result<(Vec<ArxivEntry>, Option<chrono::NaiveDate>)> {
-  if categories.is_empty() {
-    return Ok((vec![], None));
-  }
-  // 不按自然日窗过滤：先取投稿日最新的一批，再裁到「最新投稿日 − NEW_WINDOW_DAYS」。
-  // Atom 全文过长时易触发 body decode 失败，故单次请求上限 50。
-  let entries = arxiv_query(&category_or_query(categories), limit.min(50), mailto).await?;
-  Ok(keep_newest_window(entries))
-}
-
-fn arxiv_index_lag_end() -> chrono::NaiveDate {
-  Utc::now().date_naive() - chrono::Duration::days(3)
-}
-
-async fn fetch_arxiv_interest(
-  keywords: &[String],
-  categories: &[String],
-  window_end: chrono::NaiveDate,
-  mailto: Option<&str>,
-) -> Result<Vec<ArxivEntry>> {
-  let kws = normalized_keywords(keywords);
-  if kws.is_empty() {
-    return Ok(vec![]);
-  }
-  let mut seen = HashSet::new();
-  let mut out = Vec::new();
-  for (index, keyword) in kws.iter().enumerate() {
-    if index > 0 {
-      tokio::time::sleep(Duration::from_millis(3100)).await;
-    }
-    let query = build_interest_query(keyword, categories, window_end, INTEREST_WINDOW_DAYS);
-    let batch = arxiv_query(&query, INTEREST_PER_KEYWORD, mailto).await?;
-    for entry in batch {
-      if seen.insert(entry.0.clone()) {
-        out.push(entry);
-        if out.len() >= INTEREST_TOTAL_CAP {
-          return Ok(out);
-        }
-      }
-    }
-  }
-  Ok(out)
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -735,60 +651,48 @@ pub struct ArxivBrief {
 }
 
 pub async fn search_arxiv_briefs(keyword: &str, limit: i64) -> Result<Vec<ArxivBrief>> {
-  let search_query = crate::search_query::arxiv_search_query(keyword.trim());
-  if search_query.is_empty() {
+  let keyword = keyword.trim();
+  if keyword.is_empty() {
     return Ok(vec![]);
   }
-  let entries = arxiv_query(&search_query, limit.clamp(3, 15), None).await?;
-  Ok(entries
-    .into_iter()
-    .map(|(arxiv_id, title, summary, _, _, _, _)| ArxivBrief {
-      abs_url: format!("https://arxiv.org/abs/{arxiv_id}"),
-      arxiv_id,
-      title,
-      abstract_text: summary.chars().take(500).collect(),
-    })
-    .collect())
-}
-
-fn parse_arxiv_atom(xml: &str) -> Vec<ArxivEntry> {
-  let mut out = Vec::new();
-  for entry in xml.split("<entry>").skip(1) {
-    let block = entry.split("</entry>").next().unwrap_or("");
-    let id_raw = xml_tag(block, "id").unwrap_or_default();
-    let arxiv_id = clean_arxiv_id(&id_raw);
-    if arxiv_id.is_empty() {
-      continue;
-    }
-    let title = squash(&xml_tag(block, "title").unwrap_or_default());
-    let summary = squash(&xml_tag(block, "summary").unwrap_or_default());
-    let published = xml_tag(block, "published");
-    let mut authors = Vec::new();
-    for author in block.split("<author>").skip(1) {
-      if let Some(name) = xml_tag(author, "name") {
-        authors.push(name);
-      }
-    }
-    let mut categories = Vec::new();
-    for part in block.split("<category").skip(1) {
-      if let Some(term) = part.split("term=\"").nth(1).and_then(|s| s.split('"').next()) {
-        categories.push(term.to_string());
-      }
-    }
-    let primary = categories.first().cloned();
-    out.push((arxiv_id, title, summary, authors, categories, primary, published));
+  let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
+  let query = format!("(TITLE_ABS:\"{}\") AND SRC:PPR", keyword.replace('"', ""));
+  let url = format!(
+    "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&format=json&pageSize={}&sort=FIRST_PDATE_D%20desc",
+    urlencoding_encode(&query),
+    limit.clamp(3, 15)
+  );
+  let response = client
+    .get(&url)
+    .header("User-Agent", "PaperNest-Radar/0.2.65")
+    .header("Accept", "application/json")
+    .send()
+    .await
+    .map_err(err)?;
+  let status = response.status();
+  let body: serde_json::Value = response.json().await.map_err(err)?;
+  if !status.is_success() {
+    return Err(format!("Europe PMC 检索失败（{status}）"));
   }
-  out
-}
-
-fn xml_tag(block: &str, tag: &str) -> Option<String> {
-  let open = format!("<{tag}");
-  let start = block.find(&open)?;
-  let after = &block[start..];
-  let content_start = after.find('>')? + 1;
-  let close = format!("</{tag}>");
-  let end = after.find(&close)?;
-  Some(after[content_start..end].replace("<![CDATA[", "").replace("]]>", "").trim().to_string())
+  let results = body.pointer("/resultList/result").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+  Ok(results.iter().filter_map(|item| {
+    let doi = item.get("doi").and_then(|v| v.as_str()).unwrap_or("").trim();
+    let journal = item.get("journalTitle").and_then(|v| v.as_str()).unwrap_or("").to_ascii_lowercase();
+    let medrxiv = doi.starts_with("10.64898/") || (doi.starts_with("10.1101/") && journal.contains("medrxiv"));
+    if !medrxiv { return None; }
+    let version = item.get("versionNumber").and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")).filter(|s| !s.is_empty()).map(str::to_string))
+      .or_else(|| item.get("versionNumber").and_then(|v| v.as_i64()).map(|n| n.to_string()))
+      .unwrap_or_else(|| "1".into());
+    let arxiv_id = if doi.rsplit('v').next().is_some_and(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit())) && doi.to_ascii_lowercase().contains('v') {
+      doi.to_string()
+    } else {
+      format!("{doi}v{version}")
+    };
+    let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    if title.is_empty() { return None; }
+    let abstract_text = item.get("abstractText").and_then(|v| v.as_str()).unwrap_or("").chars().take(500).collect();
+    Some(ArxivBrief { abs_url: preprint_page_url(&arxiv_id), arxiv_id, title, abstract_text })
+  }).collect())
 }
 
 async fn prune_old(pool: &SqlitePool, retain_days: i64) -> Result<()> {
@@ -1021,102 +925,49 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
   let mut new_count = 0i64;
   let mut interest_count = 0i64;
   let mut papers_added = 0i64;
-  let mut arxiv_calls = 0u32;
 
-  match fetch_alphaxiv_hot(settings.hot_limit).await {
-    Ok(cards) => {
-      for (index, (arxiv_id, title, summary, tags, upvotes)) in cards.into_iter().enumerate() {
-        upsert_paper_meta(&radar, &arxiv_id, &title, None, &[], None, &[], None).await?;
-        upsert_ai_summary(&radar, &arxiv_id, Some(&title), summary.as_deref(), &tags).await?;
-        insert_snapshot(&radar, &date, &arxiv_id, "hot", (index + 1) as i64, upvotes).await?;
+  let end = Utc::now().date_naive();
+  let start = end - chrono::Duration::days(7);
+  match fetch_medrxiv_interval(start, end, 20).await {
+    Ok(all) => {
+      let mut subscribed = entries_in_categories(all, &settings.categories);
+      sort_newest(&mut subscribed);
+      let hot_n = settings.hot_limit.clamp(5, 50) as usize;
+      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in subscribed.iter().take(hot_n).cloned().enumerate() {
+        upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
+        insert_snapshot(&radar, &date, &arxiv_id, "hot", (index + 1) as i64, None).await?;
         hot_count += 1;
         papers_added += 1;
       }
-      feeds_ok.push("hot");
-    }
-    Err(error) => errors.push(format!("hot: {error}")),
-  }
-
-  if arxiv_calls > 0 {
-    tokio::time::sleep(Duration::from_millis(3100)).await;
-  }
-  arxiv_calls += 1;
-  let mut window_end = arxiv_index_lag_end();
-  match fetch_arxiv_new(&settings.categories, settings.new_limit, settings.mailto.as_deref()).await {
-    Ok((cards, newest)) => {
-      if let Some(newest) = newest {
-        window_end = newest;
-      }
-      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in cards.into_iter().enumerate() {
-        upsert_paper_meta(
-          &radar,
-          &arxiv_id,
-          &title,
-          Some(&summary),
-          &authors,
-          primary.as_deref(),
-          &categories,
-          published.as_deref(),
-        )
-        .await?;
+      if hot_count > 0 { feeds_ok.push("hot"); }
+      let (new_cards, newest) = keep_newest_window(subscribed.clone());
+      let window_end = newest.unwrap_or(end);
+      let new_n = settings.new_limit.clamp(5, 200) as usize;
+      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in new_cards.into_iter().take(new_n).enumerate() {
+        upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
         insert_snapshot(&radar, &date, &arxiv_id, "new", (index + 1) as i64, None).await?;
         new_count += 1;
         papers_added += 1;
       }
-      feeds_ok.push("new");
-    }
-    Err(error) => errors.push(format!("new: {error}")),
-  }
-
-  if !normalized_keywords(&settings.keywords).is_empty() {
-    if arxiv_calls > 0 {
-      tokio::time::sleep(Duration::from_millis(3100)).await;
-    }
-    arxiv_calls += 1;
-    match fetch_arxiv_interest(&settings.keywords, &settings.categories, window_end, settings.mailto.as_deref()).await {
-      Ok(cards) => {
-        for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in cards.into_iter().enumerate() {
-          upsert_paper_meta(
-            &radar,
-            &arxiv_id,
-            &title,
-            Some(&summary),
-            &authors,
-            primary.as_deref(),
-            &categories,
-            published.as_deref(),
-          )
-          .await?;
+      if new_count > 0 { feeds_ok.push("new"); }
+      if !normalized_keywords(&settings.keywords).is_empty() {
+        let interest_start = window_end - chrono::Duration::days(INTEREST_WINDOW_DAYS);
+        let interest: Vec<ArxivEntry> = subscribed.into_iter().filter(|entry| {
+          entry_date(entry).is_some_and(|day| day >= interest_start) && keyword_matches(&settings.keywords, &entry.1, Some(&entry.2), None)
+        }).take(INTEREST_TOTAL_CAP).collect();
+        for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in interest.into_iter().enumerate() {
+          upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
           insert_snapshot(&radar, &date, &arxiv_id, "interest", (index + 1) as i64, None).await?;
           interest_count += 1;
           papers_added += 1;
         }
-        feeds_ok.push("interest");
+        if interest_count > 0 { feeds_ok.push("interest"); }
       }
-      Err(error) => errors.push(format!("interest: {error}")),
+      if hot_count == 0 && new_count == 0 && interest_count == 0 {
+        errors.push("medRxiv 在订阅学科内没有返回稿件".into());
+      }
     }
-  }
-
-  // Enrich hot cards missing abstracts via arXiv id_list (batched).
-  let missing: Vec<String> = sqlx::query(
-    "SELECT p.arxiv_id FROM radar_papers p
-     JOIN radar_snapshots s ON s.arxiv_id=p.arxiv_id AND s.snapshot_date=? AND s.feed='hot'
-     WHERE p.abstract_text IS NULL OR trim(p.abstract_text)=''",
-  )
-  .bind(&date)
-  .fetch_all(&radar)
-  .await
-  .map_err(err)?
-  .into_iter()
-  .map(|row| row.get::<String, _>("arxiv_id"))
-  .collect();
-  if !missing.is_empty() {
-    if arxiv_calls > 0 {
-      tokio::time::sleep(Duration::from_millis(3100)).await;
-    }
-    if let Err(error) = enrich_arxiv_ids(&radar, &missing, settings.mailto.as_deref()).await {
-      errors.push(format!("enrich: {error}"));
-    }
+    Err(error) => errors.push(format!("medrxiv: {error}")),
   }
 
   prune_old(&radar, settings.retain_days).await?;
@@ -1149,61 +1000,6 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
     errors,
     status: status.into(),
   })
-}
-
-async fn enrich_arxiv_ids(pool: &SqlitePool, ids: &[String], mailto: Option<&str>) -> Result<()> {
-  let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
-  for chunk in ids.chunks(15) {
-    let id_list = chunk.join(",");
-    let url = format!(
-      "https://export.arxiv.org/api/query?id_list={}&max_results={}",
-      urlencoding_encode(&id_list),
-      chunk.len()
-    );
-    let text = crate::arxiv_client::with_arxiv_throttle(|| {
-      let client = client.clone();
-      let url = url.clone();
-      let mailto = mailto.map(str::to_string);
-      async move {
-        for attempt in 0..5 {
-          if attempt > 0 {
-            tokio::time::sleep(Duration::from_millis(3000 * attempt as u64)).await;
-          }
-          let response = client
-            .get(&url)
-            .header("User-Agent", crate::arxiv_client::arxiv_user_agent(mailto.as_deref()))
-            .send()
-            .await
-            .map_err(err)?;
-          let status = response.status();
-          let text = response.text().await.map_err(err)?;
-          if status.is_success() {
-            return Ok(text);
-          }
-          if status.as_u16() == 429 && attempt < 4 {
-            continue;
-          }
-          return Err(format!("arXiv API 失败（{status}）"));
-        }
-        Err("arXiv API 失败（429 Too Many Requests）".into())
-      }
-    })
-    .await?;
-    for (arxiv_id, title, summary, authors, categories, primary, published) in parse_arxiv_atom(&text) {
-      upsert_paper_meta(
-        pool,
-        &arxiv_id,
-        &title,
-        Some(&summary),
-        &authors,
-        primary.as_deref(),
-        &categories,
-        published.as_deref(),
-      )
-      .await?;
-    }
-  }
-  Ok(())
 }
 
 #[tauri::command]
@@ -1773,8 +1569,8 @@ fn score_candidates(
           topics: row.topics.clone(),
           primary_category: row.primary_category.clone(),
           published_date: None,
-          abs_url: Some(format!("https://arxiv.org/abs/{}", row.arxiv_id)),
-          alphaxiv_url: Some(format!("https://www.alphaxiv.org/abs/{}", row.arxiv_id)),
+          abs_url: Some(preprint_page_url(&row.arxiv_id)),
+          alphaxiv_url: if is_medrxiv_id(&row.arxiv_id) { None } else { Some(format!("https://www.alphaxiv.org/abs/{}", row.arxiv_id)) },
           feed: "recommend".into(),
           rank: Some(row.rank),
           upvotes: Some(row.upvotes),
@@ -2217,7 +2013,10 @@ pub async fn radar_import_to_library(
     })
     .collect();
   paper.publication_date = published;
-  paper.source_url = abs_url.or(Some(format!("https://arxiv.org/abs/{id}")));
+  paper.source_url = abs_url.or_else(|| Some(preprint_page_url(&id)));
+  if is_medrxiv_id(&id) {
+    paper.doi = Some(id.split('v').next().unwrap_or(&id).to_string());
+  }
   paper.folder_id = folder_id;
   paper.status = "unread".into();
   let mut downloaded = false;
@@ -2236,7 +2035,7 @@ pub async fn radar_import_to_library(
 
 pub(crate) async fn download_arxiv_pdf(library_dir: &Path, arxiv_id: &str) -> Result<String> {
   let client = Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
-  let url = format!("https://arxiv.org/pdf/{arxiv_id}.pdf");
+  let url = preprint_pdf_url(arxiv_id);
   let response = client
     .get(&url)
     .header("User-Agent", "PaperNest-Radar/0.2.1")
@@ -2265,34 +2064,41 @@ mod radar_unit_tests {
   fn clean_arxiv_id_from_url_and_version() {
     assert_eq!(clean_arxiv_id("https://arxiv.org/abs/2608.23552v1"), "2608.23552");
     assert_eq!(clean_arxiv_id("2608.23552"), "2608.23552");
+    assert_eq!(
+      clean_arxiv_id("https://www.medrxiv.org/content/10.64898/2026.05.11.26352940v2.full.pdf"),
+      "10.64898/2026.05.11.26352940v2"
+    );
   }
 
   #[test]
-  fn parse_arxiv_atom_extracts_entry() {
-    let xml = r#"<?xml version="1.0"?>
-<entry>
-  <id>http://arxiv.org/abs/1234.56789v1</id>
-  <title>Hello World</title>
-  <summary>An abstract.</summary>
-  <published>2026-01-01T00:00:00Z</published>
-  <author><name>Ada</name></author>
-  <category term="cs.LG" />
-</entry>"#;
-    let parsed = parse_arxiv_atom(xml);
-    assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0].0, "1234.56789");
-    assert_eq!(parsed[0].1, "Hello World");
+  fn medrxiv_entry_keeps_doi_version_and_subject() {
+    let item = serde_json::json!({
+      "doi": "10.64898/2026.05.11.26352940",
+      "version": "2",
+      "title": "Renin and cardiovascular outcomes",
+      "abstract": "Patients with hypertension.",
+      "authors": "Tsai, C.-H.; Brown, J.",
+      "category": "cardiovascular medicine",
+      "date": "2026-10-10"
+    });
+    let parsed = medrxiv_entry(&item).unwrap();
+    assert_eq!(parsed.0, "10.64898/2026.05.11.26352940v2");
+    assert_eq!(parsed.1, "Renin and cardiovascular outcomes");
+    assert_eq!(parsed.3, vec!["Tsai, C.-H.".to_string(), "Brown, J.".to_string()]);
+    assert_eq!(parsed.5.as_deref(), Some("cardiovascular medicine"));
+    assert_eq!(preprint_page_url(&parsed.0), "https://www.medrxiv.org/content/10.64898/2026.05.11.26352940v2");
+    assert_eq!(preprint_pdf_url(&parsed.0), "https://www.medrxiv.org/content/10.64898/2026.05.11.26352940v2.full.pdf");
   }
 
   #[test]
   fn interest_match_keywords_and_unknown_category_passes() {
-    let keywords = vec!["agent skill".into()];
-    let subscribed = vec!["cs.AI".into()];
+    let keywords = vec!["heart failure".into()];
+    let subscribed = vec!["cardiovascular medicine".into()];
     assert!(interest_match(
       &keywords,
       &subscribed,
-      "Learning Agent Skills for Robotics",
-      Some("We train agents with reusable skills."),
+      "SGLT2 inhibitors in heart failure",
+      Some("Patients with chronic heart failure."),
       None,
       None,
       &[],
@@ -2301,8 +2107,8 @@ mod radar_unit_tests {
     assert!(!interest_match(
       &keywords,
       &subscribed,
-      "Database Index Structures",
-      Some("B-tree optimization."),
+      "Dental implant survival",
+      Some("A cohort of oral surgery patients."),
       None,
       None,
       &[],
@@ -2311,12 +2117,12 @@ mod radar_unit_tests {
   }
 
   #[test]
-  fn category_matches_subscribed_cs_label() {
+  fn category_matches_subscribed_medrxiv_subject() {
     assert!(category_matches(
-      &["cs.CL".into()],
-      Some("cs.CL"),
+      &["oncology".into()],
+      Some("oncology"),
       &[],
-      &["NLP".into()],
+      &["immunotherapy".into()],
     ));
   }
 
@@ -2333,14 +2139,28 @@ mod radar_unit_tests {
   }
 
   #[test]
-  fn interest_query_includes_keyword_cats_and_date() {
-    let end = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).unwrap();
-    let q = build_interest_query("agent memory", &["cs.AI".into(), "cs.CL".into()], end, 3);
-    assert!(q.contains("ti:\"agent memory\""));
-    assert!(q.contains("abs:\"agent memory\""));
-    assert!(q.contains("cat:cs.AI"));
-    assert!(q.contains("cat:cs.CL"));
-    assert!(q.contains("submittedDate:[202610060000 TO 202610092359]"));
+  fn subscribed_subject_filters_medrxiv_entries() {
+    let cardio = (
+      "10.64898/1v1".into(),
+      "Heart failure trial".into(),
+      "Patients with heart failure.".into(),
+      vec![],
+      vec!["cardiovascular medicine".into()],
+      Some("cardiovascular medicine".into()),
+      Some("2026-10-10".into()),
+    );
+    let dental = (
+      "10.64898/2v1".into(),
+      "Implant study".into(),
+      "Oral surgery.".into(),
+      vec![],
+      vec!["dentistry and oral medicine".into()],
+      Some("dentistry and oral medicine".into()),
+      Some("2026-10-10".into()),
+    );
+    let kept = entries_in_categories(vec![cardio, dental], &["cardiovascular medicine".into()]);
+    assert_eq!(kept.len(), 1);
+    assert!(keyword_matches(&["heart failure".into()], &kept[0].1, Some(&kept[0].2), None));
   }
 
   #[test]
@@ -2358,43 +2178,14 @@ mod radar_unit_tests {
     assert_eq!(ids, vec!["a", "b"]);
   }
 
-  #[test]
-  fn parse_arxiv_atom_keeps_all_categories() {
-    let xml = r#"<?xml version="1.0"?>
-<entry>
-  <id>http://arxiv.org/abs/1234.56789v1</id>
-  <title>Hello World</title>
-  <summary>An abstract.</summary>
-  <published>2026-01-01T00:00:00Z</published>
-  <author><name>Ada</name></author>
-  <category term="cs.LG" />
-  <category term="cs.AI" />
-</entry>"#;
-    let parsed = parse_arxiv_atom(xml);
-    assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0].4, vec!["cs.LG".to_string(), "cs.AI".to_string()]);
-    assert_eq!(parsed[0].5.as_deref(), Some("cs.LG"));
-  }
-
   #[tokio::test]
-  async fn interest_and_new_network_smoke() {
-    let cats = vec!["cs.AI".into(), "cs.CL".into(), "cs.LG".into()];
-    let (new_cards, newest) = fetch_arxiv_new(&cats, 20, None).await.expect("new fetch");
-    assert!(!new_cards.is_empty(), "New 日窗应返回稿件");
-
-    tokio::time::sleep(Duration::from_millis(3100)).await;
-    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, newest.expect("newest date"), None)
-      .await
-      .expect("interest fetch");
-    assert!(!interest.is_empty(), "Interest 关键词召回应返回稿件");
-    let new_ids: HashSet<_> = new_cards.iter().map(|e| e.0.clone()).collect();
-    let exclusive = interest.iter().filter(|e| !new_ids.contains(&e.0)).count();
-    assert!(
-      exclusive > 0,
-      "Interest 应找回 New Top-20 之外的相关稿（exclusive={exclusive}, interest={}, new={}）",
-      interest.len(),
-      new_cards.len()
-    );
+  async fn medrxiv_interval_returns_subject_labelled_preprints() {
+    let end = Utc::now().date_naive();
+    let start = end - chrono::Duration::days(2);
+    let entries = fetch_medrxiv_interval(start, end, 1).await.expect("medrxiv");
+    assert!(!entries.is_empty(), "medRxiv 第一页应返回稿件");
+    assert!(entries.iter().any(|entry| entry.0.starts_with("10.")));
+    assert!(entries.iter().any(|entry| entry.5.as_deref().is_some_and(|category| !category.is_empty())));
   }
 
   #[tokio::test]
@@ -2403,62 +2194,21 @@ mod radar_unit_tests {
     fs::create_dir_all(&dir).expect("temp dir");
     let pool = open_radar_pool(&dir).await.expect("open radar");
     let date = today();
-    let cats = vec!["cs.AI".into(), "cs.CL".into(), "cs.LG".into()];
-
-    let hot = fetch_alphaxiv_hot(10).await.unwrap_or_default();
-    for (index, (arxiv_id, title, summary, tags, upvotes)) in hot.into_iter().enumerate() {
-      upsert_paper_meta(&pool, &arxiv_id, &title, None, &[], None, &[], None)
+    let entry = (
+      "10.64898/2026.05.11.26352940v2".to_string(),
+      "Heart failure trial".to_string(),
+      "Patients with heart failure.".to_string(),
+      vec!["Tsai, C.-H.".to_string()],
+      vec!["cardiovascular medicine".to_string()],
+      Some("cardiovascular medicine".to_string()),
+      Some("2026-10-10".to_string()),
+    );
+    for (feed, rank) in [("hot", 1i64), ("new", 1i64), ("interest", 1i64)] {
+      let (arxiv_id, title, summary, authors, categories, primary, published) = entry.clone();
+      upsert_paper_meta(&pool, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref())
         .await
         .unwrap();
-      upsert_ai_summary(&pool, &arxiv_id, Some(&title), summary.as_deref(), &tags)
-        .await
-        .unwrap();
-      insert_snapshot(&pool, &date, &arxiv_id, "hot", (index + 1) as i64, upvotes)
-        .await
-        .unwrap();
-    }
-
-    tokio::time::sleep(Duration::from_millis(3100)).await;
-    let (news, newest) = fetch_arxiv_new(&cats, 15, None).await.expect("new");
-    for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in news.into_iter().enumerate() {
-      upsert_paper_meta(
-        &pool,
-        &arxiv_id,
-        &title,
-        Some(&summary),
-        &authors,
-        primary.as_deref(),
-        &categories,
-        published.as_deref(),
-      )
-      .await
-      .unwrap();
-      insert_snapshot(&pool, &date, &arxiv_id, "new", (index + 1) as i64, None)
-        .await
-        .unwrap();
-    }
-
-    tokio::time::sleep(Duration::from_millis(3100)).await;
-    let interest = fetch_arxiv_interest(&["agent memory".into()], &cats, newest.expect("newest date"), None)
-      .await
-      .expect("interest");
-    assert!(!interest.is_empty());
-    for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in interest.into_iter().enumerate() {
-      upsert_paper_meta(
-        &pool,
-        &arxiv_id,
-        &title,
-        Some(&summary),
-        &authors,
-        primary.as_deref(),
-        &categories,
-        published.as_deref(),
-      )
-      .await
-      .unwrap();
-      insert_snapshot(&pool, &date, &arxiv_id, "interest", (index + 1) as i64, None)
-        .await
-        .unwrap();
+      insert_snapshot(&pool, &date, &arxiv_id, feed, rank, None).await.unwrap();
     }
 
     let interest_count: i64 = sqlx::query_scalar(

@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PaperNest · 本地论文库",
+        "title": "PaperNest · 临床医学论文库",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,

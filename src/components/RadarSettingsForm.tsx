@@ -5,7 +5,7 @@ import type { RadarSettings } from "../types";
 
 const DEFAULT: RadarSettings = {
   enabled: false,
-  categories: ["cs.LG", "cs.CL", "cs.CV", "cs.AI", "cs.IR"],
+  categories: ["cardiovascular medicine", "oncology", "infectious diseases", "epidemiology", "intensive care and critical care medicine"],
   keywords: [],
   defaultFilterEnabled: true,
   hotLimit: 30,
@@ -70,7 +70,7 @@ export function RadarSettingsForm() {
     <section className="settings-form radar-settings">
       <h2><RadarIcon size={19} />论文雷达</h2>
       <p className="settings-description">
-        默认关闭。启用后，在「论文雷达」页点击「推荐今日论文」联网采集：Hot（alphaxiv）+ New（订阅类目日窗）+ Interest（关键词查询）。发现期只保存元数据；界面默认按类目与关键词过滤展示。
+        默认关闭。启用后，在「论文雷达」页点击「推荐今日论文」联网采集 medRxiv：近 7 日、订阅学科新稿、关键词兴趣。发现期只保存元数据；界面默认按学科与关键词过滤展示。
       </p>
       {!isTauri() && <p className="inline-notice">浏览器预览模式不支持论文雷达联网功能。</p>}
       <label className="checkbox-setting">
@@ -82,7 +82,7 @@ export function RadarSettingsForm() {
         启用论文雷达
       </label>
       <label>
-        联系邮箱（用于 arXiv 礼貌请求标识）
+        联系邮箱（写入请求标识，medRxiv / Europe PMC 不强制）
         <input
           type="email"
           value={value.mailto ?? ""}
@@ -99,16 +99,16 @@ export function RadarSettingsForm() {
         雷达页默认启用兴趣过滤
       </label>
       <label>
-        兴趣关键词（每行一个，如 agent、agent memory、agent skill）
+        兴趣关键词（每行一个，如 heart failure、SGLT2、sepsis）
         <textarea
           rows={4}
           value={keywordText}
           onChange={event => setKeywordText(event.target.value)}
-          placeholder={"agent\nagent memory\nagent skill"}
+          placeholder={"heart failure\nSGLT2\nsepsis"}
         />
       </label>
       <fieldset className="radar-category-fieldset">
-        <legend>订阅 arXiv 类目（New / Interest 召回 + 兴趣过滤）</legend>
+        <legend>订阅 medRxiv 学科（新稿 / 兴趣召回 + 兴趣过滤）</legend>
         <div className="radar-category-grid">
           {(catalog.length ? catalog : value.categories.map(id => [id, labels[id] || id] as [string, string])).map(([id, name]) => (
             <label key={id} className="checkbox-setting">

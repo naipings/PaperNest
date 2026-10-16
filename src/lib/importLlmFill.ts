@@ -12,7 +12,7 @@ export function liteAnalysisSeed(paper: Paper, analysis: LlmAnalysis | undefined
   const title = analysis?.titleEn?.trim() || paper.titleEn;
   const abs = analysis?.abstractEn?.trim() || paper.abstractEn?.trim() || "";
   if (abs.length >= 80) {
-    return `Title: ${title}\n\nAbstract:\n${abs}\n\n根据标题与摘要填写 JSON。必须给出非空的中文 summary（一句话），以及至少 5 项 vocabulary（termEn、meaningZh、sentenceEn、sentenceZh；page 用数字或 null）。abstractEn 可保留或 refining；abstractZh 用计算机科学论文学术语体简体中文。`;
+    return `Title: ${title}\n\nAbstract:\n${abs}\n\n根据标题与摘要填写 JSON。必须给出非空的中文 summary（一句话），以及至少 5 项 vocabulary（termEn、meaningZh、sentenceEn、sentenceZh；page 用数字或 null）。abstractEn 可保留或 refining；abstractZh 用临床医学论文学术语体简体中文；药物用通用名，试验名与 HR、OR、CI、ITT、OS 按医学义项处理。`;
   }
   return fullText.slice(0, 12_000);
 }

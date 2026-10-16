@@ -9,7 +9,7 @@ vi.mock("../state/LibraryContext", () => ({ useLibrary: () => ({
   setRadarBusy: mocks.action, setRadarNotice: mocks.action, startRadarExplain: mocks.action, finishRadarExplain: mocks.action,
 }) }));
 vi.mock("../services/backend", () => ({ isTauri: () => true, backend: {
-  radarGetSettings: async () => ({ enabled: true, defaultFilterEnabled: mocks.defaultFilter, keywords: ["agent memory"], categories: ["cs.AI"] }),
+  radarGetSettings: async () => ({ enabled: true, defaultFilterEnabled: mocks.defaultFilter, keywords: ["heart failure"], categories: ["cardiovascular medicine"] }),
   radarListDates: async () => ["2026-10-15"], radarListExplainedIds: async () => [], radarListFeed: mocks.listFeed,
 } }));
 
@@ -30,7 +30,7 @@ describe("radar board filtering", () => {
     expect(await screen.findByText("已采集的论文")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "仅看兴趣匹配" })).not.toBeChecked();
     await waitFor(() => expect(mocks.listFeed).toHaveBeenLastCalledWith("2026-10-15", "hot", false, false));
-    fireEvent.click(screen.getByRole("button", { name: "arXiv 新稿榜" }));
+    fireEvent.click(screen.getByRole("button", { name: "medRxiv 新稿榜" }));
     await waitFor(() => expect(mocks.listFeed).toHaveBeenLastCalledWith("2026-10-15", "new", false, false));
     expect(screen.getByText("已采集的论文")).toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe("radar board filtering", () => {
   it("shows a missing snapshot instead of a filter explanation when nothing was collected", async () => {
     mocks.total = 0;
     render(<RadarView />);
-    expect(await screen.findByText("该日暂无alphaxiv 热点数据。")).toBeInTheDocument();
+    expect(await screen.findByText("该日暂无medRxiv 近 7 日数据。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /查看全部/ })).not.toBeInTheDocument();
   });
 });

@@ -316,7 +316,7 @@ async fn handle_subagent_call(
 }
 
 fn subagent_system_prompt() -> &'static str {
-  "你是文献调研子 Agent（fork 自父会话已完成 turn 前缀）。针对给定子问题检索本地库、arXiv/OpenAlex 学术元数据；\
+  "你是文献调研子 Agent（fork 自父会话已完成 turn 前缀）。针对给定子问题检索本地库、medRxiv/OpenAlex 学术元数据；\
    博客/新闻/行业综述类子问题优先 llm_web_search（若已注册），再 finish_research。不要调用 research_subtopic。"
 }
 

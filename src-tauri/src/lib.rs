@@ -1,6 +1,5 @@
 mod online_metadata;
 mod custom_fields;
-mod arxiv_client;
 mod radar;
 mod search_query;
 mod research_web;
@@ -359,24 +358,26 @@ mod library_path_tests {
   }
 
   #[test]
-  fn purge_clinical_taxonomy_leftovers_removes_clinical_ids() {
+  fn purge_cs_taxonomy_leftovers_removes_cs_ids() {
     tauri::async_runtime::block_on(async {
-      let root = env::temp_dir().join(format!("papernest-clinical-purge-{}", Uuid::new_v4()));
+      let root = env::temp_dir().join(format!("papernest-cs-purge-{}", Uuid::new_v4()));
       let pool = open_pool(&root).await.unwrap();
-      sqlx::query("INSERT INTO categories(id,name,color) VALUES('cat-im','内科学','#c45c6a')").execute(&pool).await.unwrap();
-      sqlx::query("INSERT INTO tags(id,name,color) VALUES('tag-rct','随机对照试验','#c45c6a')").execute(&pool).await.unwrap();
-      sqlx::query("INSERT INTO papers(id,title_en,authors_json,category_id,tag_ids_json,status,favorite,created_at,updated_at) VALUES('p1','Paper','[]','cat-im','[\"tag-rct\",\"tag-llm\"]','unread',0,'t','t')").execute(&pool).await.unwrap();
+      sqlx::query("INSERT INTO categories(id,name,color) VALUES('cat-cv','计算机视觉','#7c6fcd')").execute(&pool).await.unwrap();
+      sqlx::query("INSERT INTO tags(id,name,color) VALUES('tag-llm','大语言模型','#6b7fd6')").execute(&pool).await.unwrap();
+      sqlx::query("INSERT INTO papers(id,title_en,authors_json,category_id,tag_ids_json,status,favorite,created_at,updated_at) VALUES('p1','Paper','[]','cat-cv','[\"tag-llm\",\"tag-survey\",\"tag-rct\"]','unread',0,'t','t')").execute(&pool).await.unwrap();
 
-      purge_clinical_taxonomy_leftovers(&pool).await.unwrap();
+      purge_cs_taxonomy_leftovers(&pool).await.unwrap();
 
-      let clinical_cats: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id='cat-im'").fetch_one(&pool).await.unwrap();
-      let clinical_tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE id='tag-rct'").fetch_one(&pool).await.unwrap();
+      let cs_cats: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id='cat-cv'").fetch_one(&pool).await.unwrap();
+      let cs_tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE id='tag-llm'").fetch_one(&pool).await.unwrap();
+      let shared_tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tags WHERE id='tag-survey'").fetch_one(&pool).await.unwrap();
       let category_id: Option<String> = sqlx::query_scalar("SELECT category_id FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
       let tag_ids: String = sqlx::query_scalar("SELECT tag_ids_json FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
-      assert_eq!(clinical_cats, 0);
-      assert_eq!(clinical_tags, 0);
+      assert_eq!(cs_cats, 0);
+      assert_eq!(cs_tags, 0);
+      assert_eq!(shared_tags, 1);
       assert_eq!(category_id, None);
-      assert_eq!(tag_ids, "[\"tag-llm\"]");
+      assert_eq!(tag_ids, "[\"tag-survey\",\"tag-rct\"]");
 
       pool.close().await;
       let _ = fs::remove_dir_all(&root);
@@ -644,40 +645,41 @@ async fn initialize_pool(pool: &SqlitePool, dir: &Path) -> Result<()> {
   }
   crate::explain::migrate_legacy_explain_chats(pool).await?;
   sqlx::query("INSERT INTO settings(key,value) VALUES('schema_version','6') ON CONFLICT(key) DO UPDATE SET value='6'").execute(pool).await.map_err(err)?;
-  purge_clinical_taxonomy_leftovers(pool).await?;
+  purge_cs_taxonomy_leftovers(pool).await?;
   let manifest = serde_json::json!({"application":"PaperNest","schemaVersion":1,"createdAt":Utc::now().to_rfc3339()});
   if !dir.join("manifest.json").exists() { fs::write(dir.join("manifest.json"), serde_json::to_vec_pretty(&manifest).map_err(err)?).map_err(err)?; }
   Ok(())
 }
 
-/// 清除曾用临床医学临时包 INSERT OR IGNORE 写入的分类/标签；与 CS 共用的 tag-survey / tag-beginner 保留。
-async fn purge_clinical_taxonomy_leftovers(pool: &SqlitePool) -> Result<()> {
-  const CLINICAL_CATEGORIES: &[&str] = &[
-    "cat-im", "cat-surg", "cat-obgyn", "cat-ped", "cat-neuro", "cat-psych", "cat-derm", "cat-imaging",
-    "cat-lab", "cat-oph", "cat-ent", "cat-onco", "cat-anes", "cat-em", "cat-cc", "cat-rehab",
+/// 清除计算机科学安装包 INSERT OR IGNORE 写入的分类/标签；两边共用的 tag-survey / tag-beginner 保留。
+async fn purge_cs_taxonomy_leftovers(pool: &SqlitePool) -> Result<()> {
+  const CS_CATEGORIES: &[&str] = &[
+    "cat-cv", "cat-nlp", "cat-ml", "cat-ai", "cat-dm", "cat-ir", "cat-db", "cat-net",
+    "cat-sys", "cat-se", "cat-sec", "cat-hci", "cat-theory", "cat-mm", "cat-dist", "cat-robot",
   ];
-  const CLINICAL_TAGS: &[&str] = &[
-    "tag-rct", "tag-nonrct", "tag-cohort", "tag-casecontrol", "tag-crosssec", "tag-rwe", "tag-diagacc",
-    "tag-sr", "tag-meta", "tag-guideline", "tag-casereport", "tag-consensus", "tag-dx", "tag-tx", "tag-px",
-    "tag-prev", "tag-drugtrial", "tag-surgery", "tag-imgdx", "tag-biomarker", "tag-molpath", "tag-epi",
-    "tag-hecon", "tag-stats", "tag-consort", "tag-prisma", "tag-strobe", "tag-guideline-read", "tag-proposal",
+  const CS_TAGS: &[&str] = &[
+    "tag-transformer", "tag-llm", "tag-vlm", "tag-gnn", "tag-diffusion", "tag-rl", "tag-transfer",
+    "tag-contrastive", "tag-federated", "tag-distill", "tag-continual", "tag-fewshot", "tag-pretrain",
+    "tag-detection", "tag-segmentation", "tag-recsys", "tag-seqrec", "tag-retrieval", "tag-dialogue",
+    "tag-kg", "tag-codegen", "tag-cf", "tag-os", "tag-edge", "tag-dp", "tag-crypto", "tag-prog-analysis",
+    "tag-benchmark", "tag-repro",
   ];
-  for id in CLINICAL_CATEGORIES {
+  for id in CS_CATEGORIES {
     sqlx::query("UPDATE papers SET category_id=NULL WHERE category_id=?").bind(id).execute(pool).await.map_err(err)?;
     sqlx::query("DELETE FROM categories WHERE id=?").bind(id).execute(pool).await.map_err(err)?;
   }
-  let clinical: std::collections::HashSet<&str> = CLINICAL_TAGS.iter().copied().collect();
+  let cs: std::collections::HashSet<&str> = CS_TAGS.iter().copied().collect();
   let rows = sqlx::query("SELECT id,tag_ids_json FROM papers").fetch_all(pool).await.map_err(err)?;
   for row in rows {
     let paper_id: String = row.get(0);
     let mut ids: Vec<String> = serde_json::from_str(&row.get::<String, _>(1)).map_err(err)?;
     let before = ids.len();
-    ids.retain(|id| !clinical.contains(id.as_str()));
+    ids.retain(|id| !cs.contains(id.as_str()));
     if ids.len() != before {
       sqlx::query("UPDATE papers SET tag_ids_json=? WHERE id=?").bind(serde_json::to_string(&ids).map_err(err)?).bind(paper_id).execute(pool).await.map_err(err)?;
     }
   }
-  for id in CLINICAL_TAGS {
+  for id in CS_TAGS {
     sqlx::query("DELETE FROM tags WHERE id=?").bind(id).execute(pool).await.map_err(err)?;
   }
   Ok(())
@@ -1007,7 +1009,7 @@ async fn translate_with_llm(state:State<'_,AppState>,text:String,mode:Option<Str
   let is_term=mode.as_deref().map(|value|value.eq_ignore_ascii_case("term")).unwrap_or(false);
   let (system,user)=if is_term {
     (
-      "你是计算机科学学术词汇助教。根据英文术语/短语及可选原句上下文，给出适合研究生术语卡片的简体中文释义。\n规则：\n1. 只输出中文释义本身（短语或一两句），不要英文复述、引号、标题或前后缀。\n2. 若有原句，优先采用该语境下的学科义项。\n3. 使用计算机科学论文常用译法；模型名、算法名与通用缩写可保留英文。\n4. 语体正式，勿口语化。",
+      "你是临床医学学术词汇助教。根据英文术语/短语及可选原句上下文，给出适合研究生术语卡片的简体中文释义。\n规则：\n1. 只输出中文释义本身（短语或一两句），不要英文复述、引号、标题或前后缀。\n2. 若有原句，优先采用该语境下的学科义项。\n3. 使用临床医学论文常用译法；药物用通用名，试验名、统计量（HR、OR、CI、ITT）与生存结局（OS 等）按医学义项处理，通用缩写可保留英文。\n4. 语体正式，勿口语化。",
       match &context {
         Some(sentence) => format!("术语：{clipped}\n原句上下文：{sentence}"),
         None => format!("术语：{clipped}"),
@@ -1015,7 +1017,7 @@ async fn translate_with_llm(state:State<'_,AppState>,text:String,mode:Option<Str
     )
   } else {
     (
-      "你是精通简体中文的计算机科学论文翻译引擎。将英文学术文本译为简体中文。\n规则：\n1. 只输出译文，不要解释、标题或前后缀。\n2. 保持正式学术语体；专业术语译法准确且全文一致。\n3. 保留引用标记（如 [1]）、公式、代码标识符；常见模型名与缩写可保留英文。\n4. 若提供了上下文段落，用它消歧，但只翻译「待译文本」。",
+      "你是精通简体中文的临床医学论文翻译引擎。将英文学术文本译为简体中文。\n规则：\n1. 只输出译文，不要解释、标题或前后缀。\n2. 保持正式学术语体；专业术语译法准确且全文一致。药物用通用名。\n3. 保留引用标记（如 [1]）、公式、试验名与统计符号；HR、OR、CI、ITT、OS 等按医学义项理解，通用缩写可保留英文。\n4. 若提供了上下文段落，用它消歧，但只翻译「待译文本」。",
       match &context {
         Some(paragraph) => format!("[上下文段落]\n{paragraph}\n\n[待译文本]\n{clipped}"),
         None => clipped,
@@ -1136,12 +1138,12 @@ async fn analyze_paper_with_llm(state:State<'_,AppState>,paper_id:String,input:L
   let settings=load_llm_settings(&*state.pool.read().await).await?; let text=input.text.chars().take(70_000).collect::<String>(); if text.trim().len()<80{return Err("PDF 没有足够的可提取文本，无法自动分析".into())}
   let mut content=vec![serde_json::json!({"type":"text","text":format!("请分析以下论文 PDF 提取文本。\n\n{}",text)})];
   if settings.vision_enabled { for image in input.candidate_images.into_iter().take(3){content.push(serde_json::json!({"type":"text","text":format!("候选模型图页：第 {} 页",image.page)}));content.push(serde_json::json!({"type":"image_url","image_url":{"url":image.data_url}}));} }
-  let system="你是严谨的计算机科学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。只要文本中能读到 Abstract 或足够正文：summary 必须是非空的简体中文一句话；vocabulary 必须至少 5 项（每项含 termEn,meaningZh,sentenceEn,sentenceZh,page，page 用数字）。abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按计算机科学论文学术语体翻译或释义（术语准确、正式、不口语化；模型名与常用缩写可保留英文）。frameworkPage 仅在候选页面确有方法框架图时返回页码。其它找不到的字段返回 null。不要省略 summary 与 vocabulary。";
+  let system="你是严谨的临床医学论文助教。仅依据给定 PDF 文本和候选页面，不要编造。返回一个 JSON 对象，字段为 titleEn,titleZh,authors,abstractEn,abstractZh,summary,venue,publicationDate,doi,sourceUrl,frameworkPage,frameworkTitle,frameworkExplanationEn,frameworkExplanationZh,vocabulary。只要文本中能读到 Abstract 或足够正文：summary 必须是非空的简体中文一句话；vocabulary 必须至少 5 项（每项含 termEn,meaningZh,sentenceEn,sentenceZh,page，page 用数字）。abstractZh、titleZh、frameworkExplanationZh、vocabulary 的 meaningZh/sentenceZh 须按临床医学论文学术语体翻译或释义（术语准确、正式、不口语化；药物用通用名，试验名、HR、OR、CI、ITT、OS 按医学义项处理，通用缩写可保留英文）。frameworkPage 仅在候选页面确有 CONSORT/PRISMA 流程图或研究设计图时返回页码。其它找不到的字段返回 null。不要省略 summary 与 vocabulary。";
   let value=json_from_llm(&llm_completion(&settings,system,serde_json::Value::Array(content)).await?)?; let analysis=parse_llm_analysis(value)?; let _=paper_id; Ok(analysis)
 }
 
 fn taxonomy_system_prompt() -> &'static str {
-  "你是 PaperNest 的论文分类助手。任务：根据给定论文的标题与摘要（或一句话总结），从用户提供的「主领域」与「子领域标签」词表中选择分类结果。\n\n硬性规则：\n1. 你只能使用词表中列出的 id，禁止发明新 id、新名称或同义词替换。\n2. 主领域 categoryId：最多 1 个；若没有任何主领域能合理覆盖论文的核心研究方向，必须 abstain=true 且 categoryId=null。\n3. 子领域 tags：每个元素为 { \"id\": \"<tagId>\", \"relevance\": \"central\"|\"substantial\"|\"peripheral\" }。\n   - central：论文的核心贡献或主要研究对象直接属于该标签。\n   - substantial：论文方法/实验/问题设定 substantially 依赖该标签，但不是唯一主题。\n   - peripheral：仅在背景、相关工作或个别实验中提及；不要选。\n4. 若 abstain=true，则 tags 必须为空数组。\n5. 若 abstain=false，则 categoryId 必须非 null，且 tags 中的 id 应在语义上与该主领域一致。\n6. 不要根据参考文献列表、致谢或作者单位推断标签；仅依据标题与摘要/总结所描述的本文工作。\n7. 只返回一个 JSON 对象，字段为：categoryId, tags, abstain, reason。不要 markdown 代码块，不要额外说明。\n8. reason 用一句简体中文说明分类或弃权理由（≤80 字）。\n\n弃权（abstain=true）的典型情况：\n- 论文明显不属于计算机科学（如纯医学、法律、人文）。\n- 论文过于笼统或信息不足，无法可靠判断主领域。\n- 论文属于 CS 边缘方向，但现有主领域列表中没有任何一项算「合理覆盖」。"
+  "你是 PaperNest 的论文分类助手。任务：根据给定论文的标题与摘要（或一句话总结），从用户提供的「主领域」与「子领域标签」词表中选择分类结果。\n\n硬性规则：\n1. 你只能使用词表中列出的 id，禁止发明新 id、新名称或同义词替换。\n2. 主领域 categoryId：最多 1 个；若没有任何主领域能合理覆盖论文的核心研究方向，必须 abstain=true 且 categoryId=null。\n3. 子领域 tags：每个元素为 { \"id\": \"<tagId>\", \"relevance\": \"central\"|\"substantial\"|\"peripheral\" }。\n   - central：论文的核心贡献或主要研究对象直接属于该标签。\n   - substantial：论文方法/实验/问题设定 substantially 依赖该标签，但不是唯一主题。\n   - peripheral：仅在背景、相关工作或个别实验中提及；不要选。\n4. 若 abstain=true，则 tags 必须为空数组。\n5. 若 abstain=false，则 categoryId 必须非 null，且 tags 中的 id 应在语义上与该主领域一致。\n6. 不要根据参考文献列表、致谢或作者单位推断标签；仅依据标题与摘要/总结所描述的本文工作。\n7. 只返回一个 JSON 对象，字段为：categoryId, tags, abstain, reason。不要 markdown 代码块，不要额外说明。\n8. reason 用一句简体中文说明分类或弃权理由（≤80 字）。\n\n弃权（abstain=true）的典型情况：\n- 论文明显不属于临床医学（如纯计算机科学、法律、人文）。\n- 论文过于笼统或信息不足，无法可靠判断主领域。\n- 论文属于临床医学边缘方向，但现有主领域列表中没有任何一项算「合理覆盖」。"
 }
 
 fn taxonomy_strictness_hint(strictness: &str) -> (&'static str, &'static str, usize) {

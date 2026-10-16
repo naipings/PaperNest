@@ -459,7 +459,7 @@ function subjectAsAbstract(value?: string) {
 
 function extractVenue(blob: string) {
   // Require a year for WWW — bare WWW matches URL hosts like www.ieee.org.
-  const named = blob.match(/\b(NeurIPS|NIPS|ICML|ICLR|CVPR|ICCV|ECCV|ACL|EMNLP|NAACL|AAAI|KDD|SIGIR|CHI)(?:\s+\d{4})?\b|\bWWW\s+\d{4}\b/i);
+  const named = blob.match(/\b(NEJM|Lancet|JAMA|BMJ|Circulation|NeurIPS|NIPS|ICML|ICLR|CVPR|ICCV|ECCV|ACL|EMNLP|NAACL|AAAI|KDD|SIGIR|CHI)(?:\s+\d{4})?\b|\bWWW\s+\d{4}\b|\bN(?:ew)?\s+Engl(?:and)?\s+J(?:ournal)?\s+(?:of\s+)?Med(?:icine)?\b|\bNature\s+Medicine\b/i);
   if (named) return named[0].replace(/\s+/g, " ");
   const proceedings = blob.match(/Proceedings of[^.\n]{5,80}/i)?.[0];
   if (proceedings) return proceedings;

@@ -5,8 +5,8 @@ describe("radar types contracts", () => {
   it("keeps dual-layer settings defaults offline", () => {
     const settings: RadarSettings = {
       enabled: false,
-      categories: ["cs.LG"],
-      keywords: ["agent"],
+      categories: ["cardiovascular medicine"],
+      keywords: ["heart failure"],
       defaultFilterEnabled: true,
       hotLimit: 30,
       newLimit: 100,

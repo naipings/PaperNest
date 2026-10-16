@@ -39,7 +39,7 @@ function ProfileForm({ profile, onSave }: { profile: Profile; onSave(value: Prof
     <h2><UserRound size={19} />个人资料</h2>
     <p className="settings-description">保存在本机，用于界面展示个人偏好。</p>
     <label>显示名<input value={value.displayName} onChange={e => setValue(v => ({ ...v, displayName: e.target.value }))} /></label>
-    <label>研究方向<input value={value.researchField} onChange={e => setValue(v => ({ ...v, researchField: e.target.value }))} placeholder="例如：计算机视觉 / 推荐系统" /></label>
+    <label>研究方向<input value={value.researchField} onChange={e => setValue(v => ({ ...v, researchField: e.target.value }))} placeholder="例如：心血管 / 肿瘤内科" /></label>
     <label><span className="settings-label-row"><Palette size={15} />主题</span><select value={appearanceFromProfile(value)} onChange={e => setValue(v => applyAppearance(v, e.target.value as AppearanceId))}>{APPEARANCE_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
     <button className="primary"><Save size={16} />保存个人资料</button>
   </form>;
@@ -54,7 +54,7 @@ function TaxonomyManager({ categories, tags, saveCategory, saveTag, mergeTaxonom
   };
   return <>
     <h2><TagsIcon size={19} />分类与标签</h2>
-    <p className="settings-description">主领域参考 ACM CCS 与常用 CS 研究方向，每篇论文只能选一个；子领域是可多选的标签，用于方法、任务与阅读用途。</p>
+    <p className="settings-description">主领域参考临床医学二级学科，每篇论文只能选一个；子领域是可多选的标签，用于研究设计、临床问题与阅读用途。</p>
     <div className="taxonomy-section">
       <header><div><strong>主领域</strong><small>每篇论文最多选择一个</small></div><button className="secondary" onClick={() => add("category")}>新增主领域</button></header>
       <div className="taxonomy-list">{categories.map(item => <article key={item.id}><i style={{ background: item.color }} /><span>{item.name}</span><button onClick={async () => { const name = prompt("重命名", item.name); if (name) await saveCategory({ ...item, name }); }}>编辑</button><button onClick={() => confirm(`删除“${item.name}”？相关论文将变为未分类。`) && mergeTaxonomy("category", item.id)}>删除</button></article>)}</div>

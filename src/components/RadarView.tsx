@@ -499,7 +499,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
       <header className="page-heading">
         <div className="page-title-block">
           <div className="page-title-row"><span className="page-title-icon"><RadarIcon size={18} /></span><h1>论文雷达</h1><span className="page-kicker">发现层</span></div>
-    <p>三路召回：alphaxiv 热点 / arXiv 新稿 / 关键词兴趣。加入论文库时下载 PDF。本页默认只读本地快照，点击「推荐今日论文」才联网采集。</p>
+    <p>三路召回：medRxiv 近 7 日 / 订阅学科新稿 / 关键词兴趣。加入论文库时下载 PDF。本页默认只读本地快照，点击「推荐今日论文」才联网采集。</p>
         </div>
         <div className="page-heading-actions">
           <button type="button" className="ghost" disabled={refreshing || !!exclusiveBusy} onClick={() => void refreshRadarView()} title="重新加载当前榜单（本地快照）">
@@ -530,8 +530,8 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
           <nav className="radar-tabs">
             <div className="radar-tabs-list">
               {([
-                ["hot", "alphaxiv 热点榜"],
-                ["new", "arXiv 新稿榜"],
+                ["hot", "medRxiv 近 7 日"],
+                ["new", "medRxiv 新稿榜"],
                 ["interest", "兴趣召回"],
                 ["recommend", "为你推荐"],
                 ["digest", "趋势综述"],
@@ -575,7 +575,7 @@ export function RadarView({ onImported }: { onImported?(paperId: string): void }
                 </div>
               )}
               {date && cards.length === 0 && !(filtering && feedTotal > 0) && !(tab === "interest" && !hasKeywords) && !showHidden && (
-                <p className="radar-empty">该日暂无{tab === "hot" ? "alphaxiv 热点" : tab === "new" ? "arXiv 新稿" : "兴趣召回"}数据。</p>
+                <p className="radar-empty">该日暂无{tab === "hot" ? "medRxiv 近 7 日" : tab === "new" ? "medRxiv 新稿" : "兴趣召回"}数据。</p>
               )}
               {cards.map(card => renderCard(card))}
             </div>

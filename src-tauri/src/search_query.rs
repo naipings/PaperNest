@@ -72,58 +72,21 @@ pub fn fts_query(query: &str) -> String {
   }
 }
 
-/// arXiv API：保留调用方给出的词序，前若干词全部 AND 组合。
-/// 按字长排序会丢掉 cold / start 这类短而关键的词，全部 AND 才能保住主题精度。
-pub fn arxiv_search_query(keyword: &str) -> String {
-  let tokens = search_tokenize(keyword);
-  if tokens.is_empty() {
-    return String::new();
-  }
-  tokens
-    .iter()
-    .take(5)
-    .map(|token| {
-      let esc = escape_arxiv_term(token);
-      format!("(ti:\"{esc}\" OR abs:\"{esc}\")")
-    })
-    .collect::<Vec<_>>()
-    .join(" AND ")
-}
-
-pub fn escape_arxiv_term(value: &str) -> String {
-  value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn tokenize_splits_mixed_query() {
-    let tokens = search_tokenize("推荐系统 冷启动 cold start");
-    assert!(tokens.iter().any(|t| t.contains("冷启动")));
-    assert!(tokens.iter().any(|t| t.contains("推荐")));
+    let tokens = search_tokenize("心力衰竭 SGLT2 heart failure");
+    assert!(tokens.iter().any(|t| t.contains("心力衰竭")));
+    assert!(tokens.iter().any(|t| t.contains("heart")));
   }
 
   #[test]
   fn fts_query_uses_or_for_multiple_terms() {
-    let q = fts_query("推荐系统 冷启动 cold start");
+    let q = fts_query("心力衰竭 SGLT2 heart failure");
     assert!(q.contains(" OR "));
-    assert!(!q.contains("推荐系统 冷启动 cold start"));
-  }
-
-  #[test]
-  fn arxiv_query_is_not_single_phrase() {
-    let q = arxiv_search_query("recommendation system cold start new user");
-    assert!(!q.contains("recommendation system cold start new user"));
-    assert!(q.contains("AND"));
-  }
-
-  #[test]
-  fn arxiv_query_keeps_short_topic_terms() {
-    let q = arxiv_search_query("recommendation system cold start transfer learning few-shot");
-    assert!(q.contains("\"cold\""));
-    assert!(q.contains("\"start\""));
-    assert!(!q.contains(" OR (ti:"));
+    assert!(!q.contains("心力衰竭 SGLT2 heart failure"));
   }
 }

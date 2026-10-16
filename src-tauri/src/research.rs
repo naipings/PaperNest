@@ -1694,10 +1694,10 @@ async fn approve_import_proposal(
   if proposal.status != "pending" {
     return Err("该提案已处理".into());
   }
-  let arxiv_id = proposal.arxiv_id.clone().ok_or_else(|| "缺少 arXiv ID".to_string())?;
+  let arxiv_id = proposal.arxiv_id.clone().ok_or_else(|| "缺少 medRxiv ID".to_string())?;
   let pool = state.pool.read().await;
   if library_has_arxiv(&pool, &arxiv_id).await? {
-    return Err("资料库已有该 arXiv 论文".into());
+    return Err("资料库已有该 medRxiv 论文".into());
   }
   let mut paper = blank_paper(proposal.title.clone());
   paper.arxiv_id = Some(arxiv_id.clone());
@@ -1705,7 +1705,7 @@ async fn approve_import_proposal(
   paper.source_url = proposal
     .url
     .clone()
-    .or_else(|| Some(format!("https://arxiv.org/abs/{arxiv_id}")));
+    .or_else(|| Some(radar::preprint_page_url(&arxiv_id)));
   let downloaded_pdf = if download_pdf {
     let rel = radar::download_arxiv_pdf(&state.library_dir, &arxiv_id).await?;
     paper.pdf_path = Some(rel);

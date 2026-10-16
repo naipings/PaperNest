@@ -71,7 +71,7 @@ export function ResearchSettingsForm() {
     <section className="settings-form research-settings">
       <h2><Search size={19} />文献调研</h2>
       <p className="settings-description">
-        默认关闭。启用后，在「文献调研」页创建任务并点击「开始调研」。默认使用 ReAct 深循环（LLM 自主选工具）；调研 LLM 与「LLM 自动整理」分开配置。外网检索包含 arXiv、OpenAlex（IEEE/ACM 等）、Crossref、GitHub；若模型支持内置联网，还可通过 llm_web_search 检索博客与新闻（费用计入同一 LLM Key）。
+        默认关闭。启用后，在「文献调研」页创建任务并点击「开始调研」。默认使用 ReAct 深循环（LLM 自主选工具）；调研 LLM 与「LLM 自动整理」分开配置。外网检索包含 medRxiv、OpenAlex、Crossref；若模型支持内置联网，还可通过 llm_web_search 检索指南解读与新闻（费用计入同一 LLM Key）。
       </p>
       {!isTauri() && <p className="inline-notice">浏览器预览模式不支持文献调研。</p>}
       <label className="checkbox-setting">
@@ -86,7 +86,7 @@ export function ResearchSettingsForm() {
       </label>
       <label className="checkbox-setting">
         <input type="checkbox" checked={value.allowWebSearch} onChange={e => setValue(v => ({ ...v, allowWebSearch: e.target.checked }))} />
-        允许外网检索（arXiv、OpenAlex/Crossref、GitHub、LLM 内置联网）
+        允许外网检索（medRxiv、OpenAlex/Crossref、LLM 内置联网）
       </label>
       <label>LLM 内置联网
         <select value={value.llmNativeWebSearch ?? "auto"} onChange={e => setValue(v => ({ ...v, llmNativeWebSearch: e.target.value }))}>

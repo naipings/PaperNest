@@ -251,7 +251,7 @@ flowchart LR
 - `create_backup`：打包 `library.db`、受管 PDF、figures、avatars 为 ZIP，写入 `backups/`。
 - `restore_backup`：解压到相邻临时目录，校验后清理当前资料库（保留 `backups/`）再写入。
 - 启动时若 `library.db` 或资料库目录不可写，复制到应用数据目录、更新路径配置，并通过 `libraryNotice` 在界面提示新路径。
-- 启动迁移会删除临床医学临时包残留的分类/标签 ID，并清理论文上的对应引用。
+- 启动迁移会删除计算机科学安装包残留的分类/标签 ID，并清理论文上的对应引用；`tag-survey` 与 `tag-beginner` 保留。
 - 资料库迁移、创建备份、恢复备份失败时，在设置页显示具体错误。
 - 启动时 `research::relink_moved_workspaces`：若 `research.db` 里会话的绝对路径失效，但当前资料库下 `research/<id>` 仍存在，则改写 `workspace_path` / `report_path`。库外自选项目文件夹无法推断新位置，保持原样。
 - 个人资料保存失败时，在设置页显示具体错误。
@@ -259,10 +259,10 @@ flowchart LR
 
 ### 3.9 临床医学变体
 
-- 源码改动集中在 `backup/clinical-medicine/overlay/`；套用、打包与恢复步骤见该目录 `README.md`。
-- 临床版相对 CS 的差异：主领域/子领域预设、默认 `researchField`、LLM 翻译与导入分析提示词、分类弃权说明、设置页文案、窗口标题；启动迁移改为清除 CS 预设 ID。
-- 开发分支：`clinical-medicine`。主工作区默认保持计算机科学内容。
-- 安装包产物：`release/windows/PaperNest-clinmed_<version>.exe` 与对应 `*_x64-setup.exe`。
+- 本分支是临床医学变体：主领域为 16 个二级学科，子领域为研究设计 / 临床问题 / 阅读用途，默认研究方向为临床医学。
+- LLM 翻译、导入分析和分类弃权说明使用临床医学语体；`frameworkPage` 只认 CONSORT/PRISMA 流程图或研究设计图。
+- 窗口标题为「临床医学论文库」。论文雷达订阅 medRxiv 学科，文献调研的预印本检索走 medRxiv（Europe PMC），已发表论文仍走 OpenAlex / Crossref。
+- 安装包产物：`release/windows/PaperNest-clinmed_<version>.exe` 与对应 `*_x64-setup.exe`。产品 identifier 与版本号与计算机科学版相同。
 
 ---
 
@@ -355,8 +355,8 @@ paperReader/
 
 ### 5.2 主领域与子领域预设
 
-- **主领域**（`categories`）：16 个中文预设，对齐 [ACM CCS 2012](https://www.acm.org/publications/class-2012) 顶层概念，并将「计算方法」中国内常用的 CV / NLP / ML / 推荐等拆成独立主领域，便于论文库单选。
-- **子领域**（`tags`）：31 个可多选标签（方法、任务、阅读用途）。设置页可继续增删改。
+- **主领域**（`categories`）：16 个中文预设，对应 1997 学科目录临床医学二级学科，并加入专硕常用的重症医学。
+- **子领域**（`tags`）：31 个可多选标签（研究设计、临床问题、阅读用途）。设置页可继续增删改。
 - 启动时 `schema.sql` 对预设执行 `INSERT OR IGNORE`，已有资料库自动补全缺失项，保留用户自建名称。
 
 ### 5.3 文件夹

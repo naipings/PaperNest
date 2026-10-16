@@ -13,7 +13,7 @@ pub(crate) fn derive_openai_messages(events: &[serde_json::Value]) -> Vec<serde_
       event.pointer("/data/header/system")?.as_str().map(str::to_string)
     })
     .unwrap_or_else(|| {
-      "你是 PaperNest 文献调研 Agent。通过工具检索本地论文库与用户笔记，必要时检索 arXiv 元数据（不下载 PDF）。"
+      "你是 PaperNest 文献调研 Agent。通过工具检索本地论文库与用户笔记，必要时检索 medRxiv 元数据（不下载 PDF）。"
         .to_string()
     });
 
