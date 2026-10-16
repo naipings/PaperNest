@@ -2,9 +2,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DeepRead, DeepReadDetail } from "../types";
 
-const { get, list } = vi.hoisted(() => ({ get: vi.fn(), list: vi.fn() }));
+const { get, list, remove } = vi.hoisted(() => ({ get: vi.fn(), list: vi.fn(), remove: vi.fn() }));
 vi.mock("../services/backend", () => ({ isTauri: () => true, backend: {
   deepreadList: list, deepreadGet: get,
+  deepreadDelete: remove,
   researchGetSettings: async () => ({ enabled: true, apiKeySaved: true }),
 } }));
 vi.mock("../state/LibraryContext", () => ({ useLibrary: () => ({ data: { papers: [], folders: [] }, refresh: vi.fn() }) }));
@@ -22,6 +23,26 @@ const task = (id: string): DeepRead => ({
 const detail = (id: string): DeepReadDetail => ({ task: task(id), report: `报告正文 ${id}`, messages: [], stagesDone: [], figures: [], paragraphs: [] });
 
 describe("精读任务切换", () => {
+  it("requires both confirmations before deleting and allows cancellation at either step", async () => {
+    list.mockResolvedValue([task("A")]);
+    get.mockResolvedValue(detail("A"));
+    remove.mockReset().mockResolvedValue(undefined);
+    render(<DeepReadView onOpenPaper={() => undefined} />);
+    await screen.findByText("报告正文 A");
+    fireEvent.click(screen.getByRole("button", { name: "删除任务", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "取消", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "删除任务", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "继续删除", exact: true }));
+    expect(screen.getByRole("dialog", { name: "确认永久删除" })).toHaveTextContent("工作区");
+    fireEvent.click(screen.getByRole("button", { name: "取消", exact: true }));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "删除任务", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "继续删除", exact: true }));
+    list.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "永久删除", exact: true }));
+    expect(await screen.findByText("精读任务、报告与本地工作区已删除")).toBeInTheDocument();
+    expect(remove).toHaveBeenCalledExactlyOnceWith("A");
+  });
   it("shows refresh progress and completion", async () => {
     list.mockResolvedValue([task("A")]);
     get.mockResolvedValue(detail("A"));

@@ -41,7 +41,7 @@ export function FilterMenu({ icon, value, groups, onChange }: {
         options[next]?.focus();
       }
     }}>
-    <button ref={trigger} type="button" className="filter-menu-trigger" aria-haspopup="listbox" aria-controls={open ? listId : undefined} aria-expanded={open} onClick={() => setOpen(next => !next)}>
+    <button ref={trigger} type="button" className="filter-menu-trigger" title={current?.label} aria-haspopup="listbox" aria-controls={open ? listId : undefined} aria-expanded={open} onClick={() => setOpen(next => !next)}>
       {icon}<span>{current?.label ?? "筛选"}</span><ChevronDown size={14} />
     </button>
     {open && <div className="filter-menu-panel" id={listId} role="listbox" aria-label={current?.label ?? "筛选"}>

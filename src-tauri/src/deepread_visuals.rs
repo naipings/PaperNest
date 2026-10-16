@@ -159,6 +159,7 @@ pub(crate) async fn extract_figures(pdffigures2_dir: &Path, pdf: &Path, workspac
   fs::copy(pdf, input.join("paper.pdf")).map_err(err)?;
   let mut command = Command::new(pdffigures2_dir.join("runtime").join("bin").join("java.exe"));
   command
+    .arg("-Dfile.encoding=UTF-8")
     .arg("-Dsun.java2d.cmm=sun.java2d.cmm.kcms.KcmsServiceProvider")
     .arg("-Duser.language=en")
     .arg("-jar")
@@ -572,6 +573,22 @@ pub(crate) fn image_problems(text: &str, context: &VisualContext) -> Vec<String>
 mod tests {
   use super::*;
   use crate::deepread::Paragraph;
+
+  #[test]
+  #[ignore = "requires PAPERNEST_TEST_PDF and the bundled Java runtime"]
+  fn extracts_real_pdf_with_utf8() {
+    let pdf = PathBuf::from(std::env::var("PAPERNEST_TEST_PDF").expect("PDF fixture path"));
+    let runtime = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/pdffigures2");
+    let workspace = std::env::temp_dir().join(format!("pn-utf8-{}", Uuid::new_v4()));
+    fs::create_dir_all(&workspace).unwrap();
+    let items = tauri::async_runtime::block_on(extract_figures(&runtime, &pdf, &workspace)).unwrap();
+    assert!(!items.is_empty());
+    assert!(items.iter().filter(|item| !item.image.is_empty()).all(|item| workspace.join(&item.image).is_file()));
+    let raw = fs::read_to_string(workspace.join(MANIFEST_FILE)).unwrap();
+    assert!(!raw.contains('\u{fffd}'));
+    println!("extracted {} figures/tables as UTF-8 from {}", items.len(), pdf.display());
+    fs::remove_dir_all(workspace).unwrap();
+  }
 
   fn boundary() -> Value {
     json!({"x1": 1.0, "y1": 2.0, "x2": 3.0, "y2": 4.0})

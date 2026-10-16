@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpenCheck, FileUp, LoaderCircle, Search, X } from "lucide-react";
+import { BookOpenCheck, FileUp, FolderOpen, LoaderCircle, Search, X } from "lucide-react";
+import { FilterMenu } from "../FilterMenu";
 import { deepReadCandidates, type DeepReadScope } from "../../lib/deepReadCandidates";
 import type { Folder, Paper } from "../../types";
 
@@ -32,6 +33,18 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
   const fileInput = useRef<HTMLInputElement>(null);
   const activePapers = useMemo(() => papers.filter(paper => !paper.deletedAt), [papers]);
   const candidates = useMemo(() => deepReadCandidates(papers, scope, query), [papers, scope, query]);
+  const folderOptions = useMemo(() => {
+    const byId = new Map(folders.map(folder => [folder.id, folder]));
+    return folders.map(folder => {
+      const path = [folder.name];
+      let parent = folder.parentId ? byId.get(folder.parentId) : undefined;
+      while (parent) {
+        path.unshift(parent.name);
+        parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+      }
+      return { id: `folder:${folder.id}`, label: path.join(" / ") };
+    }).sort((a, b) => a.label.localeCompare(b.label, "zh-CN", { numeric: true }));
+  }, [folders]);
 
   useEffect(() => {
     if (!seed) return;
@@ -91,11 +104,12 @@ export function DeepReadNewCard({ papers, folders, readPaperIds, seed, busy, rea
       {source === "library" ? (
         <>
           <div className="deepread-picker-filters">
-            <select className="research-input" aria-label="范围" value={scopeValue(scope)} onChange={event => changeScope(event.target.value)}>
-              <option value="all">全部论文</option>
-              <option value="neighborhood">知识树邻域</option>
-              {folders.map(folder => <option key={folder.id} value={`folder:${folder.id}`}>文件夹：{folder.name}</option>)}
-            </select>
+            <div className="deepread-scope-picker" role="group" aria-label="论文范围">
+              <FilterMenu icon={<FolderOpen size={16} />} value={scopeValue(scope)} onChange={changeScope} groups={[
+                { title: "范围", options: [{ id: "all", label: "全部论文" }, { id: "neighborhood", label: "知识树邻域" }] },
+                { title: "文件夹", options: folderOptions },
+              ]} />
+            </div>
             {scope.kind === "neighborhood" && (
               <select
                 className="research-input"

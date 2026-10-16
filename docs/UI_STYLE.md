@@ -42,3 +42,5 @@ PDF.js 官方样式经 Vite/PostCSS 限定在 .continuous-page-host 内。精读
 当前外观实施：[导航、论文库概览与表格](design/0258-ui-corrections.md)；基础规范：[0.2.54 基础调整](design/0254-refinement.md)。
 
 阅读区布局与验证：[0.2.59 阅读工作区](design/0259-reading-workspace.md)。
+
+调研操作按钮固定 120 × 36 CSS px、14px 字号，允许按窗口宽度换行。精读页头显示图标、标题和任务数；新建精读的文件夹菜单显示父子路径并限制高度。任务列表和详情均提供删除入口，经过两次独立确认执行永久删除。实施与验证：[0.2.61 精读修复](design/0261-deepread-repairs.md)。

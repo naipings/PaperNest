@@ -1116,17 +1116,72 @@ pub async fn deepread_delete(state: State<'_, AppState>, id: String) -> Result<(
     return Err("精读进行中，请先停止".into());
   }
   let pool = state.pool.read().await;
-  sqlx::query("DELETE FROM deep_reads WHERE id=?").bind(&id).execute(&*pool).await.map_err(err)?;
-  let workspace = workspace_dir(&state.library_dir, &id);
+  delete_task(&pool, &state.library_dir, &id).await
+}
+
+async fn delete_task(pool: &SqlitePool, library_dir: &Path, id: &str) -> Result<()> {
+  Uuid::parse_str(id).map_err(|_| "精读任务标识无效".to_string())?;
+  let mut transaction = pool.begin().await.map_err(err)?;
+  let deleted = sqlx::query("DELETE FROM deep_reads WHERE id=?").bind(id).execute(&mut *transaction).await.map_err(err)?;
+  if deleted.rows_affected() == 0 {
+    return Err("精读任务不存在".into());
+  }
+  let workspace = workspace_dir(library_dir, id);
   if workspace.exists() {
     fs::remove_dir_all(workspace).map_err(err)?;
   }
-  Ok(())
+  transaction.commit().await.map_err(err)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn deletion_removes_task_and_workspace_but_preserves_library_pdf() {
+    tauri::async_runtime::block_on(async {
+      let root = std::env::temp_dir().join(format!("pn-delete-{}", Uuid::new_v4()));
+      let id = Uuid::new_v4().to_string();
+      let workspace = workspace_dir(&root, &id);
+      fs::create_dir_all(workspace.join("figures")).unwrap();
+      fs::write(workspace.join("report.md"), "report").unwrap();
+      fs::write(workspace.join("figures/1.png"), b"image").unwrap();
+      fs::write(root.join("original.pdf"), b"original PDF").unwrap();
+      let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+      for statement in include_str!("schema.sql").split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+      }
+      sqlx::query("INSERT INTO deep_reads(id,source_kind,title,source_name,status,messages_json,created_at,updated_at) VALUES(?,'external','T','t.pdf','completed','[{}]','t','t')")
+        .bind(&id).execute(&pool).await.unwrap();
+      delete_task(&pool, &root, &id).await.unwrap();
+      assert!(!workspace.exists());
+      let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM deep_reads").fetch_one(&pool).await.unwrap();
+      assert_eq!(count, 0);
+      assert_eq!(fs::read(root.join("original.pdf")).unwrap(), b"original PDF");
+      fs::remove_dir_all(root).unwrap();
+    });
+  }
+
+  #[test]
+  fn deletion_keeps_record_when_workspace_cannot_be_removed() {
+    tauri::async_runtime::block_on(async {
+      let root = std::env::temp_dir().join(format!("pn-delete-error-{}", Uuid::new_v4()));
+      let id = Uuid::new_v4().to_string();
+      fs::create_dir_all(root.join("deepread")).unwrap();
+      fs::write(workspace_dir(&root, &id), "not a directory").unwrap();
+      let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+      for statement in include_str!("schema.sql").split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+      }
+      sqlx::query("INSERT INTO deep_reads(id,source_kind,title,source_name,status,created_at,updated_at) VALUES(?,'external','T','t.pdf','completed','t','t')")
+        .bind(&id).execute(&pool).await.unwrap();
+      assert!(delete_task(&pool, &root, &id).await.is_err());
+      let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM deep_reads WHERE id=?").bind(&id).fetch_one(&pool).await.unwrap();
+      assert_eq!(count, 1);
+      assert!(delete_task(&pool, &root, "../outside").await.is_err());
+      fs::remove_dir_all(root).unwrap();
+    });
+  }
 
   fn pages(texts: &[(i64, &[&str])]) -> Vec<SectionPage> {
     number_paragraphs(

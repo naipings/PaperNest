@@ -46,6 +46,8 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const { data, refresh } = useLibrary();
   const [tasks, setTasks] = useState<DeepRead[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
+  const [deletePrompt, setDeletePrompt] = useState<{ task: DeepRead; confirmed: boolean }>();
+  const [deleting, setDeleting] = useState(false);
   const [detail, setDetail] = useState<DeepReadDetail>();
   const [tab, setTab] = useState<Tab>("report");
   const [ready, setReady] = useState(false);
@@ -207,13 +209,17 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   };
 
   const remove = async (id: string) => {
-    if (!confirm("删除该精读任务？报告与追问记录将一并删除。")) return;
+    setDeleting(true);
     try {
       await backend.deepreadDelete(id);
       if (selectedId === id) setSelectedId(undefined);
       await loadTasks();
+      setDeletePrompt(undefined);
+      setNotice("精读任务、报告与本地工作区已删除");
     } catch (error) {
       showError(error);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -307,7 +313,9 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
         <header className="deepread-heading page-heading">
           <div className="page-title-block">
             <div className="page-title-row">
+              <span className="page-title-icon"><BookOpenCheck size={19} /></span>
               <h1>论文精读</h1>
+              <span className="deepread-heading-count">{tasks.length} 个任务</span>
             </div>
           </div>
         <div className="page-heading-actions">
@@ -371,7 +379,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                       {task.status === "running" && task.stage ? ` · ${stageLabel(task.stage)}` : ""}
                     </small>
                   </button>
-                  <button type="button" className="ghost icon-only research-session-delete" title="删除" aria-label={`删除精读：${task.title}`} onClick={() => void remove(task.id)}>
+                  <button type="button" className="ghost icon-only research-session-delete" disabled={isActive(task) || answering || deleting} title="删除精读任务" aria-label={`删除精读：${task.title}`} onClick={() => { setNotice(""); setDeletePrompt({ task, confirmed: false }); }}>
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -419,6 +427,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                   {selected.sourceKind === "external" && (
                     <button type="button" className="secondary" disabled={!!busy} onClick={() => void addToLibrary()}><Library size={16} />加入论文库</button>
                   )}
+                  <button type="button" className="secondary deepread-delete-action" disabled={isActive(selected) || answering || deleting} onClick={() => { setNotice(""); setDeletePrompt({ task: selected, confirmed: false }); }}><Trash2 size={16} />删除任务</button>
                   <div className="deepread-more" ref={moreRef}>
                     <button type="button" className="secondary" aria-label="更多操作" aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen(value => !value)}><MoreHorizontal size={16} /></button>
                     {moreOpen && <div className="deepread-action-menu" role="menu" aria-label="报告操作" onBlur={event => { if (!moreRef.current?.contains(event.relatedTarget as Node)) setMoreOpen(false); }} onKeyDown={event => {
@@ -475,6 +484,23 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
           )}
         </section>
       </div>
+      {deletePrompt && <Modal title={deletePrompt.confirmed ? "确认永久删除" : "删除精读任务"} onClose={() => { if (!deleting) setDeletePrompt(undefined); }}>
+        <div className="paper-editor deepread-delete-confirm">
+          <strong>{deletePrompt.task.title}</strong>
+          <p>{deletePrompt.confirmed ? "删除后无法恢复。请再次确认删除以下内容。" : "此操作会删除该精读任务及其本地内容："}</p>
+          <ul><li>任务记录与全部追问</li><li>精读报告、生成阶段记录和图表</li><li>此任务工作区内的文件与 PDF 副本</li></ul>
+          <p className="deepread-delete-path">{deletePrompt.task.workspacePath}</p>
+          <p>论文库中的论文记录与原始 PDF 保留。</p>
+          {notice && <p role="alert">{notice}</p>}
+          <footer>
+            <button type="button" className="secondary" disabled={deleting} onClick={() => setDeletePrompt(undefined)}>取消</button>
+            <button type="button" className="primary" disabled={deleting} onClick={() => {
+              if (deletePrompt.confirmed) void remove(deletePrompt.task.id);
+              else { setNotice(""); setDeletePrompt({ ...deletePrompt, confirmed: true }); }
+            }}>{deleting ? "删除中…" : deletePrompt.confirmed ? "永久删除" : "继续删除"}</button>
+          </footer>
+        </div>
+      </Modal>}
     </main>
   );
 }

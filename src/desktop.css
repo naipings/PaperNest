@@ -177,7 +177,8 @@
 :root[data-ui-theme][data-theme] .research-workspace .research-detail-title { min-width: 0; }
 :root[data-ui-theme][data-theme] .research-workspace .research-detail-header h2 { margin: 0; overflow-wrap: anywhere; }
 :root[data-ui-theme][data-theme] .research-workspace .research-detail-actions { align-items: center; align-self: start; gap: 8px; }
-:root[data-ui-theme][data-theme] .research-workspace .research-detail-actions > button { flex: 0 0 auto; height: 36px; white-space: nowrap; }
+:root[data-ui-theme][data-theme] .research-workspace .research-detail-actions > button { flex: 0 0 120px; width: 120px; min-width: 120px; max-width: 120px; height: 36px; min-height: 36px; max-height: 36px; padding: 7px 10px; font-size: 14px; line-height: 20px; white-space: nowrap; justify-content: center; }
+:root[data-ui-theme][data-theme] .research-workspace .research-detail-actions > button svg { width: 16px; height: 16px; flex-shrink: 0; }
 :root[data-ui-theme][data-theme] .research-workspace .research-query { grid-column: 1 / -1; margin: 0; }
 :root[data-ui-theme][data-theme] .research-workspace .research-query p { max-height: min(16vh, 180px); }
 :root[data-ui-theme][data-theme] .research-workspace .research-detail-body { flex: 1; min-height: 0; overflow: hidden; padding: 0 16px 16px; }
@@ -232,4 +233,21 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-ui-theme][data-theme] *, :root[data-ui-theme][data-theme] *::before, :root[data-ui-theme][data-theme] *::after { scroll-behavior: auto; transition: none; }
 }
+:root[data-ui-theme][data-theme] .deepread-heading { flex: 0 0 auto; align-self: stretch; justify-content: space-between; width: 100%; max-width: none; padding: 14px 24px; min-height: 64px; background: var(--panel); }
+.deepread-heading-count { padding-left: 12px; margin-left: 2px; border-left: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+:root[data-ui-theme][data-theme] .deepread-page .research-session-list > li { display: grid; grid-template-columns: minmax(0, 1fr) 28px; gap: 4px; align-items: start; }
+:root[data-ui-theme][data-theme] .deepread-page .research-session-delete { position: static; margin-top: 10px; width: 28px; min-height: 28px; height: 28px; padding: 5px; opacity: 1; border: 1px solid var(--line); background: var(--panel); }
+:root[data-ui-theme][data-theme] .deepread-page .research-session-item-top { padding-right: 0; }
+:root[data-ui-theme][data-theme] .deepread-delete-action { color: var(--muted); }
+:root[data-ui-theme][data-theme] .deepread-delete-action:hover:not(:disabled) { color: #b54b4b; border-color: #b54b4b; }
+.deepread-delete-confirm { font-size: 14px; line-height: 1.7; }
+.deepread-delete-confirm :is(p, ul) { margin: 0; }
+.deepread-delete-path { padding: 10px 12px; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; overflow-wrap: anywhere; font-size: 13px; }
+.deepread-scope-picker { min-width: 0; }
+:root[data-ui-theme][data-theme] .deepread-scope-picker .filter-menu-trigger { width: 100%; height: 38px; justify-content: flex-start; background: var(--panel); }
+.deepread-scope-picker .filter-menu-trigger span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+:root[data-ui-theme][data-theme] .deepread-scope-picker .filter-menu-panel { width: min(520px, calc(100vw - 96px)); max-height: min(280px, 34vh); padding: 5px; scrollbar-gutter: stable; }
+.deepread-scope-picker .filter-menu-panel button { min-height: 36px; height: auto; white-space: normal; line-height: 1.6; padding: 8px 10px; text-align: left; }
+.deepread-scope-picker .filter-menu-group > small { font-size: 12px; }
+:root[data-ui-theme][data-theme] .deepread-new-card .deepread-picker-filters:has(select[aria-label="知识树原点"]) { grid-template-columns: 1fr 1fr; }
 

@@ -49,7 +49,7 @@ describe("DeepReadNewCard", () => {
 
   it("seeds from the knowledge tree with the neighborhood scope and the paper preselected", () => {
     renderCard({ seed: { paperId: "b", nonce: 1 } });
-    expect((screen.getByLabelText("范围") as HTMLSelectElement).value).toBe("neighborhood");
+    expect(screen.getByRole("button", { name: "知识树邻域" })).toBeInTheDocument();
     expect((screen.getByLabelText("知识树原点") as HTMLSelectElement).value).toBe("b");
     expect((screen.getByRole("checkbox", { name: /Retrieval augmented/ }) as HTMLInputElement).checked).toBe(true);
   });
@@ -58,5 +58,20 @@ describe("DeepReadNewCard", () => {
     renderCard({ ready: false });
     fireEvent.click(screen.getByRole("checkbox", { name: /Dense passage/ }));
     expect((screen.getByRole("button", { name: "开始精读" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("selects a nested folder with its parent path and filters the candidates", () => {
+    renderCard({
+      papers: [paper("a", "Folder paper", { folderId: "child" }), paper("b", "Other paper")],
+      folders: [
+        { id: "root", name: "研究", position: 0, createdAt: "t", updatedAt: "t" },
+        { id: "child", parentId: "root", name: "记忆", position: 0, createdAt: "t", updatedAt: "t" },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "全部论文" }));
+    fireEvent.click(screen.getByRole("option", { name: "研究 / 记忆" }));
+    expect(screen.getByRole("button", { name: "研究 / 记忆" })).toHaveFocus();
+    expect(screen.getByRole("checkbox", { name: /Folder paper/ })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Other paper/ })).not.toBeInTheDocument();
   });
 });

@@ -728,3 +728,5 @@ ResearchView 的合并导出复用 Modal，用户确认后调用 researchExportR
 0.2.59 的调研与 Skill 页面通过 research-workspace 的 Grid/Flex 分配视口剩余高度，列表和正文分别滚动。调研标题、操作、研究问题为独立布局项；报告轮次选择保留一处，正文滚动位置随轮次重置。精读与 Skill 的文档面板按任务标识重新挂载，切换文档回到顶部。布局依据和验证见 [0259-reading-workspace.md](design/0259-reading-workspace.md)。
 
 0.2.60 的 RadarView 以 showAll 表达当前筛选选择，defaultFilterEnabled 仅初始化该选择。筛选栏展示匹配数与快照原始数；零匹配入口显式关闭过滤查看榜单。搜索框外层使用 focus-within，独立输入使用 search-input，公共选中背景和页签样式由 desktop.css 维护。依据与验证见 [0260-selection-search-radar.md](design/0260-selection-search-radar.md)。
+
+0.2.61 的 pdffigures2 启动参数显式指定 file.encoding=UTF-8。deepread_delete 校验任务标识，在事务中删除记录，完成工作区清理后提交；清理错误使事务回滚。DeepReadView 复用 Modal 提供两次确认，任务列表与详情均提供入口；DeepReadNewCard 复用 FilterMenu 显示完整文件夹路径。详见 [0261-deepread-repairs.md](design/0261-deepread-repairs.md)。
