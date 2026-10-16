@@ -534,7 +534,13 @@ export function ResearchView() {
                 <ResearchReportTab
                   turns={turns}
                   focusTurn={reportFocusTurn}
+                  editable={!isRunning}
                   onOpenConversation={() => setDetailTab("conversation")}
+                  onSave={async (turn, answer) => {
+                    if (!selectedId) return;
+                    await backend.researchSaveAnswer(selectedId, turn, answer);
+                    setTurns(current => current.map(item => item.turn === turn ? { ...item, answer } : item));
+                  }}
                 />
               )}
               {detailTab === "conversation" && (

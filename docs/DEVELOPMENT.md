@@ -729,4 +729,6 @@ ResearchView 的合并导出复用 Modal，用户确认后调用 researchExportR
 
 0.2.60 的 RadarView 以 showAll 表达当前筛选选择，defaultFilterEnabled 仅初始化该选择。筛选栏展示匹配数与快照原始数；零匹配入口显式关闭过滤查看榜单。搜索框外层使用 focus-within，独立输入使用 search-input，公共选中背景和页签样式由 desktop.css 维护。依据与验证见 [0260-selection-search-radar.md](design/0260-selection-search-radar.md)。
 
+0.2.62 的精读报告按任务记住是否已有正文，详情返回前不卸掉「复制全文」。进度步骤使用 22px 圆标和 700 字重；报告滚动容器在超过 72px 后为阅读区加上 is-reading，标题收成单行。正文铺满阅读区，段落宽度为 min(100%, 76em)。
+
 0.2.61 的 pdffigures2 启动参数显式指定 file.encoding=UTF-8。deepread_delete 校验任务标识，在事务中删除记录，完成工作区清理后提交；清理错误使事务回滚。DeepReadView 复用 Modal 提供两次确认，任务列表与详情均提供入口；DeepReadNewCard 复用 FilterMenu 显示完整文件夹路径。详见 [0261-deepread-repairs.md](design/0261-deepread-repairs.md)。

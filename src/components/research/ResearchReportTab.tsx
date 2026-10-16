@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Copy, Check } from "lucide-react";
 import { ResearchMarkdown } from "./ResearchMarkdown";
+import { MarkdownLiveEditor } from "../MarkdownLiveEditor";
 import type { ResearchTurnView } from "../../types";
 
 type Props = {
   turns: ResearchTurnView[];
   focusTurn?: number;
+  editable?: boolean;
   onOpenConversation?: () => void;
+  onSave?(turn: number, answer: string): Promise<void>;
 };
 
 function answerTitle(text: string, fallback: string) {
@@ -29,7 +32,7 @@ function previewText(text: string, maxChars = 180) {
   return `${plain.slice(0, maxChars)}…`;
 }
 
-export function ResearchReportTab({ turns, focusTurn, onOpenConversation }: Props) {
+export function ResearchReportTab({ turns, focusTurn, editable = true, onOpenConversation, onSave }: Props) {
   const answered = useMemo(
     () => turns.filter(turn => turn.answer.trim().length > 0),
     [turns],
@@ -117,7 +120,13 @@ export function ResearchReportTab({ turns, focusTurn, onOpenConversation }: Prop
       </header>
 
       <article ref={documentRef} className="research-report-document" aria-label={title} tabIndex={0}>
-        <ResearchMarkdown text={current!.answer} />
+        <MarkdownLiveEditor
+          key={current!.turn}
+          text={current!.answer}
+          editable={editable}
+          onSave={onSave ? answer => onSave(current!.turn, answer) : undefined}
+          render={source => <ResearchMarkdown text={source} />}
+        />
       </article>
     </div>
   );

@@ -1128,6 +1128,31 @@ pub async fn research_list_turns(
   )
 }
 
+#[tauri::command]
+pub async fn research_save_answer(state: State<'_, AppState>, id: String, turn: i64, answer: String) -> Result<()> {
+  let pool = open_research_pool(&state.library_dir).await?;
+  let session = get_session_row(&pool, &id).await?;
+  pool.close().await;
+  if session.status == "running" {
+    return Err("调研进行中，不能编辑报告".into());
+  }
+  let workspace = PathBuf::from(&session.workspace_path);
+  let turns = ensure_turn_history(&workspace, &session)?;
+  let Some(item) = turns.iter().find(|item| item.turn == turn) else {
+    return Err("没有这一轮报告".into());
+  };
+  let relative = Path::new(&item.answer_path);
+  if relative.is_absolute() || relative.components().any(|component| matches!(component, std::path::Component::ParentDir)) {
+    return Err("报告路径无效".into());
+  }
+  let path = workspace.join(relative);
+  if let Some(parent) = path.parent() {
+    fs::create_dir_all(parent).map_err(err)?;
+  }
+  fs::write(path, answer).map_err(err)?;
+  Ok(())
+}
+
 /// 把各轮答复合成一份可交付的 Markdown，落在工作区 report-full.md。
 #[tauri::command]
 pub async fn research_export_report(state: State<'_, AppState>, id: String) -> Result<String> {

@@ -821,6 +821,17 @@ pub async fn deepread_get(state: State<'_, AppState>, id: String) -> Result<Deep
 }
 
 #[tauri::command]
+pub async fn deepread_save_report(state: State<'_, AppState>, id: String, report: String) -> Result<()> {
+  let pool = state.pool.read().await;
+  let task = load_task(&pool, &state.library_dir, &id).await?;
+  if task.status == "running" || task.status == "queued" {
+    return Err("报告生成中，不能编辑".into());
+  }
+  fs::write(PathBuf::from(&task.workspace_path).join("report.md"), report).map_err(err)?;
+  Ok(())
+}
+
+#[tauri::command]
 pub async fn deepread_create(state: State<'_, AppState>, input: CreateDeepReadInput) -> Result<DeepRead> {
   let pages = number_paragraphs(input.pages);
   let chars: usize = pages.iter().flat_map(|page| &page.paragraphs).map(|p| p.text.chars().count()).sum();

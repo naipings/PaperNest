@@ -61,8 +61,11 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   const [refreshing, setRefreshing] = useState(false);
   const [detailRevision, setDetailRevision] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reading, setReading] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const reportByTask = useRef(new Map<string, boolean>());
   const selected = tasks.find(task => task.id === selectedId);
+  const onReadingChange = useCallback((next: boolean) => setReading(next), []);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -249,7 +252,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   };
 
   const copyReport = async () => {
-    if (!detail?.report) return;
+    if (!detail?.report || detail.task.id !== selected?.id) return;
     try {
       await navigator.clipboard.writeText(detail.report);
       setCopied(true);
@@ -298,8 +301,12 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
   }
 
   const linkedPaper = selected?.paperId ? data?.papers.find(paper => paper.id === selected.paperId && !paper.deletedAt) : undefined;
-  const stagesDone = detail?.task.id === selected?.id ? detail?.stagesDone ?? [] : [];
-  const hasReport = !!detail?.report.trim() && detail.task.id === selected?.id;
+  const matched = selected && detail?.task.id === selected.id ? detail : undefined;
+  if (matched) reportByTask.current.set(matched.task.id, !!matched.report.trim());
+  const stagesDone = matched?.stagesDone ?? [];
+  const hasReport = matched
+    ? !!matched.report.trim()
+    : !!selected && (reportByTask.current.get(selected.id) ?? selected.status === "completed");
 
   if (compareId) {
     return <DeepReadCompare tasks={tasks} initialId={compareId} onExit={id => {
@@ -369,7 +376,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
             <ul className="research-session-list">
               {tasks.map(task => (
                 <li key={task.id}>
-                  <button type="button" aria-current={selectedId === task.id ? "true" : undefined} title={task.title} className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => { setSelectedId(task.id); setTab("report"); setMoreOpen(false); }}>
+                  <button type="button" aria-current={selectedId === task.id ? "true" : undefined} title={task.title} className={`research-session-item${selectedId === task.id ? " active" : ""}`} onClick={() => { setSelectedId(task.id); setTab("report"); setMoreOpen(false); setCopied(false); }}>
                     <span className="research-session-item-top">
                       <strong>{task.title}</strong>
                       <span className={`research-session-status ${STATUS_CLASS[task.status]}`}>{STATUS_LABEL[task.status]}</span>
@@ -389,7 +396,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
           </section>
         </aside>
 
-        <section className="research-main deepread-main">
+        <section className={`research-main deepread-main${reading && tab === "report" ? " is-reading" : ""}`}>
           {selected ? (
             <>
               <header className="research-detail-header">
@@ -462,7 +469,10 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
               <div className="deepread-detail-panel" id="deepread-detail-panel" role="tabpanel" aria-label={tab === "report" ? "精读报告" : "继续追问"} aria-busy={loadingDetail}>
               {loadingDetail && detail?.task.id !== selected.id && <div className="deepread-loading" role="status"><LoaderCircle className="spin" size={22} /><span>正在加载精读内容…</span></div>}
               {!loadingDetail && !detail && <div className="deepread-loading"><p>精读内容加载失败，请点击刷新重试。</p></div>}
-              {detail?.task.id === selected.id && tab === "report" && <DeepReadReportTab detail={detail} />}
+              {detail?.task.id === selected.id && tab === "report" && <DeepReadReportTab detail={detail} onReadingChange={onReadingChange} onSave={async report => {
+                await backend.deepreadSaveReport(selected.id, report);
+                setDetail(current => current?.task.id === selected.id ? { ...current, report } : current);
+              }} />}
               {detail?.task.id === selected.id && tab === "chat" && (
                 <DeepReadChatTab
                   key={selected.id}

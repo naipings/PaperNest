@@ -88,7 +88,10 @@ export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[
       <div className="deepread-compare-body">
         <section className="deepread-compare-report" aria-label="精读报告">
           {detail?.task.id === taskId
-            ? <DeepReadReportTab detail={detail} onEvidence={revealEvidence} onFigure={revealFigure} />
+            ? <DeepReadReportTab detail={detail} onEvidence={revealEvidence} onFigure={revealFigure} onSave={async report => {
+              await backend.deepreadSaveReport(taskId, report);
+              setDetail(current => current?.task.id === taskId ? { ...current, report } : current);
+            }} />
             : <div className="research-report-empty" role="status">{loading ? <><LoaderCircle className="spin" size={22} /><p>正在加载报告…</p></> : <p>报告加载失败，请切换任务后重试。</p>}</div>}
         </section>
         <section className="deepread-compare-reader" aria-label="论文原文">

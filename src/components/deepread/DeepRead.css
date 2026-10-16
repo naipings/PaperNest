@@ -100,17 +100,38 @@
 .deepread-create-progress { display: flex; align-items: center; gap: 8px; padding: 12px 24px; margin: 0; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
 
 .deepread-report { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: auto; }
-.deepread-progress { flex: 0 0 auto; margin: 0 24px 10px; padding: 0 12px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; }
-.deepread-progress summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; cursor: pointer; color: var(--muted); font-size: 11px; list-style: none; }
+.deepread-progress { flex: 0 0 auto; margin: 0 24px 10px; padding: 0 4px; background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.deepread-progress summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 8px 4px; cursor: pointer; color: var(--text); font-size: 14px; font-weight: 700; list-style: none; }
 .deepread-progress summary::-webkit-details-marker { display: none; }
-.deepread-progress summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
-.deepread-progress summary > span:last-child::after { content: "展开"; margin-left: 12px; color: var(--accent); }
-.deepread-progress[open] summary > span:last-child::after { content: "收起"; }
-.deepread-progress .deepread-stages { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-bottom: 12px; }
-.deepread-progress .deepread-stages li { display: flex; gap: 6px; align-items: center; text-align: left; font-size: 10px; padding: 7px 6px; background: var(--panel); }
-.deepread-stage-index { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 9px; }
+.deepread-progress-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+.deepread-progress-title svg { color: var(--accent); }
+.deepread-progress-meta { display: inline-flex; align-items: center; flex-shrink: 0; color: var(--muted); font-size: 13px; font-weight: 600; }
+.deepread-progress-count { font-variant-numeric: tabular-nums; }
+.deepread-progress summary > .deepread-progress-meta::after { content: "展开"; margin-left: 10px; font-weight: 600; }
+.deepread-progress[open] summary > .deepread-progress-meta::after { content: "收起"; }
+.deepread-progress .deepread-stages { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px 8px; padding: 2px 0 12px; }
+.deepread-progress .deepread-stages li { display: flex; gap: 10px; align-items: center; text-align: left; font-size: 14px; font-weight: 700; line-height: 1.35; min-height: 36px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); }
+.deepread-stage-copy { min-width: 0; font-weight: 700; }
+.deepread-stage-en { margin-right: 0.4em; font-weight: 700; letter-spacing: -0.01em; }
+.deepread-stage-zh { font-weight: 700; }
+.deepread-stage-index { flex: 0 0 22px; width: 22px; height: 22px; display: grid; place-items: center; border: 1.5px solid color-mix(in srgb, var(--muted) 42%, var(--line)); border-radius: 50%; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; }
+.deepread-stages li.done { color: var(--text); background: transparent; }
+.deepread-stages li.done .deepread-stage-index { background: #2a7a4f; border-color: #2a7a4f; color: #fff; }
+.deepread-stages li.active { color: var(--accent); }
+.deepread-stages li.active .deepread-stage-index { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .deepread-stages li.done .deepread-stage-index svg { animation: deepread-check-in 180ms ease; }
+}
+@keyframes deepread-check-in { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+:root[data-theme="dark"] .deepread-stages li.done .deepread-stage-index { background: #3c9a6a; border-color: #3c9a6a; }
+.deepread-main.is-reading .research-detail-header { display: flex; align-items: center; gap: 16px; padding: 8px 28px; }
+.deepread-main.is-reading .research-detail-header > div:first-child { flex: 1; min-width: 0; }
+.deepread-main.is-reading .deepread-document-meta,
+.deepread-main.is-reading .research-detail-header > div:first-child > p { display: none; }
+.deepread-main.is-reading .research-detail-header h2 { margin: 0; font-size: 15px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deepread-main.is-reading .research-detail-actions { margin-top: 0; padding-bottom: 0; flex: 0 0 auto; }
 .deepread-report .research-report-document { flex: 1 0 auto; min-height: 0; max-height: none; overflow: visible; padding: 22px clamp(24px, 4vw, 64px) 36px; border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: var(--panel); }
-.deepread-report .research-report-document .markdown-body { max-width: 780px; font-size: 14px; line-height: 1.95; overflow-wrap: anywhere; }
+.deepread-report .research-report-document .markdown-body { max-width: none; font-size: 16px; line-height: 1.85; overflow-wrap: anywhere; }
 .deepread-report .markdown-body h1 { font-size: 22px; line-height: 1.5; letter-spacing: -.025em; margin-bottom: 28px; }
 .deepread-report .markdown-body h2 { margin: 28px 0 14px; font-size: 18px; line-height: 1.5; }
 .deepread-report .markdown-body h3 { font-size: 14px; margin: 20px 0 10px; }

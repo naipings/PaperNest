@@ -69,6 +69,35 @@ describe("精读任务切换", () => {
     expect(screen.queryByText("报告正文 A")).not.toBeInTheDocument();
   });
 
+  it("切换已完成任务时复制全文保持显示", async () => {
+    let resolveB!: (value: DeepReadDetail) => void;
+    list.mockResolvedValue([task("A"), task("B")]);
+    get.mockImplementation((id: string) => id === "A" ? Promise.resolve(detail("A")) : new Promise(resolve => { resolveB = resolve; }));
+    render(<DeepReadView onOpenPaper={() => undefined} />);
+    expect(await screen.findByRole("button", { name: "复制全文" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /论文 B 已完成/ }));
+    expect(screen.getByRole("button", { name: "复制全文" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开始生成" })).not.toBeInTheDocument();
+    await act(async () => resolveB(detail("B")));
+    expect(await screen.findByText("报告正文 B")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制全文" })).toBeInTheDocument();
+  });
+
+  it("报告下滚后收起标题，回到顶部后展开", async () => {
+    list.mockResolvedValue([task("A")]);
+    get.mockResolvedValue(detail("A"));
+    const { container } = render(<DeepReadView onOpenPaper={() => undefined} />);
+    await screen.findByText("报告正文 A");
+    const report = container.querySelector(".deepread-report");
+    expect(report).toBeInstanceOf(HTMLElement);
+    report!.scrollTop = 120;
+    fireEvent.scroll(report!);
+    expect(container.querySelector(".deepread-main")).toHaveClass("is-reading");
+    report!.scrollTop = 0;
+    fireEvent.scroll(report!);
+    expect(container.querySelector(".deepread-main")).not.toHaveClass("is-reading");
+  });
+
   it("closes the report actions menu with Escape or an outside click", async () => {
     list.mockResolvedValue([task("A")]);
     get.mockResolvedValue(detail("A"));

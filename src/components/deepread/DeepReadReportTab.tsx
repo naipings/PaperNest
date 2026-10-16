@@ -1,16 +1,18 @@
+import { useEffect, useRef, type UIEvent } from "react";
 import { AlertTriangle, BookOpen, Check, LoaderCircle } from "lucide-react";
 import type { DeepReadDetail } from "../../types";
 import { DeepReadMarkdown } from "./DeepReadMarkdown";
+import { MarkdownLiveEditor } from "../MarkdownLiveEditor";
 
 export const DEEP_READ_STAGES = [
   { key: "figures", label: "图表提取" },
   { key: "visuals", label: "看图预读" },
   { key: "visual_plan", label: "选图计划" },
-  { key: "what", label: "What 做了什么" },
-  { key: "why", label: "Why 为什么做" },
-  { key: "how", label: "How 如何实现" },
-  { key: "experiment", label: "Experiment 如何证明" },
-  { key: "question", label: "Question 评价与疑问" },
+  { key: "what", label: "What 做了什么", en: "What", zh: "做了什么" },
+  { key: "why", label: "Why 为什么做", en: "Why", zh: "为什么做" },
+  { key: "how", label: "How 如何实现", en: "How", zh: "如何实现" },
+  { key: "experiment", label: "Experiment 如何证明", en: "Experiment", zh: "如何证明" },
+  { key: "question", label: "Question 评价与疑问", en: "Question", zh: "评价与疑问" },
 ] as const;
 
 /** 看图预读阶段的 stage 形如 `visuals:3/12`。 */
@@ -20,18 +22,42 @@ export function stageLabel(stage: string | null) {
   return progress ? `${label} ${progress}` : label;
 }
 
-export function DeepReadReportTab({ detail, onEvidence, onFigure }: { detail: DeepReadDetail; onEvidence?(segment: string): void; onFigure?(src: string): void }) {
+export function DeepReadReportTab({ detail, onEvidence, onFigure, onReadingChange, onSave }: {
+  detail: DeepReadDetail;
+  onEvidence?(segment: string): void;
+  onFigure?(src: string): void;
+  onReadingChange?(reading: boolean): void;
+  onSave?(report: string): Promise<void>;
+}) {
   const { task, report, stagesDone } = detail;
   const active = task.status === "running" || task.status === "queued";
   const runningKey = task.stage?.split(":")[0];
+  const reading = useRef(false);
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    const top = event.currentTarget.scrollTop;
+    const next = reading.current ? top > 24 : top > 72;
+    if (next !== reading.current) {
+      reading.current = next;
+      onReadingChange?.(next);
+    }
+  };
+  useEffect(() => () => onReadingChange?.(false), [onReadingChange]);
   return (
-    <div key={task.id} className="research-report-shell deepread-report">
+    <div key={task.id} className="research-report-shell deepread-report" onScroll={onScroll}>
       <details className="deepread-progress" open={active || !report.trim()}>
-      <summary><span>{active ? <LoaderCircle className="spin" size={14} /> : task.status === "completed" ? <Check size={14} /> : <BookOpen size={14} />} {active ? stageLabel(task.stage) || "等待生成" : "报告生成进度"}</span><span>{stagesDone.length} / {DEEP_READ_STAGES.length} 步骤</span></summary>
+      <summary>
+        <span className="deepread-progress-title">{active ? <LoaderCircle className="spin" size={14} /> : task.status === "completed" ? <Check size={14} /> : <BookOpen size={14} />} {active ? stageLabel(task.stage) || "等待生成" : "报告生成进度"}</span>
+        <span className="deepread-progress-meta"><span className="deepread-progress-count">{stagesDone.length} / {DEEP_READ_STAGES.length} 步骤</span></span>
+      </summary>
       <ol className="deepread-stages" aria-label="生成进度">
         {DEEP_READ_STAGES.map((stage, index) => {
           const state = stagesDone.includes(stage.key) ? "done" : active && runningKey === stage.key ? "active" : "pending";
-          return <li key={stage.key} className={state} aria-current={state === "active" ? "step" : undefined}><span className="deepread-stage-index">{state === "done" ? <Check size={12} /> : index + 1}</span><span>{state === "active" ? stageLabel(task.stage) : stage.label}</span></li>;
+          return (
+            <li key={stage.key} className={state} aria-current={state === "active" ? "step" : undefined}>
+              <span className="deepread-stage-index">{state === "done" ? <Check size={13} strokeWidth={2.6} /> : state === "active" ? <LoaderCircle className="spin" size={12} /> : index + 1}</span>
+              <span className="deepread-stage-copy">{state === "active" ? stageLabel(task.stage) : "en" in stage ? <><span className="deepread-stage-en">{stage.en}</span><span className="deepread-stage-zh">{stage.zh}</span></> : stage.label}</span>
+            </li>
+          );
         })}
       </ol>
       </details>
@@ -46,7 +72,12 @@ export function DeepReadReportTab({ detail, onEvidence, onFigure }: { detail: De
       )}
       {report.trim() ? (
         <article className="research-report-document" aria-label={task.title} tabIndex={0}>
-          <DeepReadMarkdown text={report} taskId={task.id} onEvidence={onEvidence} onFigure={onFigure} />
+          <MarkdownLiveEditor
+            text={report}
+            editable={!active}
+            onSave={onSave}
+            render={source => <DeepReadMarkdown text={source} taskId={task.id} onEvidence={onEvidence} onFigure={onFigure} />}
+          />
         </article>
       ) : (
         <div className="research-report-empty">

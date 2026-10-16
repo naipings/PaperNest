@@ -444,6 +444,10 @@ export const backend = {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_context_usage", { input });
   },
+  async researchSaveAnswer(id: string, turn: number, answer: string): Promise<void> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
+    return invoke("research_save_answer", { id, turn, answer });
+  },
   async researchExportReport(id: string): Promise<string> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持文献调研");
     return invoke("research_export_report", { id });
@@ -495,6 +499,10 @@ export const backend = {
   async deepreadList(): Promise<DeepRead[]> {
     if (!isTauri()) return [];
     return invoke("deepread_list");
+  },
+  async deepreadSaveReport(id: string, report: string): Promise<void> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");
+    return invoke("deepread_save_report", { id, report });
   },
   async deepreadGet(id: string): Promise<DeepReadDetail> {
     if (!isTauri()) throw new Error("浏览器预览模式不支持论文精读");

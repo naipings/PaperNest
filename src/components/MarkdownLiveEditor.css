@@ -1,0 +1,76 @@
+.md-mode-bar {
+  position: sticky;
+  top: 10px;
+  z-index: 4;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.md-mode-status {
+  pointer-events: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.md-mode-switch {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: 0 1px 4px #00000014;
+}
+.md-mode-switch button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+.md-mode-switch button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+.md-mode-switch button:disabled {
+  opacity: .4;
+}
+.md-live-block {
+  border-radius: 8px;
+  cursor: text;
+}
+.md-live.is-editing .md-live-block:hover,
+.md-live-block:focus-visible {
+  background: color-mix(in srgb, var(--soft) 88%, transparent);
+  outline: none;
+}
+.md-live-source {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--soft) 72%, transparent);
+  color: var(--text);
+  font: inherit;
+  resize: none;
+  overflow: hidden;
+  box-shadow: none;
+}
+:root[data-ui-theme][data-theme] .md-live .markdown-body > h1:first-child { display: block; }
