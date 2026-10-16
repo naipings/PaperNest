@@ -196,9 +196,9 @@
 :root[data-ui-theme][data-theme] .research-report-toolbar-main h3 { font-size: 17px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 :root[data-ui-theme][data-theme] .research-workspace .research-report-document { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 24px clamp(20px, 3vw, 48px) 40px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); box-shadow: none; }
 :root[data-ui-theme][data-theme] .research-report-document .markdown-body { max-width: 780px; font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
-:root[data-ui-theme][data-theme] .deepread-page .deepread-report { padding: 0; gap: 0; background: var(--panel); scrollbar-gutter: stable; overscroll-behavior: contain; }
-:root[data-ui-theme][data-theme] .deepread-report .deepread-progress { margin: 0; padding: 0 clamp(28px, 3vw, 56px); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
-:root[data-ui-theme][data-theme] .deepread-page .deepread-report .research-report-document { width: 100%; max-width: none; margin: 0; padding: 28px clamp(28px, 3vw, 56px) 64px; border: 0; border-radius: 0; background: var(--panel); }
+:root[data-ui-theme][data-theme] .deepread-page .deepread-report { padding: 12px 16px 20px; gap: 12px; background: var(--soft); scrollbar-gutter: stable; overscroll-behavior: contain; }
+:root[data-ui-theme][data-theme] .deepread-page .deepread-report .deepread-progress { margin: 0; padding: 2px 16px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+:root[data-ui-theme][data-theme] .deepread-page .deepread-report .research-report-document { width: 100%; max-width: none; margin: 0; padding: 28px clamp(28px, 3vw, 56px) 64px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 1px 2px #0000000a; }
 :root[data-ui-theme][data-theme] .deepread-page .deepread-report .markdown-body :is(h2, h3, p, ul, ol, blockquote) { width: min(100%, 76em); margin-left: auto; margin-right: auto; }
 :root[data-ui-theme][data-theme] .deepread-page .deepread-report .markdown-body :is(table, pre, img, .deepread-figure) { width: auto; max-width: 100%; }
 :root[data-ui-theme][data-theme] .deepread-main.is-reading .research-detail-header { display: flex; align-items: center; gap: 16px; padding: 8px 28px; }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -42,21 +42,29 @@ export function DeepReadMarkdown({ text, taskId, onEvidence, onFigure }: {
   onEvidence?(segment: string): void;
   onFigure?(src: string): void;
 }) {
-  const components: Components = {};
-  if (taskId) {
-    components.img = ({ src, alt }) => {
-      const path = String(src ?? "");
-      return <DeepReadFigureImage taskId={taskId} src={path} alt={alt ?? ""} onClick={onFigure ? () => onFigure(path) : undefined} />;
-    };
-  }
-  if (onEvidence) {
-    components.a = ({ href, children, node: _node, ...rest }) => href?.startsWith(EVIDENCE_SCHEME)
-      ? <a {...rest} href={href} className="deepread-evidence" onClick={event => {
-        event.preventDefault();
-        onEvidence(decodeURIComponent(href.slice(EVIDENCE_SCHEME.length)));
-      }}>{children}</a>
-      : <a {...rest} href={href}>{children}</a>;
-  }
+  const onFigureRef = useRef(onFigure);
+  const onEvidenceRef = useRef(onEvidence);
+  onFigureRef.current = onFigure;
+  onEvidenceRef.current = onEvidence;
+  const components = useMemo(() => {
+    const next: Components = {};
+    if (taskId) {
+      next.img = ({ src, alt }) => {
+        const path = String(src ?? "");
+        const open = onFigureRef.current;
+        return <DeepReadFigureImage taskId={taskId} src={path} alt={alt ?? ""} onClick={open ? () => open(path) : undefined} />;
+      };
+    }
+    if (onEvidence) {
+      next.a = ({ href, children, node: _node, ...rest }) => href?.startsWith(EVIDENCE_SCHEME)
+        ? <a {...rest} href={href} className="deepread-evidence" onClick={event => {
+          event.preventDefault();
+          onEvidenceRef.current?.(decodeURIComponent(href.slice(EVIDENCE_SCHEME.length)));
+        }}>{children}</a>
+        : <a {...rest} href={href}>{children}</a>;
+    }
+    return next;
+  }, [taskId, Boolean(onEvidence)]);
   return (
     <div className="markdown-body deepread-md">
       <Markdown
