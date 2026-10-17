@@ -282,10 +282,9 @@ fn default_settings() -> RadarSettings {
   }
 }
 
-// arXiv API 只收录已公告的稿件，最新 submittedDate 常比自然日晚 2–4 天（周末与公告批次叠加）。
-// 日窗因此以订阅类目里最新一篇的投稿日为终点，而不是以今天为终点。
+// medRxiv 详情接口按自然日返回。新稿日窗以这批稿件里最新发布日为终点。
+// 兴趣关键词不限于这几天，改走 Europe PMC 检索 medRxiv 预印本。
 const NEW_WINDOW_DAYS: i64 = 3;
-const INTEREST_WINDOW_DAYS: i64 = 4;
 const INTEREST_TOTAL_CAP: usize = 150;
 
 pub fn category_catalog() -> Vec<(String, String)> {
@@ -516,7 +515,7 @@ async fn upsert_paper_meta(
   .bind(serde_json::to_string(categories).map_err(err)?)
   .bind(published_date)
   .bind(preprint_page_url(arxiv_id))
-  .bind(if is_medrxiv_id(arxiv_id) { None } else { Some(format!("https://www.alphaxiv.org/abs/{arxiv_id}")) })
+  .bind(None::<String>)
   .bind(now)
   .execute(pool)
   .await
@@ -940,8 +939,7 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
         papers_added += 1;
       }
       if hot_count > 0 { feeds_ok.push("hot"); }
-      let (new_cards, newest) = keep_newest_window(subscribed.clone());
-      let window_end = newest.unwrap_or(end);
+      let (new_cards, _newest) = keep_newest_window(subscribed.clone());
       let new_n = settings.new_limit.clamp(5, 200) as usize;
       for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in new_cards.into_iter().take(new_n).enumerate() {
         upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
@@ -950,24 +948,32 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
         papers_added += 1;
       }
       if new_count > 0 { feeds_ok.push("new"); }
-      if !normalized_keywords(&settings.keywords).is_empty() {
-        let interest_start = window_end - chrono::Duration::days(INTEREST_WINDOW_DAYS);
-        let interest: Vec<ArxivEntry> = subscribed.into_iter().filter(|entry| {
-          entry_date(entry).is_some_and(|day| day >= interest_start) && keyword_matches(&settings.keywords, &entry.1, Some(&entry.2), None)
-        }).take(INTEREST_TOTAL_CAP).collect();
-        for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in interest.into_iter().enumerate() {
-          upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
-          insert_snapshot(&radar, &date, &arxiv_id, "interest", (index + 1) as i64, None).await?;
-          interest_count += 1;
-          papers_added += 1;
-        }
-        if interest_count > 0 { feeds_ok.push("interest"); }
-      }
-      if hot_count == 0 && new_count == 0 && interest_count == 0 {
-        errors.push("medRxiv 在订阅学科内没有返回稿件".into());
-      }
     }
     Err(error) => errors.push(format!("medrxiv: {error}")),
+  }
+
+  if !normalized_keywords(&settings.keywords).is_empty() {
+    let mut seen = HashSet::new();
+    for keyword in normalized_keywords(&settings.keywords) {
+      if interest_count as usize >= INTEREST_TOTAL_CAP { break; }
+      match search_arxiv_briefs(&keyword, 12).await {
+        Ok(briefs) => {
+          for brief in briefs {
+            if interest_count as usize >= INTEREST_TOTAL_CAP { break; }
+            if !seen.insert(brief.arxiv_id.clone()) { continue; }
+            upsert_paper_meta(&radar, &brief.arxiv_id, &brief.title, Some(&brief.abstract_text), &[], None, &[], None).await?;
+            insert_snapshot(&radar, &date, &brief.arxiv_id, "interest", interest_count + 1, None).await?;
+            interest_count += 1;
+            papers_added += 1;
+          }
+        }
+        Err(error) => errors.push(format!("interest: {error}")),
+      }
+    }
+    if interest_count > 0 { feeds_ok.push("interest"); }
+  }
+  if hot_count == 0 && new_count == 0 && interest_count == 0 && errors.iter().all(|item| !item.starts_with("medrxiv:")) {
+    errors.push("medRxiv 没有返回稿件".into());
   }
 
   prune_old(&radar, settings.retain_days).await?;
@@ -1077,7 +1083,7 @@ pub async fn radar_week_hot(state: State<'_, AppState>, anchor_date: Option<Stri
 pub async fn radar_set_user_state(state: State<'_, AppState>, arxiv_id: String, later: Option<bool>, hidden: Option<bool>) -> Result<()> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效 arXiv ID".into());
+    return Err("无效预印本 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let now = Utc::now().to_rfc3339();
@@ -1570,7 +1576,7 @@ fn score_candidates(
           primary_category: row.primary_category.clone(),
           published_date: None,
           abs_url: Some(preprint_page_url(&row.arxiv_id)),
-          alphaxiv_url: if is_medrxiv_id(&row.arxiv_id) { None } else { Some(format!("https://www.alphaxiv.org/abs/{}", row.arxiv_id)) },
+          alphaxiv_url: None,
           feed: "recommend".into(),
           rank: Some(row.rank),
           upvotes: Some(row.upvotes),
@@ -1746,7 +1752,7 @@ pub async fn radar_get_digest(state: State<'_, AppState>, kind: String, anchor_d
 pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -> Result<RadarExplanation> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效 arXiv ID".into());
+    return Err("无效预印本 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   if let Some(raw) = sqlx::query_scalar::<_, String>("SELECT content_json FROM radar_explanations WHERE arxiv_id=?")
@@ -1837,7 +1843,7 @@ pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -
 pub async fn radar_get_explanation(state: State<'_, AppState>, arxiv_id: String) -> Result<Option<RadarExplanation>> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效 arXiv ID".into());
+    return Err("无效预印本 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let raw: Option<String> = sqlx::query_scalar("SELECT content_json FROM radar_explanations WHERE arxiv_id=?")
@@ -1880,7 +1886,7 @@ pub async fn radar_list_explained_ids(state: State<'_, AppState>) -> Result<Vec<
 pub async fn radar_delete_explanation(state: State<'_, AppState>, arxiv_id: String) -> Result<()> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效 arXiv ID".into());
+    return Err("无效预印本 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   sqlx::query("DELETE FROM radar_explanations WHERE arxiv_id=?")
@@ -1901,7 +1907,7 @@ pub async fn radar_import_to_library(
 ) -> Result<RadarImportResult> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效 arXiv ID".into());
+    return Err("无效预印本 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let settings = load_settings(&radar).await?;
@@ -2176,6 +2182,14 @@ mod radar_unit_tests {
     assert_eq!(newest, chrono::NaiveDate::from_ymd_opt(2026, 10, 9));
     let ids: Vec<_> = kept.iter().map(|e| e.0.as_str()).collect();
     assert_eq!(ids, vec!["a", "b"]);
+  }
+
+  #[tokio::test]
+  async fn image_segmentation_keyword_returns_medrxiv_papers() {
+    let briefs = search_arxiv_briefs("Image Segmentation", 8).await.expect("europe pmc");
+    assert!(!briefs.is_empty(), "Image Segmentation 应返回 medRxiv 预印本");
+    assert!(briefs.iter().any(|item| item.title.to_ascii_lowercase().contains("segment")));
+    assert!(briefs.iter().all(|item| item.abs_url.starts_with("https://www.medrxiv.org/content/")));
   }
 
   #[tokio::test]

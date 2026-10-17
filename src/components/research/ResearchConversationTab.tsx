@@ -129,7 +129,7 @@ export function ResearchConversationTab({
         showContextRing={canFollowUp && !!sessionId}
         contextRefreshKey={contextRefreshKey}
         draftAttachmentChars={draftAttachmentChars(followUpAttachments)}
-        placeholder={canFollowUp ? "继续追问，例如：把冷启动与长尾推荐的关系再展开" : "完成第一轮调研后即可继续追问"}
+        placeholder={canFollowUp ? "继续追问，例如：把心衰住院与心血管死亡的证据再分开" : "完成第一轮调研后即可继续追问"}
         submitLabel="继续调研"
         onChange={onFollowUpChange}
         onAddFiles={onAddFiles}

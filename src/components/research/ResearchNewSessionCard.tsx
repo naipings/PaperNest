@@ -48,7 +48,7 @@ export function ResearchNewSessionCard({
         attachments={attachments}
         busy={busy}
         rows={7}
-        placeholder="例如：推荐系统冷启动在 2024–2026 年的主要方法与局限"
+        placeholder="例如：SGLT2 抑制剂治疗心衰在 2020–2026 年的主要证据与局限"
         submitLabel="创建任务"
         onChange={onQueryChange}
         onAddFiles={onAddFiles}
