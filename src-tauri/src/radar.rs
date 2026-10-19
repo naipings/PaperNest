@@ -671,15 +671,14 @@ pub struct ArxivBrief {
 
 fn pubmed_keyword_term(keyword: &str) -> String {
   let keyword = keyword.trim().replace('"', "");
-  if keyword.contains('[') {
+  if keyword.contains('[') || keyword.is_empty() {
     return keyword;
   }
-  keyword
-    .split_whitespace()
-    .filter(|word| !word.is_empty())
-    .map(|word| format!("{word}[Title/Abstract]"))
-    .collect::<Vec<_>>()
-    .join(" AND ")
+  if keyword.contains(' ') {
+    format!("\"{keyword}\"[Title/Abstract]")
+  } else {
+    format!("{keyword}[Title/Abstract]")
+  }
 }
 
 fn pubmed_subject_term(categories: &[String], days: i64) -> String {
@@ -693,6 +692,17 @@ fn pubmed_subject_term(categories: &[String], days: i64) -> String {
   format!("({subjects}) AND (\"last {days} days\"[edat])")
 }
 
+fn strip_markup(value: &str) -> String {
+  let mut out = String::new();
+  let mut inside = false;
+  for ch in value.chars() {
+    if ch == '<' { inside = true; continue; }
+    if ch == '>' { inside = false; continue; }
+    if !inside { out.push(ch); }
+  }
+  out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ")
+}
+
 fn xml_texts(block: &str, tag: &str) -> Vec<String> {
   let open = format!("<{tag}");
   let close = format!("</{tag}>");
@@ -702,7 +712,7 @@ fn xml_texts(block: &str, tag: &str) -> Vec<String> {
     let after = &rest[start..];
     let Some(gt) = after.find('>') else { break };
     let Some(end) = after.find(&close) else { break };
-    let text = squash(&after[gt + 1..end]);
+    let text = squash(&strip_markup(&after[gt + 1..end]));
     if !text.is_empty() { out.push(text); }
     rest = &after[end + close.len()..];
   }
@@ -777,10 +787,26 @@ fn parse_pubmed_article(article: &str) -> Option<ArxivEntry> {
   Some((format!("pmid:{pmid}"), title, summary, authors, categories, journal, published))
 }
 
+fn pubmed_gate() -> &'static tokio::sync::Mutex<tokio::time::Instant> {
+  static GATE: std::sync::OnceLock<tokio::sync::Mutex<tokio::time::Instant>> = std::sync::OnceLock::new();
+  GATE.get_or_init(|| tokio::sync::Mutex::new(tokio::time::Instant::now()))
+}
+
 async fn pubmed_text(client: &Client, url: &str) -> Result<String> {
   let mut last_status = String::new();
   for attempt in 0..4u64 {
     if attempt > 0 { tokio::time::sleep(Duration::from_millis(1200 * attempt)).await; }
+    {
+      let mut slot = pubmed_gate().lock().await;
+      let now = tokio::time::Instant::now();
+      if *slot > now {
+        let wait = *slot - now;
+        drop(slot);
+        tokio::time::sleep(wait).await;
+        slot = pubmed_gate().lock().await;
+      }
+      *slot = tokio::time::Instant::now() + Duration::from_millis(400);
+    }
     let response = client.get(url).header("User-Agent", "PaperNest-Radar/0.2.65").send().await.map_err(err)?;
     let status = response.status();
     if status.as_u16() == 429 && attempt < 3 {
@@ -804,6 +830,9 @@ async fn search_pubmed_entries(term: &str, limit: i64) -> Result<Vec<ArxivEntry>
     urlencoding_encode(term)
   );
   let body: serde_json::Value = serde_json::from_str(&pubmed_text(&client, &search_url).await?).map_err(err)?;
+  if let Some(message) = body.get("error").and_then(|v| v.as_str()).or_else(|| body.pointer("/esearchresult/ERROR").and_then(|v| v.as_str())) {
+    return Err(format!("PubMed 检索失败（{message}）"));
+  }
   let ids = body.pointer("/esearchresult/idlist").and_then(|v| v.as_array()).cloned().unwrap_or_default();
   let id_list = ids.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(",");
   if id_list.is_empty() { return Ok(vec![]); }
@@ -853,6 +882,11 @@ fn category_labels(primary: Option<&str>, categories: &[String], topics: &[Strin
   labels.extend(categories.iter().cloned());
   labels.extend(topics.iter().cloned());
   labels
+}
+
+fn matched_subjects(title: &str, summary: &str, subscribed: &[String]) -> Vec<String> {
+  let blob = format!("{title} {summary}").to_ascii_lowercase();
+  subscribed.iter().filter(|subject| blob.contains(&subject.to_ascii_lowercase())).cloned().collect()
 }
 
 fn category_matches(subscribed: &[String], primary: Option<&str>, categories: &[String], topics: &[String]) -> bool {
@@ -1063,7 +1097,8 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
     Ok(mut recent) => {
       sort_newest(&mut recent);
       let hot_n = settings.hot_limit.clamp(5, 50) as usize;
-      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in recent.iter().take(hot_n).cloned().enumerate() {
+      for (index, (arxiv_id, title, summary, authors, mut categories, primary, published)) in recent.iter().take(hot_n).cloned().enumerate() {
+        categories.extend(matched_subjects(&title, &summary, &settings.categories));
         upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
         insert_snapshot(&radar, &date, &arxiv_id, "hot", (index + 1) as i64, None).await?;
         hot_count += 1;
@@ -1072,7 +1107,8 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
       if hot_count > 0 { feeds_ok.push("hot"); }
       let (new_cards, _newest) = keep_newest_window(recent);
       let new_n = settings.new_limit.clamp(5, 200) as usize;
-      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in new_cards.into_iter().take(new_n).enumerate() {
+      for (index, (arxiv_id, title, summary, authors, mut categories, primary, published)) in new_cards.into_iter().take(new_n).enumerate() {
+        categories.extend(matched_subjects(&title, &summary, &settings.categories));
         upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
         insert_snapshot(&radar, &date, &arxiv_id, "new", (index + 1) as i64, None).await?;
         new_count += 1;
@@ -2269,6 +2305,28 @@ mod radar_unit_tests {
   }
 
   #[test]
+  fn pubmed_journal_title_still_matches_when_subject_is_in_the_text() {
+    let subjects = matched_subjects(
+      "Medical image segmentation of lung tumors",
+      "A study in oncology clinics.",
+      &["oncology".into(), "cardiovascular medicine".into()],
+    );
+    assert_eq!(subjects, vec!["oncology".to_string()]);
+    assert!(category_matches(
+      &["oncology".into()],
+      Some("Neural Networks"),
+      &["Neural Networks".into(), "oncology".into()],
+      &[],
+    ));
+    assert!(!category_matches(
+      &["oncology".into()],
+      Some("Neural Networks"),
+      &["Neural Networks".into()],
+      &[],
+    ));
+  }
+
+  #[test]
   fn cosine_similarity_identical_is_one() {
     let v = vec![1.0_f32, 0.0, 0.0];
     assert!((cosine_similarity(&v, &v) - 1.0).abs() < 1e-6);
@@ -2318,6 +2376,32 @@ mod radar_unit_tests {
     assert_eq!(newest, chrono::NaiveDate::from_ymd_opt(2026, 10, 9));
     let ids: Vec<_> = kept.iter().map(|e| e.0.as_str()).collect();
     assert_eq!(ids, vec!["a", "b"]);
+  }
+
+  #[tokio::test]
+  async fn pubmed_keyword_queries_are_stable() {
+    let queries = ["Image Segmentation", "heart failure", "sepsis"];
+    let mut report = Vec::new();
+    for query in queries {
+      let started = std::time::Instant::now();
+      let briefs = search_arxiv_briefs(query, 5).await.unwrap_or_else(|error| panic!("{query}: {error}"));
+      assert!(briefs.len() >= 3, "{query} 只返回 {} 篇", briefs.len());
+      assert!(briefs.iter().all(|item| item.arxiv_id.starts_with("pmid:") && item.abs_url.starts_with("https://pubmed.ncbi.nlm.nih.gov/")));
+      let items: Vec<serde_json::Value> = briefs.iter().map(|item| serde_json::json!({
+        "pmid": item.arxiv_id,
+        "title": item.title,
+        "url": item.abs_url,
+      })).collect();
+      report.push(serde_json::json!({
+        "query": query,
+        "elapsedMs": started.elapsed().as_millis(),
+        "count": items.len(),
+        "items": items,
+      }));
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../output/pubmed-check.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
   }
 
   #[tokio::test]
