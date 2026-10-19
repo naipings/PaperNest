@@ -6,8 +6,9 @@ export function resolvePaperSourceUrl(paper: Pick<Paper, "sourceUrl" | "doi" | "
   if (source) return source;
   const doi = paper.doi?.trim().replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
   if (doi) return `https://doi.org/${doi}`;
-  const preprint = paper.arxivId?.trim().replace(/^arxiv:/i, "");
-  if (preprint && /^10\.(1101|64898)\//i.test(preprint)) return `https://www.medrxiv.org/content/${preprint}`;
-  if (preprint) return `https://arxiv.org/abs/${preprint}`;
+  const record = paper.arxivId?.trim().replace(/^arxiv:/i, "");
+  if (record?.toLowerCase().startsWith("pmid:")) return `https://pubmed.ncbi.nlm.nih.gov/${record.slice(5)}/`;
+  if (record && /^10\.(1101|64898)\//i.test(record)) return `https://www.medrxiv.org/content/${record}`;
+  if (record) return `https://arxiv.org/abs/${record}`;
   return undefined;
 }

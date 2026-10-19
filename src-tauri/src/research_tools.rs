@@ -333,7 +333,7 @@ pub fn react_tool_catalog(settings: &crate::research::ResearchLlmSettings) -> Ve
       1,
       tool(
         "search_arxiv",
-        "检索 medRxiv 预印本元数据，按发布日期由新到旧返回（仅链接与摘要，不下载 PDF）。",
+        "检索 PubMed 已发表文献，按收录时间由新到旧返回（仅链接与摘要，不下载 PDF）。",
         serde_json::json!({
           "type": "object",
           "properties": {
@@ -523,7 +523,7 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
     }
     "search_arxiv" => {
       if !ctx.allow_web {
-        return Err("未启用 medRxiv 检索".into());
+        return Err("未启用 PubMed 检索".into());
       }
       let query = arg_str(args, "query")?;
       let limit = arg_limit(args, 8);
@@ -554,7 +554,7 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         Err(arxiv_error) => match crate::research_web::search_openalex_sources(&query, limit as i64, from_year).await {
           Ok(web_briefs) => {
             lines.push(format!(
-              "medRxiv 暂时不可用（{arxiv_error}），已改用 OpenAlex 学术元数据："
+              "PubMed 暂时不可用（{arxiv_error}），已改用 OpenAlex 学术元数据："
             ));
             for brief in web_briefs {
               if let Some(source) = ctx.collector.add_web_brief(
@@ -579,7 +579,7 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
           Err(web_error) => {
             return Ok(ToolOutcome::Continue {
               observation: format!(
-                "medRxiv 与外网检索均不可用（medRxiv: {arxiv_error}; 外网: {web_error}）。请基于已有来源 finish_research。"
+                "PubMed 与外网检索均不可用（PubMed: {arxiv_error}; 外网: {web_error}）。请基于已有来源 finish_research。"
               ),
               new_source_ids: vec![],
             });
@@ -587,7 +587,7 @@ pub async fn execute_react_tool(ctx: &mut ToolContext<'_>, name: &str, args: &se
         },
       }
       let observation = if lines.is_empty() {
-        format!("medRxiv 未返回与「{query}」相关的结果。")
+        format!("PubMed 未返回与「{query}」相关的结果。")
       } else {
         lines.join("\n")
       };

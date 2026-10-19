@@ -15,6 +15,10 @@ describe("resolvePaperSourceUrl", () => {
     expect(resolvePaperSourceUrl({ arxivId: "1706.03762" })).toBe("https://arxiv.org/abs/1706.03762");
   });
 
+  it("builds a PubMed link", () => {
+    expect(resolvePaperSourceUrl({ arxivId: "pmid:42641405" })).toBe("https://pubmed.ncbi.nlm.nih.gov/42641405/");
+  });
+
   it("builds a medRxiv content link", () => {
     expect(resolvePaperSourceUrl({ arxivId: "10.64898/2026.05.11.26352940v2" })).toBe("https://www.medrxiv.org/content/10.64898/2026.05.11.26352940v2");
   });

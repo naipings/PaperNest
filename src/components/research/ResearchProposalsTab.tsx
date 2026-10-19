@@ -32,7 +32,7 @@ export function ResearchProposalsTab({ proposals, researchBusy, onApprove, onRej
             <header>
               <strong>{item.title}</strong>
               <div className="radar-card-meta">
-                {item.arxivId && <span>medRxiv {item.arxivId}</span>}
+                {item.arxivId && <span>{item.arxivId.startsWith("pmid:") ? `PubMed ${item.arxivId.slice(5)}` : `medRxiv ${item.arxivId}`}</span>}
                 <span>{STATUS_LABEL[item.status] ?? item.status}</span>
                 {item.resolvedPaperId && <span>论文 ID {item.resolvedPaperId}</span>}
               </div>

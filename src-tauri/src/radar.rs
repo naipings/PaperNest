@@ -282,8 +282,7 @@ fn default_settings() -> RadarSettings {
   }
 }
 
-// medRxiv 详情接口按自然日返回。新稿日窗以这批稿件里最新发布日为终点。
-// 兴趣关键词不限于这几天，改走 Europe PMC 检索 medRxiv 预印本。
+// 新稿与热点来自 PubMed 近 7 日、按订阅学科检索。兴趣关键词直接检索 PubMed，不限于这几天。
 const NEW_WINDOW_DAYS: i64 = 3;
 const INTEREST_TOTAL_CAP: usize = 150;
 
@@ -399,6 +398,9 @@ fn today() -> String {
 }
 
 pub(crate) fn clean_arxiv_id(value: &str) -> String {
+  if let Some(id) = extract_pmid(value) {
+    return id;
+  }
   if let Some(id) = extract_medrxiv_id(value) {
     return id;
   }
@@ -426,6 +428,20 @@ pub(crate) fn clean_arxiv_id(value: &str) -> String {
   String::new()
 }
 
+fn extract_pmid(value: &str) -> Option<String> {
+  let lower = value.to_ascii_lowercase();
+  let digits = if let Some(rest) = lower.strip_prefix("pmid:") {
+    let start = value.len() - rest.len();
+    value[start..].chars().take_while(|c| c.is_ascii_digit()).collect::<String>()
+  } else if let Some(index) = lower.find("pubmed.ncbi.nlm.nih.gov/") {
+    let start = index + "pubmed.ncbi.nlm.nih.gov/".len();
+    value[start..].chars().take_while(|c| c.is_ascii_digit()).collect::<String>()
+  } else {
+    return None;
+  };
+  if digits.len() < 4 { None } else { Some(format!("pmid:{digits}")) }
+}
+
 fn extract_medrxiv_id(value: &str) -> Option<String> {
   let lower = value.to_ascii_lowercase();
   let start = ["10.1101/", "10.64898/"].iter().find_map(|prefix| lower.find(prefix))?;
@@ -450,7 +466,9 @@ fn is_medrxiv_id(id: &str) -> bool {
 }
 
 pub(crate) fn preprint_page_url(id: &str) -> String {
-  if is_medrxiv_id(id) {
+  if let Some(pmid) = id.strip_prefix("pmid:") {
+    format!("https://pubmed.ncbi.nlm.nih.gov/{pmid}/")
+  } else if is_medrxiv_id(id) {
     format!("https://www.medrxiv.org/content/{id}")
   } else {
     format!("https://arxiv.org/abs/{id}")
@@ -458,7 +476,9 @@ pub(crate) fn preprint_page_url(id: &str) -> String {
 }
 
 fn preprint_pdf_url(id: &str) -> String {
-  if is_medrxiv_id(id) {
+  if id.starts_with("pmid:") {
+    String::new()
+  } else if is_medrxiv_id(id) {
     format!("https://www.medrxiv.org/content/{id}.full.pdf")
   } else {
     format!("https://arxiv.org/pdf/{id}.pdf")
@@ -649,48 +669,161 @@ pub struct ArxivBrief {
   pub abs_url: String,
 }
 
-pub async fn search_arxiv_briefs(keyword: &str, limit: i64) -> Result<Vec<ArxivBrief>> {
-  let keyword = keyword.trim();
-  if keyword.is_empty() {
-    return Ok(vec![]);
+fn pubmed_keyword_term(keyword: &str) -> String {
+  let keyword = keyword.trim().replace('"', "");
+  if keyword.contains('[') {
+    return keyword;
   }
+  keyword
+    .split_whitespace()
+    .filter(|word| !word.is_empty())
+    .map(|word| format!("{word}[Title/Abstract]"))
+    .collect::<Vec<_>>()
+    .join(" AND ")
+}
+
+fn pubmed_subject_term(categories: &[String], days: i64) -> String {
+  let subjects = categories
+    .iter()
+    .map(|category| category.trim())
+    .filter(|category| !category.is_empty())
+    .map(|category| format!("\"{}\"[Title/Abstract]", category.replace('"', "")))
+    .collect::<Vec<_>>()
+    .join(" OR ");
+  format!("({subjects}) AND (\"last {days} days\"[edat])")
+}
+
+fn xml_texts(block: &str, tag: &str) -> Vec<String> {
+  let open = format!("<{tag}");
+  let close = format!("</{tag}>");
+  let mut rest = block;
+  let mut out = Vec::new();
+  while let Some(start) = rest.find(&open) {
+    let after = &rest[start..];
+    let Some(gt) = after.find('>') else { break };
+    let Some(end) = after.find(&close) else { break };
+    let text = squash(&after[gt + 1..end]);
+    if !text.is_empty() { out.push(text); }
+    rest = &after[end + close.len()..];
+  }
+  out
+}
+
+fn xml_block(text: &str, tag: &str) -> Option<String> {
+  let start = text.find(&format!("<{tag}"))?;
+  let after = &text[start..];
+  let end = after.find(&format!("</{tag}>"))?;
+  Some(after[..end].to_string())
+}
+
+fn pubmed_month(value: &str) -> String {
+  let lower = value.to_ascii_lowercase();
+  match lower.as_str() {
+    "jan" | "january" => "01",
+    "feb" | "february" => "02",
+    "mar" | "march" => "03",
+    "apr" | "april" => "04",
+    "may" => "05",
+    "jun" | "june" => "06",
+    "jul" | "july" => "07",
+    "aug" | "august" => "08",
+    "sep" | "september" => "09",
+    "oct" | "october" => "10",
+    "nov" | "november" => "11",
+    "dec" | "december" => "12",
+    digits if digits.len() == 2 && digits.chars().all(|c| c.is_ascii_digit()) => return digits.to_string(),
+    digits if digits.len() == 1 && digits.chars().all(|c| c.is_ascii_digit()) => return format!("0{digits}"),
+    _ => "01",
+  }.to_string()
+}
+
+fn pubmed_ymd(block: &str) -> Option<String> {
+  let year = xml_texts(block, "Year").into_iter().next()?;
+  let month = pubmed_month(&xml_texts(block, "Month").into_iter().next().unwrap_or_else(|| "01".into()));
+  let day = xml_texts(block, "Day").into_iter().next().unwrap_or_else(|| "01".into());
+  let day = if day.len() == 1 { format!("0{day}") } else { day };
+  Some(format!("{year}-{month}-{day}"))
+}
+
+fn pubmed_date(article: &str) -> Option<String> {
+  for tag in ["DateCompleted", "ArticleDate", "PubDate"] {
+    if let Some(block) = xml_block(article, tag) {
+      if let Some(date) = pubmed_ymd(&block) { return Some(date); }
+    }
+  }
+  None
+}
+
+fn parse_pubmed_article(article: &str) -> Option<ArxivEntry> {
+  let pmid = xml_texts(article, "PMID").into_iter().next()?;
+  let title = xml_texts(article, "ArticleTitle").into_iter().next()?;
+  if title.is_empty() { return None; }
+  let summary = xml_texts(article, "AbstractText").join(" ");
+  let mut authors = Vec::new();
+  let mut rest = article;
+  while let Some(start) = rest.find("<Author ") .or_else(|| rest.find("<Author>")) {
+    let after = &rest[start..];
+    let Some(end) = after.find("</Author>") else { break };
+    let block = &after[..end];
+    let last = xml_texts(block, "LastName").into_iter().next().unwrap_or_default();
+    let fore = xml_texts(block, "ForeName").into_iter().next().unwrap_or_default();
+    let name = format!("{fore} {last}").trim().to_string();
+    if !name.is_empty() { authors.push(name); }
+    rest = &after[end + "</Author>".len()..];
+  }
+  let journal = xml_texts(article, "Title").into_iter().next();
+  let published = pubmed_date(article);
+  let categories = journal.clone().into_iter().collect::<Vec<_>>();
+  Some((format!("pmid:{pmid}"), title, summary, authors, categories, journal, published))
+}
+
+async fn pubmed_text(client: &Client, url: &str) -> Result<String> {
+  let mut last_status = String::new();
+  for attempt in 0..4u64 {
+    if attempt > 0 { tokio::time::sleep(Duration::from_millis(1200 * attempt)).await; }
+    let response = client.get(url).header("User-Agent", "PaperNest-Radar/0.2.65").send().await.map_err(err)?;
+    let status = response.status();
+    if status.as_u16() == 429 && attempt < 3 {
+      last_status = status.to_string();
+      continue;
+    }
+    let text = response.text().await.map_err(err)?;
+    if !status.is_success() { return Err(format!("PubMed 请求失败（{status}）")); }
+    return Ok(text);
+  }
+  Err(format!("PubMed 请求过于频繁（{last_status}）"))
+}
+
+async fn search_pubmed_entries(term: &str, limit: i64) -> Result<Vec<ArxivEntry>> {
+  let term = term.trim();
+  if term.is_empty() { return Ok(vec![]); }
   let client = Client::builder().timeout(Duration::from_secs(45)).build().map_err(err)?;
-  let query = format!("(TITLE_ABS:\"{}\") AND SRC:PPR", keyword.replace('"', ""));
-  let url = format!(
-    "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query={}&format=json&pageSize={}&sort=FIRST_PDATE_D%20desc",
-    urlencoding_encode(&query),
-    limit.clamp(3, 15)
+  let retmax = limit.clamp(3, 40);
+  let search_url = format!(
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&sort=pub_date&retmax={retmax}&tool=PaperNest&email=papernest@local&term={}",
+    urlencoding_encode(term)
   );
-  let response = client
-    .get(&url)
-    .header("User-Agent", "PaperNest-Radar/0.2.65")
-    .header("Accept", "application/json")
-    .send()
-    .await
-    .map_err(err)?;
-  let status = response.status();
-  let body: serde_json::Value = response.json().await.map_err(err)?;
-  if !status.is_success() {
-    return Err(format!("Europe PMC 检索失败（{status}）"));
-  }
-  let results = body.pointer("/resultList/result").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-  Ok(results.iter().filter_map(|item| {
-    let doi = item.get("doi").and_then(|v| v.as_str()).unwrap_or("").trim();
-    let journal = item.get("journalTitle").and_then(|v| v.as_str()).unwrap_or("").to_ascii_lowercase();
-    let medrxiv = doi.starts_with("10.64898/") || (doi.starts_with("10.1101/") && journal.contains("medrxiv"));
-    if !medrxiv { return None; }
-    let version = item.get("versionNumber").and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")).filter(|s| !s.is_empty()).map(str::to_string))
-      .or_else(|| item.get("versionNumber").and_then(|v| v.as_i64()).map(|n| n.to_string()))
-      .unwrap_or_else(|| "1".into());
-    let arxiv_id = if doi.rsplit('v').next().is_some_and(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit())) && doi.to_ascii_lowercase().contains('v') {
-      doi.to_string()
-    } else {
-      format!("{doi}v{version}")
-    };
-    let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-    if title.is_empty() { return None; }
-    let abstract_text = item.get("abstractText").and_then(|v| v.as_str()).unwrap_or("").chars().take(500).collect();
-    Some(ArxivBrief { abs_url: preprint_page_url(&arxiv_id), arxiv_id, title, abstract_text })
+  let body: serde_json::Value = serde_json::from_str(&pubmed_text(&client, &search_url).await?).map_err(err)?;
+  let ids = body.pointer("/esearchresult/idlist").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+  let id_list = ids.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(",");
+  if id_list.is_empty() { return Ok(vec![]); }
+  tokio::time::sleep(Duration::from_millis(400)).await;
+  let fetch_url = format!(
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&retmode=xml&rettype=abstract&tool=PaperNest&email=papernest@local&id={}",
+    urlencoding_encode(&id_list)
+  );
+  let xml = pubmed_text(&client, &fetch_url).await?;
+  Ok(xml.split("<PubmedArticle>").skip(1).filter_map(parse_pubmed_article).collect())
+}
+
+pub async fn search_arxiv_briefs(keyword: &str, limit: i64) -> Result<Vec<ArxivBrief>> {
+  let term = pubmed_keyword_term(keyword);
+  if term.is_empty() { return Ok(vec![]); }
+  Ok(search_pubmed_entries(&term, limit).await?.into_iter().map(|(id, title, summary, _, _, _, _)| ArxivBrief {
+    abs_url: preprint_page_url(&id),
+    abstract_text: summary.chars().take(500).collect(),
+    arxiv_id: id,
+    title,
   }).collect())
 }
 
@@ -925,21 +1058,19 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
   let mut interest_count = 0i64;
   let mut papers_added = 0i64;
 
-  let end = Utc::now().date_naive();
-  let start = end - chrono::Duration::days(7);
-  match fetch_medrxiv_interval(start, end, 20).await {
-    Ok(all) => {
-      let mut subscribed = entries_in_categories(all, &settings.categories);
-      sort_newest(&mut subscribed);
+  let subject_term = pubmed_subject_term(&settings.categories, 7);
+  match search_pubmed_entries(&subject_term, settings.new_limit.max(settings.hot_limit)).await {
+    Ok(mut recent) => {
+      sort_newest(&mut recent);
       let hot_n = settings.hot_limit.clamp(5, 50) as usize;
-      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in subscribed.iter().take(hot_n).cloned().enumerate() {
+      for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in recent.iter().take(hot_n).cloned().enumerate() {
         upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
         insert_snapshot(&radar, &date, &arxiv_id, "hot", (index + 1) as i64, None).await?;
         hot_count += 1;
         papers_added += 1;
       }
       if hot_count > 0 { feeds_ok.push("hot"); }
-      let (new_cards, _newest) = keep_newest_window(subscribed.clone());
+      let (new_cards, _newest) = keep_newest_window(recent);
       let new_n = settings.new_limit.clamp(5, 200) as usize;
       for (index, (arxiv_id, title, summary, authors, categories, primary, published)) in new_cards.into_iter().take(new_n).enumerate() {
         upsert_paper_meta(&radar, &arxiv_id, &title, Some(&summary), &authors, primary.as_deref(), &categories, published.as_deref()).await?;
@@ -949,7 +1080,7 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
       }
       if new_count > 0 { feeds_ok.push("new"); }
     }
-    Err(error) => errors.push(format!("medrxiv: {error}")),
+    Err(error) => errors.push(format!("pubmed: {error}")),
   }
 
   if !normalized_keywords(&settings.keywords).is_empty() {
@@ -972,8 +1103,8 @@ pub async fn radar_fetch_today(state: State<'_, AppState>) -> Result<RadarFetchR
     }
     if interest_count > 0 { feeds_ok.push("interest"); }
   }
-  if hot_count == 0 && new_count == 0 && interest_count == 0 && errors.iter().all(|item| !item.starts_with("medrxiv:")) {
-    errors.push("medRxiv 没有返回稿件".into());
+  if hot_count == 0 && new_count == 0 && interest_count == 0 && errors.iter().all(|item| !item.starts_with("pubmed:")) {
+    errors.push("PubMed 没有返回文献".into());
   }
 
   prune_old(&radar, settings.retain_days).await?;
@@ -1083,7 +1214,7 @@ pub async fn radar_week_hot(state: State<'_, AppState>, anchor_date: Option<Stri
 pub async fn radar_set_user_state(state: State<'_, AppState>, arxiv_id: String, later: Option<bool>, hidden: Option<bool>) -> Result<()> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效预印本 ID".into());
+    return Err("无效文献 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let now = Utc::now().to_rfc3339();
@@ -1752,7 +1883,7 @@ pub async fn radar_get_digest(state: State<'_, AppState>, kind: String, anchor_d
 pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -> Result<RadarExplanation> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效预印本 ID".into());
+    return Err("无效文献 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   if let Some(raw) = sqlx::query_scalar::<_, String>("SELECT content_json FROM radar_explanations WHERE arxiv_id=?")
@@ -1843,7 +1974,7 @@ pub async fn radar_explain_paper(state: State<'_, AppState>, arxiv_id: String) -
 pub async fn radar_get_explanation(state: State<'_, AppState>, arxiv_id: String) -> Result<Option<RadarExplanation>> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效预印本 ID".into());
+    return Err("无效文献 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let raw: Option<String> = sqlx::query_scalar("SELECT content_json FROM radar_explanations WHERE arxiv_id=?")
@@ -1886,7 +2017,7 @@ pub async fn radar_list_explained_ids(state: State<'_, AppState>) -> Result<Vec<
 pub async fn radar_delete_explanation(state: State<'_, AppState>, arxiv_id: String) -> Result<()> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效预印本 ID".into());
+    return Err("无效文献 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   sqlx::query("DELETE FROM radar_explanations WHERE arxiv_id=?")
@@ -1907,7 +2038,7 @@ pub async fn radar_import_to_library(
 ) -> Result<RadarImportResult> {
   let id = clean_arxiv_id(&arxiv_id);
   if id.is_empty() {
-    return Err("无效预印本 ID".into());
+    return Err("无效文献 ID".into());
   }
   let radar = open_radar_pool(&state.library_dir).await?;
   let settings = load_settings(&radar).await?;
@@ -2040,6 +2171,9 @@ pub async fn radar_import_to_library(
 }
 
 pub(crate) async fn download_arxiv_pdf(library_dir: &Path, arxiv_id: &str) -> Result<String> {
+  if arxiv_id.starts_with("pmid:") {
+    return Err("PubMed 文献没有统一的开放 PDF。请取消下载 PDF，只保存题录。".into());
+  }
   let client = Client::builder().timeout(Duration::from_secs(90)).build().map_err(err)?;
   let url = preprint_pdf_url(arxiv_id);
   let response = client
@@ -2074,6 +2208,8 @@ mod radar_unit_tests {
       clean_arxiv_id("https://www.medrxiv.org/content/10.64898/2026.05.11.26352940v2.full.pdf"),
       "10.64898/2026.05.11.26352940v2"
     );
+    assert_eq!(clean_arxiv_id("pmid:42641405"), "pmid:42641405");
+    assert_eq!(clean_arxiv_id("https://pubmed.ncbi.nlm.nih.gov/42641405/"), "pmid:42641405");
   }
 
   #[test]
@@ -2185,11 +2321,19 @@ mod radar_unit_tests {
   }
 
   #[tokio::test]
-  async fn image_segmentation_keyword_returns_medrxiv_papers() {
-    let briefs = search_arxiv_briefs("Image Segmentation", 8).await.expect("europe pmc");
-    assert!(!briefs.is_empty(), "Image Segmentation 应返回 medRxiv 预印本");
+  async fn image_segmentation_keyword_returns_pubmed_papers() {
+    let briefs = search_arxiv_briefs("Image Segmentation", 8).await.expect("pubmed");
+    assert!(briefs.len() >= 3, "Image Segmentation 应返回 PubMed 文献，实际 {}", briefs.len());
     assert!(briefs.iter().any(|item| item.title.to_ascii_lowercase().contains("segment")));
-    assert!(briefs.iter().all(|item| item.abs_url.starts_with("https://www.medrxiv.org/content/")));
+    assert!(briefs.iter().all(|item| item.arxiv_id.starts_with("pmid:")));
+    assert!(briefs.iter().all(|item| item.abs_url.starts_with("https://pubmed.ncbi.nlm.nih.gov/")));
+  }
+
+  #[tokio::test]
+  async fn heart_failure_keyword_returns_pubmed_papers() {
+    let briefs = search_arxiv_briefs("heart failure", 5).await.expect("pubmed");
+    assert!(!briefs.is_empty(), "heart failure 应返回 PubMed 文献");
+    assert!(briefs.iter().all(|item| item.abs_url.starts_with("https://pubmed.ncbi.nlm.nih.gov/")));
   }
 
   #[tokio::test]

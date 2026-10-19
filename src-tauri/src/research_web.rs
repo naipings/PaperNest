@@ -47,7 +47,7 @@ pub async fn search_web_sources(query: &str, limit: i64, from_year: Option<i64>)
   Ok(out)
 }
 
-/// medRxiv 不可用时的兜底：仅 OpenAlex（标题+摘要语义检索），避免 Crossref bibliographic 噪声。
+/// PubMed 不可用时的兜底：仅 OpenAlex（标题+摘要语义检索），避免 Crossref bibliographic 噪声。
 pub async fn search_openalex_sources(query: &str, limit: i64, from_year: Option<i64>) -> Result<Vec<WebBrief>> {
   search_openalex(query, limit.clamp(3, 12), from_year).await
 }

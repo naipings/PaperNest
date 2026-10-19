@@ -1694,10 +1694,10 @@ async fn approve_import_proposal(
   if proposal.status != "pending" {
     return Err("该提案已处理".into());
   }
-  let arxiv_id = proposal.arxiv_id.clone().ok_or_else(|| "缺少 medRxiv ID".to_string())?;
+  let arxiv_id = proposal.arxiv_id.clone().ok_or_else(|| "缺少文献 ID".to_string())?;
   let pool = state.pool.read().await;
   if library_has_arxiv(&pool, &arxiv_id).await? {
-    return Err("资料库已有该 medRxiv 论文".into());
+    return Err("资料库已有该文献".into());
   }
   let mut paper = blank_paper(proposal.title.clone());
   paper.arxiv_id = Some(arxiv_id.clone());
