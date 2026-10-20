@@ -1820,8 +1820,11 @@ button.reading-heat-dot { cursor: default; }
 .deepread-compare-bar strong { color: var(--text); font-size: 14px; white-space: nowrap; }
 .deepread-compare-bar select { flex: 0 1 420px; min-width: 0; }
 .deepread-compare-bar .inline-notice { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.deepread-compare-bar button { margin-left: auto; }
+.deepread-compare-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.deepread-compare-actions button { margin-left: 0; }
 .deepread-compare-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.deepread-compare-body.paper-left .deepread-compare-report { order: 2; border-right: 0; border-left: 1px solid var(--line); }
+.deepread-compare-body.paper-left .deepread-compare-reader { order: 1; }
 .deepread-compare-report { min-height: 0; overflow: auto; padding: 14px 16px; border-right: 1px solid var(--line); }
 .deepread-compare-report .research-report-document { max-height: none; overflow: visible; }
 .deepread-compare-reader { min-width: 0; min-height: 0; display: flex; flex-direction: column; }

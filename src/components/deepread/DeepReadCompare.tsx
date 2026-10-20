@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Columns2, LoaderCircle, X } from "lucide-react";
+import { ArrowLeftRight, Columns2, LoaderCircle, X } from "lucide-react";
 import { backend } from "../../services/backend";
 import { useLibrary } from "../../state/LibraryContext";
 import { figureRect, parseEvidence, resolveEvidence } from "../../lib/deepReadEvidence";
@@ -8,7 +8,9 @@ import { Modal } from "../Modal";
 import { DeepReadReportTab } from "./DeepReadReportTab";
 import type { DeepRead, DeepReadDetail } from "../../types";
 
-/** 对照阅读：左侧精读报告，右侧阅读台；只列出已关联论文库论文的任务。 */
+const COMPARE_LAYOUT_KEY = "papernest.deepread.compareLayout";
+
+/** 对照阅读：报告与原文各占半屏，顶栏可互换左右；只列出已关联论文库论文的任务。 */
 export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[]; initialId: string; onExit(id: string): void }) {
   const { data } = useLibrary();
   const readerRef = useRef<PdfReaderHandle>(null);
@@ -18,6 +20,7 @@ export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[
   const [notice, setNotice] = useState("");
   const [leavePrompt, setLeavePrompt] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paperLeft, setPaperLeft] = useState(() => localStorage.getItem(COMPARE_LAYOUT_KEY) === "paper-left");
 
   const linked = tasks.filter(task => task.paperId && data?.papers.some(paper => paper.id === task.paperId && !paper.deletedAt));
   const task = linked.find(item => item.id === taskId);
@@ -82,10 +85,17 @@ export function DeepReadCompare({ tasks, initialId, onExit }: { tasks: DeepRead[
         <select aria-label="切换精读报告" value={taskId} onChange={event => { const next = event.target.value; guard(() => setTaskId(next)); }}>
           {linked.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
-        <button type="button" className="secondary" onClick={() => guard(() => onExit(taskId))}><X size={16} />退出对照</button>
+        <div className="deepread-compare-actions">
+          <button type="button" className="secondary" aria-pressed={paperLeft} onClick={() => setPaperLeft(current => {
+            const next = !current;
+            localStorage.setItem(COMPARE_LAYOUT_KEY, next ? "paper-left" : "report-left");
+            return next;
+          })}><ArrowLeftRight size={16} />{paperLeft ? "报告在左" : "文献在左"}</button>
+          <button type="button" className="secondary" onClick={() => guard(() => onExit(taskId))}><X size={16} />退出对照</button>
+        </div>
       </header>
       {notice && <div className="deepread-notice" role="status">{notice}</div>}
-      <div className="deepread-compare-body">
+      <div className={"deepread-compare-body" + (paperLeft ? " paper-left" : "")}>
         <section className="deepread-compare-report" aria-label="精读报告">
           {detail?.task.id === taskId
             ? <DeepReadReportTab detail={detail} onEvidence={revealEvidence} onFigure={revealFigure} onSave={async report => {

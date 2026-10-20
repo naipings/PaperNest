@@ -678,7 +678,7 @@ codex mcp add papernest -- "<path>/papernest-mcp.exe"
 | 证据 | `(Evidence: p. 5, P0042)`；插图 `![Figure 2](figures/paper-Figure2-1.png)` 须出自 manifest 且已预读 |
 | 图表运行时 | `src-tauri/resources/pdffigures2/`（jar + jlink 精简 JRE，61MB，gitignore）由 `scripts/build-pdffigures2.ps1` 构建，`bundle.resources` 打入安装包；便携版需与 `pdffigures2/` 目录同级 |
 | 读图模型 | 「文献调研」模型须支持图片输入，否则任务失败并显示接口错误 |
-| 对照阅读 | 任务关联论文库论文后可用：左报告、右 `PdfReader`（`pane`）；证据锚点与插图经 `deepReadEvidence.ts` 解析，`PdfReaderHandle.reveal` 跳页并临时高亮（不写批注） |
+| 对照阅读 | 任务关联论文库论文后可用：默认左报告、右 `PdfReader`（`pane`）；顶栏可换成文献在左、报告在右，选择记在本机。证据锚点与插图经 `deepReadEvidence.ts` 解析，`PdfReaderHandle.reveal` 跳页并临时高亮（不写批注） |
 | 校验 | 问题写入 `validation_json` 并显示在报告顶部，报告照常保存 |
 | 截断 | 阶段输出 `finish_reason=length` 判失败，提示换用输出上限更高的模型后继续生成 |
 | 中断 | 启动时 `queued` / `running` 改为 `failed`，可「继续生成」 |
