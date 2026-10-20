@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from "@tanstack/react-table";
-import { ExternalLink, FileText, FolderInput, Heart, Scissors, Trash2 } from "lucide-react";
+import { ExternalLink, FileText, FolderInput, Heart, Scissors, Tags, Trash2 } from "lucide-react";
 import { backend } from "../services/backend";
 import { formatCustomFieldValue, tableCustomFields, valuesForPaper } from "../lib/customFields";
 import { beginPaperDrag, endPaperDrag, publishDropTarget, resolveDraggedPaperIds } from "../lib/paperDrag";
@@ -30,7 +30,7 @@ function folderDropAt(clientX: number, clientY: number) {
 
 export function PaperTable({
   papers, categories, tags, folders, customFieldDefinitions, customFieldValues, selectedId, cutPaperIds,
-  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder, onRequestMove, clearChecksToken,
+  onSelect, onOpenPdf, onToggleFavorite, onBulkRecycle, onCut, onMoveToFolder, onRequestMove, onClassify, classifying, clearChecksToken,
 }: {
   papers: Paper[];
   categories: Category[];
@@ -48,6 +48,8 @@ export function PaperTable({
   onCut(ids: string[]): void;
   onMoveToFolder(paperIds: string[], folderId: string | null): void;
   onRequestMove(paperIds: string[]): void;
+  onClassify(papers: Paper[]): void;
+  classifying: boolean;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
@@ -200,6 +202,7 @@ export function PaperTable({
       <strong>已选 {selectedPapers.length} 篇</strong>
       <button className="secondary" onClick={cutSelected}><Scissors size={15} />剪切</button>
       <button className="secondary" onClick={moveSelected}><FolderInput size={15} />移动到…</button>
+      <button className="secondary" disabled={classifying} onClick={() => onClassify(selectedPapers)}><Tags size={15} />分配标签</button>
       <button className="secondary danger" onClick={recycleSelected}><Trash2 size={15} />移入回收站</button>
       <button className="ghost" onClick={() => setCheckedIds(new Set())}>取消选择</button>
     </div>}

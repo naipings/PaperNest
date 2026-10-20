@@ -19,7 +19,7 @@ describe("framework figure loading", () => {
     });
     vi.spyOn(backend, "readPdf").mockRejectedValue(new Error("图片文件不存在"));
 
-    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} /></LibraryProvider>);
+    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} classifying={false} onClassify={() => undefined} /></LibraryProvider>);
 
     fireEvent.click(await screen.findByRole("button", { name: "框架 1" }));
 

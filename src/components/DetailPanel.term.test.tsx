@@ -14,7 +14,7 @@ describe("manual vocabulary saving", () => {
 
   it("keeps the term editor open and shows a save error", async () => {
     vi.spyOn(backend, "saveVocabulary").mockRejectedValue(new Error("数据库不可写"));
-    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} /></LibraryProvider>);
+    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} classifying={false} onClassify={() => undefined} /></LibraryProvider>);
 
     fireEvent.click(await screen.findByRole("button", { name: /术语/ }));
     fireEvent.click(screen.getByRole("button", { name: "添加专业词汇或短语" }));

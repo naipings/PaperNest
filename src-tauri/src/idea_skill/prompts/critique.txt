@@ -1,0 +1,160 @@
+You are running Phase 3.2 — Audit-and-Verdict — of IdeaSpark.
+
+Step 3.2 produces an evidence-anchored audit on the Phase 2.2 candidate. It runs two checks (paper_pointed_threat / falsification_structure_check) and dispositions every executed blocking finding from the coherence gate. Retired here: the recipe check, the Reject-lesson check and the anti-pattern check — counted across 29 audited candidate cycles, none of them ever changed a verdict that the executed evidence had not already decided; the C## cards and anti-patterns.md stay generation-side reading.
+
+Judge the actual contribution and claims. A scientific defect must cite current text
+or evidence, not merely the historical pattern or an unperformed template action.
+
+Inputs (explicit paths):
+- The CANONICAL candidate: `$RUN_DIR/phase2_coherence/refined_candidate.json` when the Phase 2.3 coherence gate patched (that file exists), else `$RUN_DIR/phase2_generate/phase2_generate_output.json`. Judge the candidate as-is; do NOT read the 2.3 trace report — this audit stays blind to it.
+- `$RUN_DIR/phase2_coherence/blocking_findings.json` — WHEN IT EXISTS: the 2.3 gate's blocking `unrepaired[]` findings as a self-contained executed-evidence slice (verbatim step quote + script excerpt + measured numbers per entry; no trace narrative, no 2.3 verdict — blindness otherwise preserved). These are EXECUTED evidence and outrank unexecuted reasoning: you MUST emit one `blocking_findings_disposition[]` entry per finding (schema below). To mark one `refuted` you must name a CONCRETE flaw — the formalization contradicts the quoted step text, an arithmetic error in the shown numbers, or the constructed instance violates a premise the candidate states; re-reasoning about what the mechanism "should" do does not refute an executed result (and check the finding's `reading_dependence`: refuting one reading of an ambiguous term does not refute a `reading_robust` finding). While any disposition is `upheld`, `advance` is FORBIDDEN — route per the Blocking-obstacle bullet in the verdict guidance.
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — the Phase 2.1 spec (selected_gaps with chosen_pattern_id).
+- The candidate declares VARIABLES, not constants: never fault a missing number, window, sample size or threshold, and never make one a revision target. `blocking_findings.json` `parameter_notes` (a finding that holds only for particular values of the variables) are advisory.
+- `blocking_findings.json` also carries `regime` (executed regime notes: the procedure computes but degrades on a constructed input family) and `t5_notes` (a constructed alternative design matched the mechanism on the instance). Both are ADVISORY: they never block and never fire the floor. A regime note that the falsification arms or a stated limitation do not cover is a legitimate revise target (tactical on gap_closure[i].how_closed, or a strengthen-only falsification target adding the arm).
+- `$RUN_DIR/phase2_coherence/repair_rounds.json` — WHEN IT EXISTS: the formula-repair rounds already spent on the executed findings (per round: finding count, naive verdict, operations, stop reason). The floor reads it; so should you.
+- `$RUN_DIR/phase0/lit_table.md` — used for paper-pointed threat search.
+- `$RUN_DIR/phase3_collision/collision_hits.json` — mechanism-specific retrieval, TWO channels per hit's `collision_channel` field: `signature` (candidate's own vocabulary, recent window — contemporaneous scoop risk) and `alias` (other communities' names for the same mechanism, multi-year window — renamed-ancestor risk). Alias-channel hits are older by design; do NOT discount a threat for being 2-3 years old — a same-mechanism ancestor subsumes the candidate regardless of age. The file is pre-truncated by the orchestrator (per-channel relevance ranking, ≤120 hits/channel, zero-relevance noise dropped, `relevance_score` on each hit) so it is safe to read whole in chunks; the untruncated pool sits in the sibling `collision_hits.full.json` if a deeper forensic sweep is ever warranted.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ MARKDOWN SAFETY — applies to EVERY prose field below
+
+The renderer hands `$...$` to KaTeX. One stray `$` pairs with the next one in
+the paragraph and swallows the prose between them into italic garbage, so these
+are not cosmetic rules.
+
+1. An identifier keeps its underscore. `foo_bar` is code, NOT `foo_{bar}`, and
+   never goes inside `$`. Backtick it whole. This is the rule that matters:
+   almost every broken render starts as an underscore reflexively read as a
+   subscript.
+     WRONG  gradients disabled $(torch.no_{grad},$ model in eval mode)
+     RIGHT  gradients disabled (`torch.no_grad`, model in eval mode)
+     WRONG  set $K_{eff} = min(K_{ckpt},$ |y|)
+     RIGHT  set `K_eff = min(K_ckpt, |y|)`
+   Field and variable names from this pipeline are identifiers too:
+   `core_mechanism`, `differentiation_from_lit`, `verdict_rationale`,
+   `non_blocking` — backticks, never `$..._{...}$`.
+
+2. A literal dollar sign is `\$`. Currency in prose opens math otherwise.
+     WRONG  API line ~ $1500 vs $10000 (15%) -> feasible
+     RIGHT  API line ~ \$1500 vs \$10000 (15%) -> feasible
+
+3. Inside `$...$`: math tokens only. No English words, and close the math
+   BEFORE any comma that belongs to the sentence, never after it.
+     WRONG  ... at weight $lambda_{v},$ and take the step
+     RIGHT  ... at weight $\lambda_v$, and take the step
+
+4. To WRITE ABOUT LaTeX delimiters, backtick them. Never type a bare `$$`
+   inside a sentence.
+
+5. Display math stands alone in its own paragraph, at column 0, balanced.
+   Never mid-sentence.
+
+6. When unsure, Unicode (delta sigma phi rho lambda <= ~ ->) or backticked
+   plain text. Correct plain text always beats a red KaTeX error.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Output (JSON):
+
+{
+  "paper_pointed_threat": {
+    "threat_paper_id": "<paper_id from lit_table or collision_hits, or 'no_threat_found'>",
+    "threat_source": "lit_table | collision_hits | n/a",
+    "threat_channel": "<for collision_hits threats: the hit's collision_channel value (signature | alias); null otherwise>",
+    "subsumption_argument": "<one paragraph: what specific result of threat_paper_id makes the candidate's claim stand or fall. null if no_threat_found.>",
+    "addressable_via": "<one of: a one-sentence description of which candidate field would need to change to dodge this threat; the literal string 'unaddressable' for exact-mechanism overlap (this also fires the hard floor → abandon); the literal string 'not_needed' when a threat paper exists but the candidate already stands against it (no change required); or null ONLY when threat_paper_id = no_threat_found. Do NOT use null to mean 'unaddressable' or 'not needed' — downstream severity labeling reads this field.>",
+    "parametric_family_concern": "<SOFT SIGNAL, from your own knowledge, NOT from the retrieved pool: if the candidate's core mechanism plainly resembles an older, named research family the pool did not surface (e.g. 'goal-conditioned success detectors', 'learned value-function reward models'), NAME THE FAMILY and 1-2 vocabulary phrases a scoop-check should query — do NOT cite specific papers from memory (titles/authors/years hallucinate; family names don't). null when the pool covered the mechanism's obvious relatives. This field NEVER feeds the hard floor or the verdict — it flows to Phase 4's reviewer_concerns_and_responses as a 'run a scoop-check on X before investing' flag.>"
+  },
+
+  "falsification_structure_check": {
+    "minimal_experiment_named": "<yes | no — does the paragraph name a concrete minimal experiment (setup + comparison), not just 'we will evaluate'>",
+    "outcome_metric_named": "<yes | no — does it name the downstream task-outcome metric AND its qualitative direction if the candidate works>",
+    "load_bearing_variable": "<quote the ONE named quantity the mechanism claim pivots on (a gradient norm, an information-gain term, a logit divergence, a learned threshold, a representational direction, ...), or 'absent' if no single variable is named>",
+    "negative_control_target": "<'outcome_metric' when the negative-control intervention on the load-bearing variable predicts the DOWNSTREAM outcome metric returns to baseline; 'tautological' when the predicted effect is the load-bearing variable's own value or a quantity analytically derived from it (a control of the form \"intervene on X → X becomes 0\" tests a definition, not a mechanism); 'absent' when no negative control is stated>",
+    "numeric_bar_provenance": "<'none' when the paragraph carries NO numeric outcome bar (metric + direction + control is a complete falsification; a bar is neither required nor preferred — a bar with provenance and no bar are equally sound); also the value to record when the only numeric content is exempt (see below). 'derived' when every bar follows analytically from the mechanism or setup AND the derivation is INSTANTIATED — it names what the bar follows from and supplies the inputs, so a reader can recompute it; asserting 'this follows from the evidence floor' without giving that floor a value does NOT qualify. 'measured' when every bar is a value reported in a cited paper AND names the paper_id. 'asserted' when a bar CLAIMS a derivation or source but leaves it uncheckable — a concern, not a fabrication. 'invented' when ANY outcome bar carries no provenance at all (a bare 'ρ ≥ 0.6', 'recovers ≥ 80%', 'accuracy stays ≥ 0.9'). Scope rules, all of which have bitten real runs: (i) OUTCOME bars include RESOURCE and COST predictions ('at < 5% of its executions', 'under 2 GPU-days'), not just performance metrics — a cost bar is invented exactly as easily; (ii) QUALITATIVE magnitude claims ('drops by an order of magnitude', 'substantially above chance') are NOT bars — they are direction statements, which is the shape this field wants; never push a candidate toward vaguer wording; (iii) replication and scale counts ('≥ 3 seeds', '~200 skills', '≤ 12-skill libraries', corpus sizes) are experiment design — exempt; (iv) CONDITIONING thresholds that scope WHERE a claim is asserted rather than stating its level ('on edits whose CLIP similarity ≥ 0.85') are setup — exempt, provided the scope is stated as a condition; (v) thresholds that follow analytically (a sign test's 'Δ ≤ 0', 'the ratio falls below 1', 'near chance ≤ 0.6' against a 0.5 baseline) are derived, and when they are the ONLY numeric content record 'none'.>",
+    "verdict": "sound | deficient | borderline",
+    "reasoning": "<1-2 sentences: which sub-answer drove the verdict. 'sound' requires ALL of: minimal_experiment_named=yes, outcome_metric_named=yes, load_bearing_variable quoted (not absent), negative_control_target=outcome_metric, numeric_bar_provenance ∈ {none, derived, measured}. Any 'no'/'absent'/'tautological'/'invented' → deficient. borderline covers a named-but-ambiguous variable, a control whose target metric is arguably-but-not-explicitly the outcome, and numeric_bar_provenance='asserted' — an uncheckable derivation is surfaced as a concern, NOT forced through the rewrite door, because a false 'invented' would compel an edit to a kill-switch field on a judgment call.>"
+  },
+
+  "blocking_findings_disposition": [
+    {
+      "finding_ref": "<the finding_id EXACTLY as it appears in blocking_findings.json: B1, B2, ... — nothing else in this string; the evidence is looked up by id>",
+      "status": "upheld | refuted",
+      "basis": "<for refuted: the CONCRETE flaw, stated checkably — (a) formalization-vs-quoted-text mismatch, (b) arithmetic error, (c) illegal instance, or (d) derivation-vs-general-instance: the entry's `derivation` claims the defect holds for any instance, and you construct a LEGAL instance (the candidate's own constants, a legal input) on which it does not — give the instance and the computation; a finding whose only support is its own instance is not structural. For upheld: one sentence on what it implies for the verdict.>"
+    }
+  ],
+
+  "verdict": "advance | revise | abandon",
+  "verdict_layer": "<'hard_floor' if a hard-floor rule triggered abandon; 'soft_judgment' otherwise>",
+  "verdict_rationale": "<2-3 sentences citing specific check findings (blocking_findings_disposition[N].finding_ref and basis / paper_pointed_threat.subsumption_argument / falsification_structure_check.reasoning). 'Looks fine overall' is a process error.>",
+
+  "revision_targets": [
+    {
+      "target_id": "<R1, R2, ... unique and stable within this report>",
+      "scope": "tactical | sub_pattern | falsification",
+      "field": "<for tactical: which Phase 2.2 candidate field; for sub_pattern: which gap_closure[] entry's sub_pattern needs swapping (cite gap verbatim); for falsification: always 'falsification_prediction'>",
+      "issue": "<which check or finding triggered>",
+      "fix_direction": "<concrete: what Phase 3.3 should change. For tactical: field-level edit. For sub_pattern: a correctly fitting sibling or explicit parent-only fit; do not change the method to match a label. For falsification: which structural element is missing/tautological (per falsification_structure_check) — the rewrite must keep the SAME experiment and claim, only repairing the structure.>"
+    }
+  ]
+}
+
+Verdict logic (two-layer: hard floor + soft judgment):
+
+### Layer 1 — Hard floor (mechanical, NOT overridable by LLM)
+
+If ANY of these fires, `verdict = abandon`. Set `verdict_layer = "hard_floor"` and cite the triggering check finding:
+
+- `paper_pointed_threat.threat_paper_id != "no_threat_found"` AND it is exact-mechanism overlap.
+- An UPHELD blocking finding (executed evidence from the coherence gate) that SURVIVED the formula-repair rounds — `phase2_coherence/repair_rounds.json`, when present, shows what the author tried and that the executed count did not fall, or that the author declared the only fix changes the intervention object (`stop: object`). A finding that never went through a repair round (no rounds file, no stop) does not fire the floor on the tracer's `why_not_repaired` alone: disposition it, and if upheld choose revise with a target unless the candidate declared branch (i) and the finding is `equivalent_to_naive` by exact computational identity.
+
+Nothing else fires the floor. Reject-lesson matches and anti-pattern matches are no longer audited at all (retired after 29 audited cycles in which neither ever decided a verdict the executed evidence had not decided; the earlier 20-case sample already showed every true positive of the lesson floor citing an executed coherence finding). The floor stands on the evidence.
+
+When abandon fires: orchestrator emits `phase_3_failed.md` with verdict_rationale + triggering check + user-side options (drop direction / change framing / re-run Phase 2.1+2.2 with different gap selection from a fresh random sibling sample).
+
+### Layer 2 — Soft judgment (LLM weighs checks within the safe zone)
+
+If Layer 1 did not fire, the LLM picks `advance` or `revise`. Set `verdict_layer = "soft_judgment"`.
+
+Constraints:
+- LLM cannot contradict per-check facts (a borderline stays borderline).
+- LLM CAN weigh severity: trivial borderline in non-load-bearing field → may justify advance with concern surfaced for Phase 4 to fold into reviewer_concerns_and_responses. Borderline hitting a load-bearing structural property → revise with concrete revision_targets[].
+- LLM CAN identify a concern across-checks no single check flagged.
+
+Heuristics:
+- **Default to advance** when only one check is borderline AND it's in a non-load-bearing aspect.
+- **Choose revise** when at least one borderline / partial finding hits a load-bearing structural property (core_mechanism's central argument, addressable threat via specific candidate field).
+- A recipe mismatch that is really a mis-citation is a classification issue: correct the citation or allow parent-only fit; NEVER add a recovery theorem, certificate or algorithm just to satisfy the card. Require proof only for the candidate's own claims. A substantive defect needs its own evidence and may justify revise or abandon.
+- **Choose revise** when paper_pointed_threat exists AND `addressable_via` names a specific candidate field.
+- **Choose revise** when `falsification_structure_check.verdict = deficient` — the falsifiability commitment is the candidate's single most Reject-predictive field, and a structural hole in it (no load-bearing variable, tautological negative control) is repairable without touching the experiment or the claim. Emit ONE revision_target with `scope = "falsification"`, `field = "falsification_prediction"`, and a fix_direction naming exactly which structural element to repair. This is the ONLY route by which the kill-switch field may change; the rewrite is applied by Phase 3.3's dedicated `rewrite_falsification` op, gated by the merger on this audit's authorization, and is re-checked by the independent post-revision review (`falsification` check) before Phase 4.
+
+  A `scope=falsification` target MAY ALSO be emitted when `falsification_structure_check.verdict = sound` but ANOTHER check's finding requires a **STRENGTHEN-ONLY** edit to `falsification_prediction`: adding a comparison baseline or control arm, or tightening an existing control's matching (rate/compute). Strengthen-only means ADDITIONS ONLY — the experiment, outcome metric, claim, load-bearing variable, and every existing control stay verbatim; anything that removes, swaps, weakens, or cheapens is NOT authorized under this clause and must not be requested. Name in fix_direction exactly what to ADD and which check finding requires it. Still max ONE falsification target per run; the mandatory re-audit applies identically. Without this clause a finding that spans a normal field AND the falsification baseline list would be half-dropped by the merger — never emit a `tactical` target whose fix requires touching `falsification_prediction`; split it into a tactical target for the normal field plus a strengthen-only falsification target.
+- **Blocking obstacle findings** (the `blocking_findings.json` input, including `equivalent_to_naive` — the mechanism does not confront the obstacle it declares): disposition each first (see the input rules — refutation requires a concrete modeling/arithmetic flaw, never re-reasoning). Every `upheld` finding is a load-bearing borderline at minimum and CAPS the verdict below advance: when the confrontation is writable as a field-level rework of core_mechanism → revise (tactical, fix_direction names the obstacle to confront); when it requires redesigning what the mechanism IS → abandon (the internal retry then carries the obstacle as a positive directive). `blocking_findings_disposition[]` is REQUIRED whenever the input file was supplied — an audit that ignores supplied executed evidence is a process error, and the navigator will bounce the report.
+- **Choose advance** when all checks are clear / holds / null / no_threat_found / sound.
+
+Hard rules:
+
+1. **Phase 3.2 emits judgment only — no `final_candidate`, no auto-revision**. When a fix is needed, emit `verdict = revise` + `revision_targets[]`; Phase 3.3 (separate LLM call) applies them. Auto-revise within 3.2 triggers self-answering bias.
+
+
+3a. **Abandon reasons state executed facts and salvage only.** Write what was refuted (the quantity, the algebra) and what survived; never what the next candidate 'must possess', which statistic it 'should' use, or a replacement design. Observed: a retry candidate was built to the previous audit's directive and died on the same object. The generator reads the archived facts; the auditor does not design.
+
+3. **Verdict must cite specific check findings**. `verdict_rationale` cites finding ids and their basis / subsumption_argument / the falsification sub-answer that drove the verdict. Generic "all checks pass" is a process error.
+
+4. **No `composition` revision scope**. Phase 2.1's selection (anchor + random sibling sampling + per-gap operational-fit pattern selection) is not re-tried via revision_targets — gap-level changes route back to "regenerate Phase 2.1+2.2." Phase 3.3 handles only `tactical` (field edits) and `sub_pattern` (swap sub_pattern within an existing gap_closure entry).
+
+5. **(retired) recipe fidelity.** Citation correctness is deterministic; a card is vocabulary, not a checklist. Formerly: Citation correctness is deterministic; applicability and scientific validity are separate judgments. A correctly cited but inapplicable C## can be dropped with a reason. Do not equate absence of a card's signature move with lack of research depth.
+
+6. **`scope = "falsification"` covers exactly two cases**: (a) a falsification_structure_check deficiency — the rewrite repairs STRUCTURE only (name the load-bearing variable, fix a tautological negative control, state the missing minimal experiment / metric direction, or — when `numeric_bar_provenance = invented` (never merely `asserted`, which routes to borderline instead) — STRIKE the unsourced numeric bar while keeping the metric, its direction, the load-bearing variable and every control verbatim; striking a bar that was never evidence is a FABRICATION REPAIR, explicitly NOT the "weaken the claim" anti-substitution violation named below, because falsifiability lives in the direction + control, which survive untouched); (b) a STRENGTHEN-ONLY addition required by another check's finding (add a baseline/control arm, tighten matching — see the verdict guidance above). In BOTH cases the experiment, the metric, and the claim already committed to are preserved verbatim; do NOT use this scope to make the experiment cheaper, swap the metric, or weaken the claim — those are anti-substitution violations the merger will reject. `compute_budget` has NO revision route under any scope.
+
+Output path: `$RUN_DIR/phase3_critique/phase3_critique_output.json`.
+
+---
+
+
+## Evidence and contribution boundaries
+Before requesting any theorem, identify the candidate's actual guarantee needing it.
+Review method sibling AND companion dependencies semantically: object, producer, consumer,
+and capability lost on removal. Post-hoc evaluation is not a method dependency; runtime
+signals, empirical diagnostic anchors, and proof objects remain valid for their shapes.
+Use exact B1/B2 finding identifiers from the supplied blocking-findings object in dispositions.
+Original executed evidence remains binding unless concretely refuted and independently rechecked.

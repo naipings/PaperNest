@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTaxonomyImportNote, mergeTaxonomyIntoPaper, taxonomyInputFromPaper } from "./taxonomyClassify";
+import { assignTaxonomyToUncategorized, formatTaxonomyAssignResult, formatTaxonomyImportNote, mergeTaxonomyIntoPaper, taxonomyInputFromPaper, uncategorizedPapers } from "./taxonomyClassify";
 import type { Category, LlmTaxonomyResult, Paper, Tag } from "../types";
 
 function paper(partial: Partial<Paper> = {}): Paper {
@@ -69,6 +69,35 @@ describe("taxonomyClassify", () => {
     });
     expect(next.categoryId).toBeUndefined();
     expect(next.tagIds).toEqual([]);
+  });
+
+  it("assigns taxonomy only to papers with no category and no tags", async () => {
+    const classified = paper({ id: "kept", categoryId: "cat-cv", tagIds: ["tag-beginner"] });
+    const blank = paper({ id: "blank" });
+    const saved: Paper[] = [];
+    const result = await assignTaxonomyToUncategorized([classified, blank], categories, tags, {
+      classify: async () => ({ categoryId: "cat-nlp", tagIds: ["tag-llm"], abstain: false }),
+      save: async item => { saved.push(item); },
+    });
+    expect(uncategorizedPapers([classified, blank]).map(item => item.id)).toEqual(["blank"]);
+    expect(saved.map(item => item.id)).toEqual(["blank"]);
+    expect(saved[0].categoryId).toBe("cat-nlp");
+    expect(saved[0].tagIds).toEqual(["tag-llm"]);
+    expect(result.saved).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.abstained).toBe(0);
+  });
+
+  it("does not save when classification abstains", async () => {
+    const saved: string[] = [];
+    const result = await assignTaxonomyToUncategorized([paper()], categories, tags, {
+      classify: async () => ({ categoryId: null, tagIds: [], abstain: true }),
+      save: async item => { saved.push(item.id); },
+    });
+    expect(saved).toEqual([]);
+    expect(result.abstained).toBe(1);
+    expect(result.saved).toBe(0);
+    expect(formatTaxonomyAssignResult(result)).toContain("未匹配 1 篇");
   });
 
   it("formats import notes for classified and abstained papers", () => {

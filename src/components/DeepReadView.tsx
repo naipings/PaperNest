@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, LoaderCircle, MessageSquare, MoreHorizontal, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { BookOpenCheck, BookOpenText, Check, Columns2, Copy, FolderOpen, Library, Lightbulb, LoaderCircle, MessageSquare, MoreHorizontal, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { backend, isTauri } from "../services/backend";
 import { useLibrary } from "../state/LibraryContext";
 import { extractPdfParagraphs } from "../lib/pdfParagraphs";
@@ -42,7 +42,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; nonce: number }; onOpenPaper(paper: Paper): void }) {
+export function DeepReadView({ seed, onOpenPaper, onIdeate }: { seed?: { paperId: string; nonce: number }; onOpenPaper(paper: Paper): void; onIdeate?(paper: Paper): void }) {
   const { data, refresh } = useLibrary();
   const [tasks, setTasks] = useState<DeepRead[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
@@ -443,6 +443,7 @@ export function DeepReadView({ seed, onOpenPaper }: { seed?: { paperId: string; 
                       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus(); }
                     }}>
                       {linkedPaper && <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onOpenPaper(linkedPaper); }}><BookOpenText size={15} />打开原文</button>}
+                      {linkedPaper && onIdeate && <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onIdeate(linkedPaper); }}><Lightbulb size={15} />据此构思</button>}
                       <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); void backend.deepreadOpenWorkspace(selected.id).catch(showError); }}><FolderOpen size={15} />打开文件夹</button>
                       {stagesDone.length > 0 && !isActive(selected) && <button type="button" role="menuitem" disabled={!ready} onClick={() => { setMoreOpen(false); void run(true); }}><RotateCcw size={15} />重新生成报告</button>}
                     </div>}

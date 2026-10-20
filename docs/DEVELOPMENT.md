@@ -137,7 +137,7 @@ flowchart LR
 - 摘要在 `Keywords`、`Index Terms`、`CCS CONCEPTS`、`ACM Reference Format`、`Introduction`（含 `1 Introduction`、`II. INTRODUCTION`，以及 PDF.js 把小型大写拆成的 `1 I NTRODUCTION`）处截断；只含 CCS 分类树或 LaTeX 命令残片的文本不写入摘要。模板差异大时，学术界常用 GROBID，但它依赖独立服务，本机导入不捆绑。
 - 封面提取同时写入 PDF 页数。
 - 已配置翻译服务时补中文摘要；已开启 LLM 自动整理时用同次提取的文本（默认纯文本）写回摘要/总结/术语；若仍缺总结或术语，再用标题+摘要做一次轻量补全。LLM 字段覆盖封面启发式。
-- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。向尚无分类的论文写入分类结果。当前实现走 Chat Completions；改为 Jev 的方案见 [taxonomy-jev-plan.md](research/taxonomy-jev-plan.md)，尚未落地。
+- 开启「导入时自动分类」时，在元数据分析之后调用 `classify_paper_taxonomy`：从当前 `categories`/`tags` 词表选主领域（≤1）与子领域标签；严格度控制标签数量；无法匹配则弃权并保持未分类。向尚无分类的论文写入分类结果。论文库勾选一篇或多篇后，「分配标签」对其中没有主领域也没有子领域的论文走同一分类；论文详情对当前未分类论文提供同一按钮。当前实现走 Chat Completions；改为 Jev 的方案见 [taxonomy-jev-plan.md](research/taxonomy-jev-plan.md)，尚未落地。
 - LLM「测试连接」先写入当前设置；写入失败时不发起连接请求，测试结束前保持按钮禁用。
 - 导入进度与完成提示存在 `LibraryContext`：切换离开论文库再回来仍显示；其他界面顶部有导入横幅，直到本次导入结束。
 - PDF、Bib/RIS 导入失败时刷新资料库快照，并在顶部显示错误；导入期间禁用两个导入按钮与新建论文按钮。
@@ -710,6 +710,25 @@ PaperNest 自行保存一份 Agent Skill（[规范](https://agentskills.io/speci
 | 更新范围 | 只覆盖所选 skill；上游新增的引用目录在详情页标「未导入」 |
 
 实现计划与实测见 [skill-library-plan.md](research/skill-library-plan.md)。
+
+---
+
+## 18. 研究构思
+
+把研究方向做成一张研究提案卡。阶段顺序和提示词来自 [ResearchStudio IdeaSpark](https://github.com/microsoft/ResearchStudio)（MIT）。PaperNest 主持检索和模型调用，提示词原文在 `src-tauri/src/idea_skill/`。使用「设置 → 文献调研」的 LLM。
+
+```text
+方向 + 可选论文库种子
+  → idea_create：ideas/<id>/intake.json
+  → idea_run：
+       retrieve：arXiv + OpenAlex + Crossref + 种子论文 → phase0/lit_table.md
+       bottleneck / select / generate / collision / audit：官方提示词，文件内容内联给模型
+       revise：verdict=revise 时按官方 op 合并补丁；advance 跳过；abandon 仍成稿
+       card：候选字段写成 idea.std.zh.md
+  → 精读「据此构思」预填方向；卡片「开文献调研」创建调研会话
+```
+
+未运行上游 `run.py` 质量账本、公式试跑、Phase 4 技术展开和 PDF。文献只有摘要。计划见 [idea-card-plan.md](research/idea-card-plan.md)。
 
 ---
 

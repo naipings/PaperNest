@@ -495,6 +495,27 @@ export interface DeepReadParagraph { text: string; rects: Rect[]; }
 
 export interface DeepReadPage { page: number; paragraphs: DeepReadParagraph[]; }
 
+export interface IdeaTask {
+  id: string;
+  title: string;
+  direction: string;
+  paperIds: string[];
+  workspacePath: string;
+  status: DeepReadStatus;
+  stage: string | null;
+  error: string | null;
+  validation: string[];
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IdeaDetail {
+  task: IdeaTask;
+  report: string;
+  stagesDone: string[];
+}
+
 export interface CreateDeepReadInput {
   paperId?: string;
   title: string;

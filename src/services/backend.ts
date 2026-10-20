@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { seedSnapshot } from "../seed";
-import type { Annotation, Category, CreateDeepReadInput, CustomFieldDefinition, DeepRead, DeepReadDetail, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, GithubSkillScan, SkillDiffEntry, SkillEntry, SkillLinkReport, SkillLocalScan, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
+import type { Annotation, Category, CreateDeepReadInput, CustomFieldDefinition, DeepRead, DeepReadDetail, IdeaDetail, IdeaTask, DuplicateCandidate, Folder, FrameworkFigure, ImportedPaper, LibrarySnapshot, LlmAnalysis, LlmAnalysisInput, LlmSettings, LlmTaxonomyInput, LlmTaxonomyResult, McpInfo, OnlineMetadataLookup, OnlineMetadataSettings, Paper, PaperCustomFieldValue, PaperExplainSession, Profile, RadarDigest, RadarExplanation, RadarFeedPage, RadarFetchResult, RadarImportResult, RadarRecommendResult, RadarSettings, RadarCard, RadarWeekHot, ResearchAttachmentInput, ResearchContextUsage, ResearchImportResult, ResearchLlmSettings, ResearchProposal, ResearchSession, ResearchSource, ResearchStepSummary, ResearchTurnView, SavedView, SearchHit, GithubSkillScan, SkillDiffEntry, SkillEntry, SkillLinkReport, SkillLocalScan, Tag, Task, VocabularyEntry, WritingExcerpt } from "../types";
 import { folderSiblingNameTaken } from "../lib/folders";
 import { dayKey } from "../lib/readingActivity";
 
@@ -33,6 +33,17 @@ export const backend = {
     if (isTauri()) return invoke("save_paper", { paper });
     const data = loadPreview(); const index = data.papers.findIndex(p => p.id === paper.id);
     index >= 0 ? data.papers[index] = paper : data.papers.unshift(paper); persistPreview(data);
+  },
+  async updatePaperReadingState(paperId: string, patch: { pageCount?: number; hasTextLayer?: boolean; readingPage?: number }): Promise<void> {
+    if (isTauri()) return invoke("update_paper_reading_state", { paperId, pageCount: patch.pageCount ?? null, hasTextLayer: patch.hasTextLayer ?? null, readingPage: patch.readingPage ?? null });
+    const data = loadPreview();
+    const paper = data.papers.find(item => item.id === paperId);
+    if (!paper) throw new Error("论文不存在");
+    if (patch.pageCount !== undefined) paper.pageCount = patch.pageCount;
+    if (patch.hasTextLayer !== undefined) paper.hasTextLayer = patch.hasTextLayer;
+    if (patch.readingPage !== undefined) paper.readingPage = patch.readingPage;
+    paper.updatedAt = new Date().toISOString();
+    persistPreview(data);
   },
   async addReadingSeconds(paperId: string, day: string, seconds: number): Promise<number> {
     if (seconds <= 0) return 0;
@@ -539,6 +550,34 @@ export const backend = {
   async deepreadDelete(id: string): Promise<void> {
     if (!isTauri()) return;
     return invoke("deepread_delete", { id });
+  },
+  async ideaList(): Promise<IdeaTask[]> {
+    if (!isTauri()) return [];
+    return invoke("idea_list");
+  },
+  async ideaGet(id: string): Promise<IdeaDetail> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持研究构思");
+    return invoke("idea_get", { id });
+  },
+  async ideaCreate(input: { direction: string; paperIds: string[] }): Promise<IdeaTask> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持研究构思");
+    return invoke("idea_create", { input });
+  },
+  async ideaRun(id: string, restart: boolean): Promise<IdeaTask> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持研究构思");
+    return invoke("idea_run", { id, restart });
+  },
+  async ideaCancel(id: string): Promise<IdeaTask> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持研究构思");
+    return invoke("idea_cancel", { id });
+  },
+  async ideaSaveReport(id: string, report: string): Promise<void> {
+    if (!isTauri()) throw new Error("浏览器预览模式不支持研究构思");
+    return invoke("idea_save_report", { id, report });
+  },
+  async ideaDelete(id: string): Promise<void> {
+    if (!isTauri()) return;
+    return invoke("idea_delete", { id });
   },
   async skillsList(): Promise<SkillEntry[]> {
     if (!isTauri()) return [];

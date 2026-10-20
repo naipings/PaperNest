@@ -1,0 +1,9 @@
+ResearchStudio IdeaSpark prompts, pattern overview, companion list, sub-pattern overview,
+and the scoop-check skill text in this directory are copied from
+https://github.com/microsoft/ResearchStudio (MIT License).
+
+Copyright (c) Microsoft Corporation.
+
+PaperNest hosts a subset of the IdeaSpark phase order. It does not ship the
+upstream Python navigator, quality receipts, coherence trace, formula repair,
+Phase 4 technical expansion, or PDF renderer.

@@ -24,6 +24,7 @@ mod local_embed;
 mod explain;
 mod deepread;
 mod deepread_visuals;
+mod idea;
 mod skills;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -377,6 +378,31 @@ mod library_path_tests {
       assert_eq!(clinical_tags, 0);
       assert_eq!(category_id, None);
       assert_eq!(tag_ids, "[\"tag-llm\"]");
+
+      pool.close().await;
+      let _ = fs::remove_dir_all(&root);
+    });
+  }
+
+  #[test]
+  fn update_paper_reading_state_keeps_taxonomy() {
+    tauri::async_runtime::block_on(async {
+      let root = env::temp_dir().join(format!("papernest-reading-state-{}", Uuid::new_v4()));
+      let pool = open_pool(&root).await.unwrap();
+      sqlx::query("INSERT INTO papers(id,title_en,authors_json,category_id,tag_ids_json,status,favorite,created_at,updated_at) VALUES('p1','Paper','[]','cat-nlp','[\"tag-llm\",\"tag-transformer\"]','unread',0,'t','t')").execute(&pool).await.unwrap();
+
+      update_paper_reading_state_in(&pool, "p1", Some(12), Some(true), Some(4)).await.unwrap();
+
+      let category_id: Option<String> = sqlx::query_scalar("SELECT category_id FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      let tag_ids: String = sqlx::query_scalar("SELECT tag_ids_json FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      let page_count: Option<i64> = sqlx::query_scalar("SELECT page_count FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      let has_text_layer: Option<i64> = sqlx::query_scalar("SELECT has_text_layer FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      let reading_page: Option<i64> = sqlx::query_scalar("SELECT reading_page FROM papers WHERE id='p1'").fetch_one(&pool).await.unwrap();
+      assert_eq!(category_id.as_deref(), Some("cat-nlp"));
+      assert_eq!(tag_ids, "[\"tag-llm\",\"tag-transformer\"]");
+      assert_eq!(page_count, Some(12));
+      assert_eq!(has_text_layer, Some(1));
+      assert_eq!(reading_page, Some(4));
 
       pool.close().await;
       let _ = fs::remove_dir_all(&root);
@@ -776,6 +802,24 @@ async fn put_paper(pool:&SqlitePool,p:&Paper)->Result<()> {
 async fn rebuild_paper_search(pool:&SqlitePool,id:&str)->Result<()> { let row=sqlx::query("SELECT p.*,COALESCE(c.name,'') category,(SELECT group_concat(t.name,' ') FROM tags t WHERE instr(p.tag_ids_json,t.id)>0) tags,(SELECT group_concat(term_en||' '||meaning_zh||' '||COALESCE(sentence_en,'')||' '||COALESCE(sentence_zh,''),' ') FROM vocabulary WHERE paper_id=p.id) vocab,(SELECT group_concat(source_text||' '||COALESCE(translation_zh,'')||' '||COALESCE(personal_rewrite,''),' ') FROM excerpts WHERE paper_id=p.id) excerpts,(SELECT group_concat(COALESCE(quote,'')||' '||COALESCE(comment,''),' ') FROM annotations WHERE paper_id=p.id) annotations FROM papers p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=?").bind(id).fetch_one(pool).await.map_err(err)?; let content=format!("{} {} {} {} {} {} {} {} {} {} {} {}",row.get::<String,_>("title_en"),row.get::<Option<String>,_>("title_zh").unwrap_or_default(),row.get::<String,_>("authors_json"),row.get::<Option<String>,_>("summary").unwrap_or_default(),row.get::<Option<String>,_>("abstract_en").unwrap_or_default(),row.get::<Option<String>,_>("abstract_zh").unwrap_or_default(),row.get::<Option<String>,_>("venue").unwrap_or_default(),row.get::<String,_>("category"),row.get::<Option<String>,_>("tags").unwrap_or_default(),row.get::<Option<String>,_>("vocab").unwrap_or_default(),row.get::<Option<String>,_>("excerpts").unwrap_or_default(),row.get::<Option<String>,_>("annotations").unwrap_or_default()); sqlx::query("DELETE FROM paper_search WHERE paper_id=?").bind(id).execute(pool).await.map_err(err)?; sqlx::query("INSERT INTO paper_search(paper_id,content) VALUES(?,?)").bind(id).bind(content).execute(pool).await.map_err(err)?; Ok(()) }
 
 #[tauri::command] async fn save_paper(state:State<'_,AppState>,paper:Paper)->Result<()> { let pool=state.pool.read().await; put_paper(&pool,&paper).await }
+
+/// 只更新页数、文本层和阅读页。阅读台用整行保存会把尚未反映到内存里的主领域和子领域写成空。
+async fn update_paper_reading_state_in(pool: &SqlitePool, paper_id: &str, page_count: Option<i64>, has_text_layer: Option<bool>, reading_page: Option<i64>) -> Result<()> {
+  let changed = sqlx::query("UPDATE papers SET page_count=COALESCE(?, page_count), has_text_layer=COALESCE(?, has_text_layer), reading_page=COALESCE(?, reading_page), updated_at=? WHERE id=?")
+    .bind(page_count)
+    .bind(has_text_layer.map(i64::from))
+    .bind(reading_page)
+    .bind(Utc::now().to_rfc3339())
+    .bind(paper_id)
+    .execute(pool).await.map_err(err)?;
+  if changed.rows_affected() == 0 { return Err("论文不存在".into()); }
+  Ok(())
+}
+
+#[tauri::command]
+async fn update_paper_reading_state(state: State<'_, AppState>, paper_id: String, page_count: Option<i64>, has_text_layer: Option<bool>, reading_page: Option<i64>) -> Result<()> {
+  update_paper_reading_state_in(&*state.pool.read().await, &paper_id, page_count, has_text_layer, reading_page).await
+}
 
 async fn folder_subtree_ids(pool:&SqlitePool, root_id:&str)->Result<Vec<String>> {
   let all:Vec<(String,Option<String>)>=sqlx::query("SELECT id,parent_id FROM folders").fetch_all(pool).await.map_err(err)?
@@ -1378,7 +1422,7 @@ fn err<E:std::fmt::Display>(e:E)->String{e.to_string()}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(research::reset_interrupted_sessions(&dir)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(research::relink_moved_workspaces(&dir)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(deepread::reset_interrupted(&pool)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
-    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,deepread::deepread_list,deepread::deepread_get,deepread::deepread_create,deepread::deepread_run,deepread::deepread_cancel,deepread::deepread_ask,deepread::deepread_delete_turn,deepread::deepread_link_paper,deepread::deepread_open_workspace,deepread::deepread_delete,deepread::deepread_save_report,skills::skills_list,skills::skills_scan_local,skills::skills_import_local,skills::skills_scan_github,skills::skills_import_github,skills::skills_link_sources,skills::skills_check_updates,skills::skills_diff,skills::skills_update,skills::skills_delete,skills::skills_set_enabled,skills::skills_open_dir,skills::skills_github_token_saved,skills::skills_save_github_token,explain::explain_get,explain::explain_start,explain::explain_new_chat,explain::explain_switch_chat,explain::explain_delete_chat,explain::explain_ask,explain::explain_delete_turn,explain::explain_reset,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library,research::research_get_settings,research::research_save_settings,research::research_test_connection,research::research_list_sessions,research::research_create_session,research::research_get_session,research::research_list_turns,research::research_save_answer,research::research_continue_session,research::research_export_report,research::research_read_sources,research::research_list_steps,research::research_run_session,research::research_resume_session,research::research_cancel_session,research::research_fork_session,research::research_context_usage,research::research_dsh_load_snapshot,research::research_dsh_append_event,research::research_dsh_derive_messages,research::research_dsh_default_boundary,research::research_open_workspace,research::research_delete_session,research::research_list_proposals,research::research_approve_proposal,research::research_reject_proposal,mcp_server::mcp_get_info])
+  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).setup(|app| { let (dir,location_config)=resolve_library_dir(app).map_err(std::io::Error::other)?;let recovery_root=app.path().app_local_data_dir().map_err(err)?;let (dir,pool,library_notice)=tauri::async_runtime::block_on(open_library_with_recovery(dir,&location_config,&recovery_root)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(research::reset_interrupted_sessions(&dir)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(research::relink_moved_workspaces(&dir)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(deepread::reset_interrupted(&pool)).map_err(std::io::Error::other)?;tauri::async_runtime::block_on(idea::reset_interrupted(&pool)).map_err(std::io::Error::other)?;app.manage(AppState{library_dir:dir,location_config,pool:RwLock::new(pool),library_notice});Ok(()) })
+    .invoke_handler(tauri::generate_handler![initialize_library,save_paper,update_paper_reading_state,save_folder,delete_folder,move_papers_to_folder,add_reading_seconds,save_annotation,delete_annotation,save_vocabulary,delete_vocabulary,save_excerpt,delete_excerpt,purge_paper,save_task,delete_task,save_figure,delete_figure,save_category,save_tag,merge_taxonomy,save_view,save_profile,save_llm_settings,save_online_metadata_settings,lookup_online_metadata,save_custom_field_definition,archive_custom_field_definition,save_paper_custom_field_values,test_llm_connection,translate_text,translate_with_llm,analyze_paper_with_llm,classify_paper_taxonomy,find_duplicate_candidates,import_pdfs,import_citation_files,read_managed_file,write_export_file,index_pdf_pages,indexed_pdf_pages,ocr_page_image,prepare_library_relocation,search_library,create_backup,restore_backup,open_external_url,local_embed::local_embedding_status,local_embed::ensure_local_embedding_model,local_embed::enable_local_embedding_model,deepread::deepread_list,deepread::deepread_get,deepread::deepread_create,deepread::deepread_run,deepread::deepread_cancel,deepread::deepread_ask,deepread::deepread_delete_turn,deepread::deepread_link_paper,deepread::deepread_open_workspace,deepread::deepread_delete,deepread::deepread_save_report,idea::idea_list,idea::idea_get,idea::idea_create,idea::idea_run,idea::idea_cancel,idea::idea_save_report,idea::idea_delete,skills::skills_list,skills::skills_scan_local,skills::skills_import_local,skills::skills_scan_github,skills::skills_import_github,skills::skills_link_sources,skills::skills_check_updates,skills::skills_diff,skills::skills_update,skills::skills_delete,skills::skills_set_enabled,skills::skills_open_dir,skills::skills_github_token_saved,skills::skills_save_github_token,explain::explain_get,explain::explain_start,explain::explain_new_chat,explain::explain_switch_chat,explain::explain_delete_chat,explain::explain_ask,explain::explain_delete_turn,explain::explain_reset,radar::radar_get_settings,radar::radar_save_settings,radar::radar_category_catalog,radar::radar_list_dates,radar::radar_list_feed,radar::radar_fetch_today,radar::radar_week_hot,radar::radar_set_user_state,radar::radar_recommend,radar::radar_generate_digest,radar::radar_get_digest,radar::radar_explain_paper,radar::radar_get_explanation,radar::radar_list_explained_ids,radar::radar_delete_explanation,radar::radar_import_to_library,research::research_get_settings,research::research_save_settings,research::research_test_connection,research::research_list_sessions,research::research_create_session,research::research_get_session,research::research_list_turns,research::research_save_answer,research::research_continue_session,research::research_export_report,research::research_read_sources,research::research_list_steps,research::research_run_session,research::research_resume_session,research::research_cancel_session,research::research_fork_session,research::research_context_usage,research::research_dsh_load_snapshot,research::research_dsh_append_event,research::research_dsh_derive_messages,research::research_dsh_default_boundary,research::research_open_workspace,research::research_delete_session,research::research_list_proposals,research::research_approve_proposal,research::research_reject_proposal,mcp_server::mcp_get_info])
     .run(tauri::generate_context!()).expect("failed to run PaperNest");
 }

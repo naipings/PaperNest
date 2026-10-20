@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS deep_reads (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_deep_reads_updated ON deep_reads(updated_at);
+CREATE TABLE IF NOT EXISTS idea_tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  paper_ids_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  stage TEXT,
+  error TEXT,
+  validation_json TEXT NOT NULL DEFAULT '[]',
+  model TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_idea_tasks_updated ON idea_tasks(updated_at);
 CREATE TABLE IF NOT EXISTS skills (
   dir TEXT PRIMARY KEY,
   name TEXT NOT NULL,

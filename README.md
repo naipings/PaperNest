@@ -103,6 +103,7 @@ sequenceDiagram
 | 论文雷达  | alphaxiv 热点 / arXiv 新稿 / 兴趣召回 / 为你推荐；趋势综述与并行单篇解读；发现期零 PDF |
 | 文献调研  | ReAct Agent；**单窗口多轮追问** + 附件/链接 + `fetch_url`；对话/轨迹/候选论文三 Tab（DSH 1:1 UI）；`report.md` + `turns/` + `proposals/`；MCP（`papernest-mcp`） |
 | 论文精读  | 论文库 / 知识树邻域 / 本地 PDF 选篇，逐篇生成 What → Why → How → Experiment → Question 证据报告（页码 + 段落锚点、内嵌原图原表、KaTeX 公式、自动校验），对照阅读点击证据跳到原文并高亮，报告后多轮追问 |
+| 研究构思  | 研究方向 → 一张 idea 卡（检索、瓶颈、构思模式、候选、先验撞车、审计、修订）。可带论文库种子；精读可「据此构思」；成稿可开文献调研 |
 | Skill 库  | 从本地目录或 GitHub 仓库导入 Agent Skill，独立存放于资料库；检查上游更新、查看差异后备份覆盖；论文精读追问时模型按需读取 |
 | 可选辅助  | OCR、Crossref 元数据、LLM 导入分析与分类、LibreTranslate 翻译 |
 

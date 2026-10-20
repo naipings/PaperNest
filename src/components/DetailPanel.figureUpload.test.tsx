@@ -15,7 +15,7 @@ describe("framework figure upload", () => {
   it("reports a save error and clears the selected file", async () => {
     vi.spyOn(backend, "saveFigure").mockRejectedValue(new Error("磁盘不可写"));
     vi.spyOn(window, "prompt").mockReturnValueOnce("方法框架图").mockReturnValueOnce("中文解释").mockReturnValueOnce("1");
-    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} /></LibraryProvider>);
+    render(<LibraryProvider><DetailPanel paper={seedSnapshot.papers[0]} onClose={() => undefined} onOpenPdf={() => undefined} onSelect={() => undefined} classifying={false} onClassify={() => undefined} /></LibraryProvider>);
 
     fireEvent.click(await screen.findByRole("button", { name: /框架/ }));
     const input = screen.getByLabelText("上传方法框架图") as HTMLInputElement;

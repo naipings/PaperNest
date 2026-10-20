@@ -13,6 +13,7 @@ import { backend } from "./services/backend";
 import type { FolderSelection, Paper } from "./types";
 import { now } from "./types";
 import { importFolderId } from "./components/FolderTree";
+import { assignTaxonomyToUncategorized, formatTaxonomyAssignResult, uncategorizedPapers } from "./lib/taxonomyClassify";
 
 const SIDEBAR_COLLAPSED_KEY = "papernest.sidebarCollapsed";
 const PdfReader = lazy(() => import("./components/PdfReader").then(module => ({ default: module.PdfReader })));
@@ -24,6 +25,7 @@ const TaskCalendar = lazy(() => import("./components/TaskCalendar").then(module 
 const RadarView = lazy(() => import("./components/RadarView").then(module => ({ default: module.RadarView })));
 const ResearchView = lazy(() => import("./components/ResearchScreen").then(module => ({ default: module.ResearchScreen })));
 const DeepReadView = lazy(() => import("./components/DeepReadView").then(module => ({ default: module.DeepReadView })));
+const IdeaView = lazy(() => import("./components/IdeaView").then(module => ({ default: module.IdeaView })));
 const SkillLibraryView = lazy(() => import("./components/SkillLibraryView").then(module => ({ default: module.SkillLibraryView })));
 
 function readSidebarCollapsed() {
@@ -47,11 +49,15 @@ export default function App() {
   const [cutPaperIds, setCutPaperIds] = useState<string[]>([]);
   const [readerPaper, setReaderPaper] = useState<Paper>();
   const [deepReadSeed, setDeepReadSeed] = useState<{ paperId: string; nonce: number }>();
+  const [ideaSeed, setIdeaSeed] = useState<{ paperId: string; direction: string; nonce: number }>();
   const [creating, setCreating] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [libraryNotice, setLibraryNotice] = useState("");
+  const [classifyBusy, setClassifyBusy] = useState("");
+  const [classifyNotice, setClassifyNotice] = useState("");
   const libraryNoticeTimer = useRef<number | undefined>(undefined);
+  const classifyingRef = useRef(false);
   const readerRef = useRef<PdfReaderHandle>(null);
   const leaveAfterRef = useRef<(() => void) | undefined>(undefined);
   const selected = useMemo(() => data?.papers.find(p => p.id === selectedId), [data, selectedId]);
@@ -60,6 +66,31 @@ export default function App() {
     setLibraryNotice("");
     if (libraryNoticeTimer.current) window.clearTimeout(libraryNoticeTimer.current);
   }, []);
+
+  const classifyPapers = useCallback(async (papers: Paper[]) => {
+    if (!data || classifyingRef.current) return;
+    const pending = uncategorizedPapers(papers);
+    if (!pending.length) {
+      setClassifyNotice("所选论文都已有主领域或子领域");
+      return;
+    }
+    classifyingRef.current = true;
+    setClassifyNotice("");
+    setClassifyBusy(`正在分类 1/${pending.length}：${pending[0].titleZh || pending[0].titleEn}`);
+    try {
+      const result = await assignTaxonomyToUncategorized(papers, data.categories, data.tags, {
+        classify: input => backend.classifyPaperTaxonomy(input),
+        save: paper => backend.savePaper(paper),
+      }, (_done, total, paper) => setClassifyBusy(`正在分类 ${_done}/${total}：${paper.titleZh || paper.titleEn}`));
+      await refresh();
+      setClassifyNotice(formatTaxonomyAssignResult(result));
+    } catch (error) {
+      setClassifyNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      classifyingRef.current = false;
+      setClassifyBusy("");
+    }
+  }, [data, refresh]);
 
   const showLibraryNotice = useCallback((message: string) => {
     setLibraryNotice(message);
@@ -193,8 +224,11 @@ export default function App() {
             onClearCut={() => setCutPaperIds([])}
             onLibraryNotice={showLibraryNotice}
             onClearLibraryNotice={clearLibraryNotice}
+            classifyBusy={classifyBusy}
+            classifyNotice={classifyNotice}
+            onClassifyPapers={papers => void classifyPapers(papers)}
           />
-          {selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} />}
+          {selected && <DetailPanel paper={selected} onClose={() => setSelectedId(undefined)} onOpenPdf={openPdf} onSelect={p => setSelectedId(p.id)} classifying={Boolean(classifyBusy)} onClassify={() => void classifyPapers([selected])} />}
         </div>
       </>}
       {screen !== "library" && (importBusy || importNotice) && <div className="import-status-banner">{importBusy ? <><LoaderCircle className="spin" size={15} />{importBusy}</> : importNotice}</div>}
@@ -209,7 +243,8 @@ export default function App() {
       {screen === "tasks" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TaskCalendar /></Suspense></LazyScreenBoundary>}
       {screen === "radar" && <LazyScreenBoundary><Suspense fallback={pageFallback}><RadarView onImported={paperId => locatePaper(paperId)} /></Suspense></LazyScreenBoundary>}
       {screen === "research" && <LazyScreenBoundary><Suspense fallback={pageFallback}><ResearchView /></Suspense></LazyScreenBoundary>}
-      {screen === "deepread" && <LazyScreenBoundary><Suspense fallback={pageFallback}><DeepReadView seed={deepReadSeed} onOpenPaper={openPdf} /></Suspense></LazyScreenBoundary>}
+      {screen === "deepread" && <LazyScreenBoundary><Suspense fallback={pageFallback}><DeepReadView seed={deepReadSeed} onOpenPaper={openPdf} onIdeate={paper => { setIdeaSeed({ paperId: paper.id, direction: `围绕《${paper.titleZh || paper.titleEn}》提出一个可实现、可证伪的研究设想。`, nonce: Date.now() }); setScreen("idea"); }} /></Suspense></LazyScreenBoundary>}
+      {screen === "idea" && <LazyScreenBoundary><Suspense fallback={pageFallback}><IdeaView seed={ideaSeed} onOpenResearch={() => setScreen("research")} /></Suspense></LazyScreenBoundary>}
       {screen === "skills" && <LazyScreenBoundary><Suspense fallback={pageFallback}><SkillLibraryView /></Suspense></LazyScreenBoundary>}
       {screen === "trash" && <LazyScreenBoundary><Suspense fallback={pageFallback}><TrashView /></Suspense></LazyScreenBoundary>}
       {readerPaper && <LazyScreenBoundary><Suspense fallback={pageFallback}><PdfReader ref={readerRef} embedded paper={data.papers.find(p => p.id === readerPaper.id) ?? readerPaper} onBack={() => requestLeave()} /></Suspense></LazyScreenBoundary>}

@@ -37,7 +37,7 @@ export type PdfReaderHandle = {
 
 /** `pane`：嵌入对照阅读右半屏，学习侧栏默认收起、不显示返回按钮。 */
 export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): void; embedded?: boolean; pane?: boolean }>(function PdfReader({ paper, onBack, embedded = false, pane = false }, ref) {
-  const { data, savePaper, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, deleteFigure, addReadingSeconds } = useLibrary();
+  const { data, refresh, saveAnnotation, deleteAnnotation, saveVocabulary, deleteVocabulary, saveExcerpt, deleteExcerpt, deleteFigure, addReadingSeconds } = useLibrary();
   const stageRef = useRef<HTMLElement>(null);
   const pageSizeRef = useRef({ width: 612, height: 792 });
   const pendingScale = useRef(1.15);
@@ -238,7 +238,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
           setPageText(Object.fromEntries(stored.map(item => [item.page, item.text])));
         }
         if (paper.pageCount !== pdf.numPages || paper.hasTextLayer !== sourceHasText) {
-          void savePaper({ ...paper, pageCount: pdf.numPages, hasTextLayer: sourceHasText, updatedAt: now() });
+          void backend.updatePaperReadingState(paper.id, { pageCount: pdf.numPages, hasTextLayer: sourceHasText }).then(() => refresh());
         }
       })();
     }, 1200);
@@ -251,7 +251,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, { paper: Paper; onBack(): v
   useEffect(() => {
     if (!pdf) return;
     const timer = window.setTimeout(() => {
-      void savePaper({ ...paper, readingPage: page, updatedAt: now() });
+      void backend.updatePaperReadingState(paper.id, { readingPage: page }).then(() => refresh());
     }, 800);
     return () => window.clearTimeout(timer);
   }, [pdf, page]);

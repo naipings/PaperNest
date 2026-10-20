@@ -38,7 +38,7 @@ function applyFolderFilter(filter: SavedView["filter"], selection: FolderSelecti
 }
 
 export function LibraryView({
-  search, searchHitPaperIds, selectedId, folderSelection, cutPaperIds, onFolderSelection, onSelect, onOpenPdf, onCutPapers, onClearCut, onLibraryNotice, onClearLibraryNotice,
+  search, searchHitPaperIds, selectedId, folderSelection, cutPaperIds, onFolderSelection, onSelect, onOpenPdf, onCutPapers, onClearCut, onLibraryNotice, onClearLibraryNotice, classifyBusy, classifyNotice, onClassifyPapers,
 }: {
   search: string;
   searchHitPaperIds: string[];
@@ -52,6 +52,9 @@ export function LibraryView({
   onClearCut(): void;
   onLibraryNotice(message: string): void;
   onClearLibraryNotice(): void;
+  classifyBusy: string;
+  classifyNotice: string;
+  onClassifyPapers(papers: Paper[]): void;
 }) {
   const { data, refresh, savePaper, saveView, saveFolder, deleteFolder, movePapersToFolder } = useLibrary();
   const [viewId, setViewId] = useState("all");
@@ -220,6 +223,7 @@ export function LibraryView({
           <div>
             <h1>{crumbs.at(-1) || "全部论文"}</h1>
             <p className="folder-breadcrumb">{crumbs.join(" / ")} · {papers.length} 篇</p>
+            {(classifyBusy || classifyNotice) && <p className="import-status" role="status">{classifyBusy || classifyNotice}</p>}
           </div>
           <div className="view-tools">
             <FilterMenu icon={<LayoutList size={15} />} value={viewId} onChange={applyView} groups={[
@@ -254,6 +258,8 @@ export function LibraryView({
           onCut={onCutPapers}
           onMoveToFolder={(paperIds, folderId) => void dropPapers(folderId, paperIds)}
           onRequestMove={setMovePaperIds}
+          onClassify={onClassifyPapers}
+          classifying={Boolean(classifyBusy)}
           clearChecksToken={clearChecksToken}
         />
       </div>

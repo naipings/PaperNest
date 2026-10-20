@@ -29,6 +29,9 @@ describe("library locate selection", () => {
           onClearCut={() => undefined}
           onLibraryNotice={() => undefined}
           onClearLibraryNotice={() => undefined}
+          classifyBusy=""
+          classifyNotice=""
+          onClassifyPapers={() => undefined}
         />
       </LibraryProvider>
     );

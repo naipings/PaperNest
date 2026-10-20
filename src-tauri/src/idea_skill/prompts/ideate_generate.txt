@@ -1,0 +1,390 @@
+You are running Phase 2.2 — Candidate Generation — of IdeaSpark.
+
+Step 2.2 takes Phase 2.1's spec (`selected_gaps[]` — 1 anchor + 0-2 EARNED
+siblings (anchor-only is common), each with its own chosen_pattern_id which
+may match or differ across gaps, the anchor additionally carrying 0-2
+anchor_alternates that sub-step a resolves into a single binding and
+possibly a Step 2a CHAIN companion_pattern; plus
+`coherence_thread_type` — one of shared_object /
+shared_question / sequential_pipeline / shared_audit / shared_evaluation,
+or `n_a` for an anchor-only selection —
+which dictates how the components interlock), picks one sub-pattern per gap
+(under that gap's main pattern, resolved for the anchor in sub-step a),
+and writes ONE concrete candidate. The
+candidate is substantively novel relative to closest_adjacent papers — by
+what its mechanism derives, claims, constructs, or measures that
+closest_adjacent did not — and reads as one coordinated paper: via the
+declared coherence_thread_type interlock when siblings exist, or as one
+deep single-gap contribution when anchor-only. The
+thread's specific instance (the named object, question, pipeline, audit
+lens, or framework) is produced HERE in `core_mechanism`, not pre-named
+upstream.
+
+Phase 2.2 runs in two reading sub-steps:
+
+**Sub-step a — pick the sub-pattern under each gap's main pattern**
+
+1. Open `references/ideation-sub-patterns/overview.md` to see which sub-
+   patterns (typically 3-4) live under each main pattern from Phase 2.1.
+2. For each `selected_gaps[]` entry, read the candidate sub-patterns'
+   `when_to_pick_this_one` + `differentiation_within_parent` panels (just
+   those two panels, not full cards) to evaluate which sub-pattern's
+   tactical move most directly closes this gap. For the anchor entry, the
+   candidate main patterns are chosen_pattern_id together with any
+   anchor_alternates Phase 2.1 left unresolved; read the sub-cluster rosters
+   under all of them. Sibling entries use their single chosen_pattern_id.
+3. Pick a sub-pattern only if its tactic fits without adding a new research claim.
+   If none fits, use sub_pattern=null and sub_pattern_not_applicable_reason; do not invent a C## or force a theorem. Otherwise pick ONE whose `when_to_pick_this_one` describes
+   the gap's situation and whose `differentiation_within_parent` separates
+   it from sibling sub-patterns on a bottleneck-relevant axis.
+   THIN-CORPUS DECLARATION: when NO sub-cluster under this gap's parent (or
+   its alternates) carries a domain-adjacent exemplar — every candidate
+   card's examples come from distant domains — pick a structurally
+   fitting cluster only if one exists; otherwise use parent-only fit. Declare thinness explicitly inside this gap's
+   `how_closed` (e.g. "corpus support thin in this domain; closest
+   exemplars are from X"). The audit then judges the entry against the
+   cluster's abstract Step-by-Step moves, not exemplar surface match. Same sub-
+   pattern is allowed for multiple gaps if their tactical needs coincide
+   (rare but valid). For the anchor, the pick is constrained by
+   intake.contribution_type: choose the (main_pattern, sub-pattern) whose
+   tactical_pattern delivers the committed artifact grade — a sub-cluster
+   whose load-bearing artifact is a proof, bound, or rate when
+   contribution_type is theory; a sub-cluster whose load-bearing artifact is
+   a runnable or empirically-validated mechanism when contribution_type is
+   method. When the top-ranked chosen_pattern_id has no sub-cluster matching
+   that grade but an anchor_alternate does, pick from the alternate and carry
+   it forward as this gap's main_pattern.
+   COMPANION: when present, realize the exact declared object O → producer →
+   consuming operation → lost capability. Companion and sibling use the same
+   necessity standard. A post-hoc benchmark cannot enter a method through a
+   “deliverable repair” label. Do not create a second sub-pattern for it.
+   For an empirical diagnostic anchor, a measurement can itself be the contribution;
+   for theory the dependency may be a proof object. Parent-only fit is valid.
+
+4. Only if a sub-pattern was picked, open its card at
+   `references/ideation-sub-patterns/<cluster>.md` where `<cluster>` is
+   the cluster ID **C00 through C30** (e.g. `C12.md`, `C25.md`). NOT named
+   by the parent pattern (there is no `assumption-audit.md` or
+   `algebraic-equivalence.md`). Find the cluster ID for your picked sub-pattern
+   from `ideation-sub-patterns/overview.md` (the index lists `C##` IDs
+   alongside parent pattern names).
+   Read **`tactical_pattern`** (descriptive: what this cluster's papers
+   look like tactically) and **`Step-by-Step`** (5 abstract imperative
+   steps that capture the cluster's structural move pattern, distilled
+   from the cluster's [Accept] examples WITHOUT citing specific papers,
+   with [Reject]-derived risk cues embedded). The Step-by-Step is optional
+   tactical guidance, not a completion checklist or a new proof obligation.
+
+**Sub-step b — write the candidate**
+
+Complete the NAIVE-BASELINE AUDIT (core_mechanism_reasoning BLOCK 2) BEFORE
+writing core_mechanism: under branch (i) the mechanism you are about to
+construct is the one that solves the named obstacle — not the naive version
+with cosmetics.
+
+Write the JSON output. `core_mechanism` walks through how each gap is
+closed via the causal chain (pattern's move → applied to this gap →
+produces what artifact → closes the gap because Y); `core_mechanism_reasoning`
+exposes how you arrived at this design (decisions, alternatives considered);
+`core_mechanism_steps` writes concrete implementation as a numbered list
+so the candidate is buildable, not aspirational. Each applicable card is a source of useful research moves, not a mandatory recipe. Apply only moves justified by the problem and the claimed contribution; a card never authorizes adding a theorem or algorithm.
+The steps are intentionally domain-agnostic; instantiate them concretely
+for your problem rather than executing them verbatim. Do NOT cite or
+mimic specific [Accept] papers from the cluster card — the sub-pattern's
+abstract structural move is the guidance, not any single paper.
+
+When `coherence_thread_type` is `n_a` (anchor-only selection): there is no
+cross-gap interlock. core_mechanism serves the single anchor gap at full
+depth — do NOT invent auxiliary sub-goals, bolt-on analyses, or extra
+"applications" to make the candidate look bigger; depth on one gap beats
+manufactured breadth. When the anchor carries a Step 2a CHAIN
+(companion_pattern set as a composition, not a repair), core_mechanism must
+show the chain's dataflow explicitly: pattern A's move produces the NAMED
+intermediate object O, and pattern B's move consumes O to produce the
+anchor's deliverable.
+
+Otherwise the `coherence_thread_type` from Phase 2.1 dictates how legs interlock,
+and core_mechanism must NAME the thread's specific instance:
+
+- **shared_object**: name the central object (residual, theorem, model)
+  that every leg reads from / writes to; core_mechanism centers on this
+  object.
+- **shared_question**: name the bottleneck-question; walk through how
+  each leg's artifact attacks a different angle of it.
+- **sequential_pipeline**: walk A → B → ... showing how each leg consumes
+  the previous leg's output (core_mechanism_steps shows the data flow).
+- **shared_audit**: name the audit lens once and walk through each site
+  it is applied to.
+- **shared_evaluation**: name the measurement framework and how each leg
+  contributes to it (typically falsification_prediction names the metrics).
+
+Match core_mechanism's structure to the declared thread type — don't
+distort the artifacts to force a different style.
+
+Inputs (explicit paths):
+- `$RUN_DIR/phase1/phase1_output.json` — bottleneck_statement +
+  closest_adjacent[] with summary_and_residue + what_phase_0_did_not_address[]
+  + intake + `method_lineage` (age-banded ancestry tree + `notes` REGRESSION
+  FLAG). The mechanism you construct must NOT reduce to an ancestral/occupied
+  node the flag names — see Hard rule 2. Also honor any occupied-source
+  constraint Phase 2.1 recorded in `selection_rationale`.
+- `$RUN_DIR/phase2_select/phase2_select_output.json` — Phase 2.1 spec
+  (`selected_gaps[]` with chosen_pattern_id per gap + `coherence_thread_type`
+  + `deferred_gaps[]`). Your candidate's `gap_closure[]` must mirror
+  `selected_gaps[]` one-for-one.
+- `$RUN_DIR/phase2_generate/closest_abstracts.json` when it already exists — the orchestrator (`next` navigator via `phase2_prepare`) pre-materializes this closest_adjacent-only slice of lit_results.json; read it directly. If it is missing (manual runs) or `phase2_prepare` warned about unmatched ids, fall back to `$RUN_DIR/phase0/lit_results.json` — ONLY the closest_adjacent papers' entries. Do NOT read the full dump into context (the non-closest ~30 papers are noise here and cost ~15k tokens): when a shell/code tool is available, first filter the file to the closest_adjacent paper_ids from phase1_output (a 3-line python/jq filter written to `$RUN_DIR/phase2_generate/closest_abstracts.json`) and read that; otherwise read selectively by paper_id.
+  for substantive comparison.
+- `$RUN_DIR/phase0/fulltext_cache.json` — intro + method
+  sections for the candidate pool (U + T2 + T3). When you write
+  `differentiation_from_lit[].delta` or `what_step_was_missed`, look up the
+  closest_adjacent and almost_prior papers in this cache: a substantive delta
+  requires knowing what the prior paper's method actually constructs (often only
+  in the method section, not the abstract), so abstract-only deltas tend to be
+  generic ("we use different patterns") rather than substantive ("we derive X
+  that their construction does not produce"). Papers with `source_used: failed`
+  in the cache only have abstract — for those you have less evidence; flag any
+  delta against them as "abstract-only inference" if it is non-obvious.
+- `references/ideation-patterns/overview.md` — NOT read at Phase 2.2
+  (Phase 2.1 already used all three of its panels for selection; the
+  tactical recipe is held by each picked sub-pattern's Step-by-Step).
+- `references/ideation-sub-patterns/overview.md` — index of 31 sub-
+  patterns under their parent main patterns. Used in sub-step a to find
+  candidate sub-patterns.
+- `references/ideation-sub-patterns/<cluster>.md` — for each picked
+  sub-pattern, read `tactical_pattern` + `Step-by-Step` (sub-step a step
+  4).
+
+Hook is the candidate's opening claim. Three shapes; pick the ONE that
+passes its admission test, not the one easiest to write:
+
+(a) **Surprising empirical reveal** — name a metric in
+    `falsification_prediction` whose predicted DIRECTION or regime split
+    is sharply non-obvious to someone fluent in closest_adjacent. The
+    surprise is in the qualitative claim; the experiment establishes
+    magnitude.
+(b) **Structural reframe** — cite a closest_adjacent / lit_table paper
+    whose architecture / loss / eval operationalises the "unnamed"
+    assumption tacitly. Unnamed means unnamed in published practice, not
+    a known property re-described louder.
+(c) **Counter-intuitive minimalism** — name the strongest baseline's
+    load-bearing axis (params / data / new objects) and show your
+    candidate is strictly ≤ on at least one such axis.
+
+(b) is the cheapest shape — any architectural property reads as a "tacit
+assumption" if re-described loud enough. Candidates that default to (b)
+are often more honestly (a) or (c); run the admission test before picking.
+
+Don't stack. If none passes, candidate isn't ready — back to Phase 2.1.
+
+Output (strict JSON):
+
+{
+  "contract_version": 2,
+  "title": "<≤15 words; name the anchor deliverable, not a supporting evaluation instrument>",
+  "intervention_object": {"acts_on": "<the object the mechanism modifies or reads — e.g. 'per-scale bit logits before quantisation', 'the KV cache of the committed prefix', 'the per-block calibration risk'>",
+                          "operator": "<the operation applied to it, one sentence, named by what it computes (a partition, a gain, a test, a projection)>",
+                          "decision_variables": "<what the mechanism chooses at each step, or 'none'>"},
+
+  "hook": "<≤2 sentences. Pick ONE shape: (a) / (b) / (c). Don't stack.>",
+
+  "hook_shape_rationale": "<2 sentences. (i) chosen shape + admission-test evidence (named metric / cited paper + tacit assumption / baseline axis where you are ≤). (ii) which other shape was viable, why rejected.>",
+
+  "gap_closure": [
+    {"gap": "<verbatim from phase2_1.selected_gaps[].gap>",
+     "main_pattern": "<from phase2_1.selected_gaps[].chosen_pattern_id; for the anchor this may instead be one of its anchor_alternates when sub-step a's grade match selected the alternate>",
+     "sub_pattern_not_applicable_reason": "<short reason when sub_pattern is null, otherwise empty>",
+     "sub_pattern": "<null when no tactic fits; otherwise the sub-pattern picked in sub-step a, formatted as `C## (parent pattern display name)` — e.g. `C12 (Substitute the Operator or Representation)`; take the code and its parent display name from references/ideation-sub-patterns/overview.md and verify its parent matches main_pattern>",
+     "companion_pattern": "<null unless Phase 2.1 set companion_pattern non-null on this gap; then carry that pattern_id through verbatim. The companion supplies this gap's missing deliverable at the main-pattern level (no sub_pattern) and core_mechanism must show that deliverable.>",
+     "how_closed": "<one line: which specific element of core_mechanism closes this gap, in the spirit of the picked sub-pattern's tactical_pattern (descriptive — what kind of move closes it, e.g., 'closed by reformulating the LLM-generated text record as a structured posterior representation'). When companion_pattern is set, name both halves — the framing move and the companion's deliverable.>"}
+  ],
+
+  "core_mechanism": "<5-10 sentences. For EACH gap, walk the causal chain: this pattern's move → applied to this gap → the concrete artifact it produces (residual, theorem, primitive, module) → why that artifact closes the gap. Say plainly when gaps share machinery vs need separate modules — structure follows the gaps, not a uniform style. **Make the central object computable from the text alone**: define every quantity it is built from (what it is, and where it comes from — model-internal readout / computed / external oracle), fix or give a selection rule for every free index or layer-set, and write out any weight that bridges different-unit quantities as a named hyperparameter. A reader must be able to compute the object without guessing. Ground all numbers: quantitative claims about prior work cite Phase 0 lit_results.json / closest_adjacent abstracts; claims about your own predicted behavior (rates, exponents, scaling constants) cross-check fulltext_cache.json for any same-setting closest_adjacent paper — align to their value OR write the regime distinction visibly (e.g., 'we measure cumulative regret; their T^x is per-step optimization error'). Don't paste an exponent across regimes — a frequent Reject signal.>",
+
+  "core_mechanism_reasoning": "<Three mandatory blocks, in order. BLOCK 1 — PREMISES ledger: every load-bearing empirical/domain premise the mechanism stands on, one per line, each with a one-line reason it is believed true in this field; any premise that is actually a bet gets the tag 'untested — falsification target' and should be what falsification_prediction's load-bearing variable pivots on. WHEN the mechanism consumes sampled/observed data or signals (most mechanisms do; a pure construction or equivalence contribution may not), at least ONE premise MUST be an OBSERVATION-MODEL premise: how are the mechanism's inputs/signals sampled or observed, and is that sampling unbiased/complete in THIS setting? (Censoring, selection bias, non-iid sampling, leakage, self-preference all live here — it is where the hidden assumptions that naive mechanisms silently rely on are found.) If the mechanism consumes no sampled inputs, write 'observation-model: n/a (no sampled inputs)' — never fabricate one. ESTIMAND (conditional): when the mechanism estimates or measures ANY quantity (a rate, a reward, an uncertainty, a probe score, a metric), declare the ESTIMAND precisely — the exact target quantity and over what population/process it is defined — so the coherence gate can check that the estimator the steps construct actually targets it. BLOCK 2 — NAIVE-BASELINE AUDIT: state, in one concrete runnable-in-principle sentence, the most naive/obvious version of the anchor mechanism; then answer WHY it does not already work, with exactly ONE of three honest branches: (i) the naive version silently relies on a premise that is FALSE in this setting (name it — often the observation-model premise) → the mechanism you write MUST confront that failure head-on; the confrontation IS the contribution, and shipping the naive version with cosmetics is a process error. STANDARD-TOOL FOLLOW-UP (branch (i) only): if the confrontation you reach for is itself a textbook tool from another field (examples, not an exhaustive list: bandits/off-policy evaluation, missing-data methods, survival analysis, active sensing, experimental design), name the DOMAIN-SPECIFIC STRUCTURE that makes this instance not already solved by the textbook tool (a budget constraint, a coupling, adaptivity, a scale regime) and make that structure part of the contribution; if no such structure exists, declare the contribution application-grade honestly — do not dress a textbook application as a method; (ii) the naive version works and the field knows it → an INCREMENTAL signal: either redesign toward a version with a real obstacle, or surface the increment honestly (it flows to composition_note / the audit's concerns) — never paper over it; (iii) the naive version works but the field believes it does not → a counter-intuitive-minimalism contribution: name the EVIDENCE of the field's belief (this is hook shape (c)'s admission test). BLOCK 3 — 2-4 sentences of design rationale (the reasoning, not the design): (a) how you decided whether multiple gaps share machinery vs need separate modules — what was the evidence; (b) what alternative core_mechanism designs you considered and why rejected.>",
+
+  "core_mechanism_steps": "<5-12 numbered implementation steps. Each step names (a) what to compute or modify concretely (code change, training step, evaluation procedure), and (b) inputs and outputs (what data flows in, what comes out). For any step that intervenes on the model or inference (an operator, edit, ablation, restoration), state how that modification propagates to the downstream task output — not just the intermediate quantity it changes (e.g., not 'raises margin M' but 'raises M via a second forward pass, which changes the generated answer'); otherwise the step changes a bookkeeping value with no shown effect on the result. A reader should be able to ask 'if I build this, what do I do first, second, third?' and your list answers that. Write at the code-pathway level — concrete enough to implement, not abstract design language. (Constituent-quantity definitions and units live in core_mechanism — don't restate them here.)>",
+
+  "falsification_prediction": "<3-5 sentences containing: (a) the minimal experiment as a procedure (model / dataset / what to measure); (b) which metric moves and in which direction if the candidate works — name the metric and qualitative direction (e.g., 'foot-skating rate decreases', 'FID improves at 4 NFE on CIFAR-10', 'Spearman ρ between predicted and gold stop-time stays high'); (c) a mechanism distinguisher built around ONE NAMED LOAD-BEARING VARIABLE — the single quantity (a gradient norm, an information-gain term, a learned threshold, a logit divergence, a representational direction) whose behavior carries the mechanism claim — plus a negative-control intervention on it (randomize / oracle-replace / ablate its producer / label-permute). Anti-tautology guard: the control's predicted effect MUST be the downstream task-outcome metric that defines the mechanism's value (accuracy, win-rate, regret slope, real refusal pass-rate) — NOT the variable's own value, nor a quantity analytically a function of it. 'Intervene on X → X becomes 0' only tests a definition; 'intervene on X → downstream metric moves in direction D' is the real Popper test, because 'the metric moved' alone is equally consistent with calibration, estimator quality, or distribution shift. A positive control — a stripped-down model using only the load-bearing variable that recovers most of the downstream effect — is recommended when feasible, converting a falsifier into a constructive identification. Where the setting limits observability, a full-observation oracle (an upper-bound run with the hidden quantity revealed) is the second recommended control.>",
+
+  "compute_budget": "<user-relative concrete estimate with BOTH cost lines when applicable: GPU-days (80GB-class; e.g. '0.6 GPU-day', '50 GPU-day') AND, if the falsification campaign calls paid APIs (closed-model baselines, LLM judges, long reasoning traces), the inference/API dollars for the FULL campaign, iteration included (e.g. '12 GPU-day + $2k API'). Phase 4 feasibility_validation.compute checks each line against intake.compute (default envelope if user didn't state: 80GB-class GPUs, ≤8 concurrent, ≈150 GPU-days over 5 months, ~$10k API campaign budget). NO absolute cap. Calibration vs the 150 GPU-day default: theory typically < 5 GPU-day → 'comfortable'; method on small benchmark 5-40 → 'comfortable'; method on standard benchmark 40-130 → 'tight but feasible'; > 150 → 'tight, will need to scope down'; scaling/foundation 300+ → 'infeasible at default; needs larger compute'. Honesty over heuristic — write the real numbers.>",
+
+  "differentiation_from_lit": [
+    {"paper_id": "<closest_adjacent paper_id from Phase 1, OR another lit_table paper that actually overlaps>",
+     "delta": "<ONE SENTENCE describing what the candidate derives / claims / constructs / measures that this paper did not. Bad: 'we use a different pattern'. Good: 'they derived A under conditions B; we derive C under conditions D, where D is the user's regime.'>"},
+    {"paper_id": "...", "delta": "..."}
+  ],
+
+  "almost_prior_paper_id": "<single closest paper that came STRUCTURALLY closest to the candidate>",
+
+  "what_step_was_missed": "<a specific SUBSTANTIVE step that paper would have needed for our contribution to already exist. Substantive forms: a derivation, a construction, a regime extension, a measurement primitive, an architectural property. NOT methodological labels ('they didn't apply Tweedie', 'they used a different pattern'). Substantive example: 'they constructed the equivalence for single-network ELBO; the parallel for two-network distillation requires a teacher-conditioned augmentation distribution they didn't construct.'>",
+
+  "signature_terms": [
+    "<3-5 entries total; each a 3-7 word phrase>",
+    "<3-7 word phrase>",
+    "..."
+  ],
+
+  "alias_terms": [
+    "<2-4 entries; each a 3-7 word phrase naming the SAME core mechanism in ANOTHER community's vocabulary>",
+    "..."
+  ],
+
+  "composition_note": "<echo VERBATIM from phase2_select.composition_note (empty string when it was empty). Optional compatibility note; a single pattern needs no special defense.>"
+}
+
+Theory applicability: when no data are sampled and no empirical method is claimed,
+observation-model and GPU consumption may be explicitly n/a with a reason. Falsification
+may be a counterexample search or a proof-obligation/assumption test; do not fabricate
+a downstream-task metric, negative-control experiment or recovery guarantee to fill a
+method-shaped template. If the candidate actually claims recovery or an equivalence,
+state its conditions and proof obligations; a concrete counterexample blocks that claim.
+
+Hard rules (5):
+
+1. **Substantive > methodological** in `differentiation_from_lit[].delta` and
+   `what_step_was_missed`. Methodological framing ("they used pattern X, we
+   use Y" / "they didn't apply Tweedie") is a process error — it describes
+   method choice, not contribution. Substantive framing names what is
+   derived / constructed / measured / tightened (a derivable theorem, an
+   observable empirical regime, a measurement primitive, an architectural
+   property without precedent, a scaling exponent).
+
+2. **No regression to an ancestral node** (consult `method_lineage`). The
+   `core_mechanism` you construct must not reduce to a node the
+   `method_lineage.notes` REGRESSION FLAG names, nor to any ancestral /
+   parametric node a retrieved frontier leaf already descends from. The gap
+   handed to you is novel only against the recent-only window; the lineage
+   tree is the one place that records whether the cure you are about to
+   write re-proposes a superseded classical move (e.g. a persistent
+   running-average baseline that reduces to a >16y node). Trace where your
+   mechanism's load-bearing artifact actually lands: if it lands on a
+   flagged node it is a regression even though it closes the gap — redesign
+   it to draw on a source the tree does not yet occupy, or down-scope the
+   claim to the genuinely new part. Record the avoided node in
+   `core_mechanism_reasoning` so the choice is auditable.
+
+3. **Name existing resources only.** Every dataset, benchmark, annotation
+   source, tool, and model-access level (weights / logits / gradients /
+   API-only) that core_mechanism, core_mechanism_steps, or
+   falsification_prediction invokes must be a NAMEABLE, currently-existing
+   artifact — name it. If the mechanism needs something that does not exist
+   (a corpus with annotation X, gradients of a closed-weight model),
+   redesign around an existing equivalent or scope the claim down NOW — do
+   not ship an idea whose first implementation step is "first, build a
+   dataset that does not exist". EXCEPTION: modest self-built resources
+   (hand-labeling a few hundred examples, scripting a converter) are
+   legitimate — name the artifact to build and count its cost in
+   compute_budget; what is forbidden is silently assuming a LARGE resource
+   into existence.
+
+4. **State every claim at the strength you can defend.** Guarantee-grade
+   assertions (unbiased / provable / exact / optimal / lossless — and any
+   paraphrase of them) are permitted ONLY with their assumptions stated
+   where they appear; otherwise use the honest weaker grade (consistent /
+   asymptotic / empirical). The coherence gate grades every claim (T4). Do
+   NOT self-censor ambition to dodge the grading: a strong claim with
+   honest stated assumptions is BETTER than a hedged weak claim.
+
+5. **Every number carries provenance.** (a) PARAMETERS: any quantity the
+   procedure READS AS A PARAMETER — a threshold, budget, window, interval,
+   count, weight — must be a NAMED symbol with a one-clause selection rule
+   or admissible range ("epsilon, swept on a log grid"; "n_min, the floor
+   at which the rate estimate stabilises, chosen on held-out tasks"). The
+   idea is stated over VARIABLES: a default value is NOT required and is
+   given only when the mechanism's definition fixes it or a cited paper
+   measured it (say which). Do not derive sample sizes, window lengths,
+   grid cells or budget arithmetic inside the mechanism or the
+   falsification — those are the constants of an experiment not yet
+   designed, and every one you commit to is a number an auditor must then
+   check instead of checking the idea. A bare
+   literal buried in prose ("gate on >= 95% agreement", "the top 5", "every
+   2e3 tokens") is forbidden: an unnamed quantity cannot be swept by the
+   falsification plan, cannot carry an assumption at T4, and reads to a
+   reviewer as a tuned magic number. This does NOT apply to numbers that
+   are not parameters — named artifact versions (Qwen2.5-72B, EAGLE-3),
+   algebraic/structural constants inside a formula (O(1), the 2 in mod 2,
+   an interval endpoint), definitional settings (temperature 0), a
+   control arm's defining value when it is already bound to a named
+   parameter (epsilon = 0), or experiment-campaign scale. The
+   parameter-vs-scale line is BEHAVIOURAL: a number that changes what the
+   algorithm DOES (a budget it spends, a window it fits over, the point at
+   which it freezes or switches regime) is a parameter and must be named;
+   a number that only sizes the evaluation campaign (corpus size,
+   checkpoint count, the library size a curve runs out to) is scale. Name
+   it once and reuse it — the binding may live in any method field. (b) FALSIFICATION NUMBERS: `falsification_prediction`
+   states the metric and its DIRECTION plus the control — that is what makes
+   it falsifiable. A numeric bar is permitted ONLY when it is DERIVED (an
+   analytic consequence of the mechanism or the setup — say from what) or
+   MEASURED (reported in a cited paper — say which paper_id); tag it
+   inline as `derived:` / `measured in <paper_id>`. Do NOT invent a bar:
+   an unsourced "rho >= 0.6" or "recovers >= 80%" adds no falsifiability
+   (the control already supplies it) and can either kill the idea against
+   a made-up threshold or bless it against too low a one. Replication and
+   scale counts (">= 3 seeds", "grow to ~200 skills") are experiment
+   design, not outcome bars, and are unaffected.
+
+Notes:
+
+- `gap_closure[]` mirrors Phase 2.1's `selected_gaps[]` one-for-one.
+  `deferred_gaps[]` from Phase 2.1 do NOT get gap_closure entries — they
+  were deferred upstream.
+- `signature_terms[]`: 3-5 entries, 3-7 words each. Cover (a) the mechanism,
+  (b) the claim, (c) the setting/setup. No verbatim title strings. No
+  generic terms ("deep learning", "transformer"). These get sent verbatim to
+  the BM25 retriever in Phase 3.1 collision check (recent window).
+- `alias_terms[]`: 3-7 words each — how OTHER research communities would
+  name this candidate's core mechanism. Phase 3.1 runs these over a
+  multi-year window to catch same-mechanism ancestors that renamed the idea;
+  a paraphrased signature term catches nothing the signature channel didn't
+  already catch. Do NOT reuse signature_terms vocabulary or the candidate's
+  own domain wording — the whole point is the words your community does NOT
+  use. Build the list from TWO sources, in this order:
+
+  (a) MANDATORY — the collateral nodes Phase 1 already named. Read
+      `phase1_output.json`'s `method_lineage.nodes[]` and take every node with
+      `is_collateral: true`. Those nodes are, by their own definition, methods
+      that "attack the same residual through a different mechanism" — i.e.
+      Phase 1 has already done the cross-community naming work and written the
+      answer down. Emit one alias term per collateral node, phrased in THAT
+      field's vocabulary (a node reading "Cost-sensitive learning with
+      test/attribute acquisition costs" yields `cost-sensitive learning
+      attribute acquisition`, not a restatement of your own mechanism).
+      Skip a node ONLY if it is genuinely unreachable from this candidate's
+      mechanism, and say which and why in `composition_note`.
+
+      **This clause exists because the omission was measured, twice.** In one
+      run the pool never surfaced delta debugging / `ddmin` / test-suite
+      minimization and the audit found them only by reading the candidate
+      by hand. In the next run Phase 1 pinned nine collateral families and
+      `alias_terms` queried zero of them — the audit's own retrieval found
+      "combinatorial group testing" hits that turned out to contain the
+      candidate's exact observation model. Terms invented purely from
+      parametric recall systematically miss the families the diagnosis
+      already identified, because recall reaches for near neighbours in your
+      own vocabulary and the collateral list is precisely the far ones.
+
+  (b) THEN 2-4 more from parametric knowledge, for families Phase 1 did not
+      list. Ask "if a reward-modeling / classical-CV / RL / NLP / theory group
+      had built this same mechanism 2-3 years ago, what would their papers'
+      titles call it?" (e.g. a "goal-image conditioned scorer for task
+      completion" is, in other vocabularies, a "goal-conditioned success
+      detector" / "goal-image reward model").
+
+  Phase 3.1 truncates per channel by lexical relevance, so a longer list
+  costs recall of the weakest terms, not of the strong ones — err toward
+  covering every collateral node rather than trimming to a target count.
+- `main_pattern` per entry comes from Phase 2.1; `sub_pattern` is picked
+  in this phase's sub-step a. There is no separate `patterns_used[]` field.
+
+Output path: `$RUN_DIR/phase2_generate/phase2_generate_output.json`.
+
+## Contribution and source fidelity
+The hook's first sentence names the anchor contribution. A title word such as certificate,
+verification, audit or probe is not intrinsically wrong; it must describe the actual main
+contribution. Post-hoc measurements belong to falsification unless the contribution type is
+empirical_reveal: a method candidate carries no controlled_diagnostic_design sibling or
+companion (Phase 2.1 hard rule); the per-pixel / per-band / per-trial measurement such a gap
+asked for is the ablation arm or negative control inside `falsification_prediction`, named
+there with its metric. Preserve selection dependency declarations; do not pad components.
+An unproved theorem can be a conditional research target with explicit proof obligations;
+do not present it as established, and do not add it merely to satisfy a pattern card.
